@@ -1,5 +1,10 @@
 # dependencies
 node_modules/
+bun.lock
+bun.lockb
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # build output
 dist/
