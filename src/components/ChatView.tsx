@@ -6,15 +6,28 @@ type Props = {
   messages: ChatMessage[];
   models: ModelOption[];
   defaultModelId: string | null;
+  mru: string[];
   onSend: (text: string, model: ModelOption | undefined, mode: string) => void;
 };
 
-export default function ChatView({ sessionId, messages, models, defaultModelId, onSend }: Props) {
+export default function ChatView({ sessionId, messages, models, defaultModelId, mru, onSend }: Props) {
   const [text, setText] = React.useState('');
   const [mode, setMode] = React.useState('build');
   const [modelId, setModelId] = React.useState('');
   const [attachment, setAttachment] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
+
+  const orderedModels = React.useMemo(() => {
+    const keyOf = (model: ModelOption) => `${model.providerID}/${model.modelID}`;
+    const keys = new Set(models.map(keyOf));
+    const mruKeys = (mru ?? []).filter((key) => keys.has(key));
+    const rest = models
+      .map(keyOf)
+      .filter((key) => !mruKeys.includes(key));
+    return [...mruKeys, ...rest].map((key) => models.find((model) => keyOf(model) === key)).filter(
+      (model): model is ModelOption => Boolean(model)
+    );
+  }, [models, mru]);
 
   React.useEffect(() => {
     if (defaultModelId) setModelId(defaultModelId);
@@ -48,7 +61,7 @@ export default function ChatView({ sessionId, messages, models, defaultModelId, 
         <div className="composer-row">
           <select className="sorter" value={modelId} onChange={(e) => setModelId(e.target.value)}>
             <option value="">Model: default</option>
-            {models.map((entry) => (
+            {orderedModels.map((entry) => (
               <option key={entry.label} value={`${entry.providerID}/${entry.modelID}`}>
                 {entry.label}
               </option>

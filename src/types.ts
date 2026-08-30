@@ -44,6 +44,8 @@ export type EmberBridge = {
   openInstance(instanceId: string, mode: 'replace' | 'new'): Promise<null>;
   getTheme(instanceId: string): Promise<string>;
   setTheme(instanceId: string, themeId: string): Promise<null>;
+  modelsGet(instanceId: string): Promise<string[]>;
+  modelsSet(instanceId: string, order: string[]): Promise<null>;
   request(
     instanceId: string,
     method: string,

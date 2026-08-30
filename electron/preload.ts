@@ -11,6 +11,10 @@ const ember = {
     ipcRenderer.invoke('ember:theme:get', { instanceId }),
   setTheme: (instanceId: string, themeId: string): Promise<null> =>
     ipcRenderer.invoke('ember:theme:set', { instanceId, themeId }),
+  modelsGet: (instanceId: string): Promise<string[]> =>
+    ipcRenderer.invoke('ember:models:get', { instanceId }),
+  modelsSet: (instanceId: string, order: string[]): Promise<null> =>
+    ipcRenderer.invoke('ember:models:set', { instanceId, order }),
   request: (
     instanceId: string,
     method: string,

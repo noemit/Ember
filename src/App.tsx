@@ -9,6 +9,7 @@ import {
   listInstances,
   loadMessages,
   loadModels,
+  loadModelMru,
   loadProjects,
   loadSessionPreview,
   loadSessionStates,
@@ -28,6 +29,7 @@ export default function App() {
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [models, setModels] = React.useState<ModelOption[]>([]);
   const [defaultModelId, setDefaultModelId] = React.useState<string | null>(null);
+  const [modelMru, setModelMru] = React.useState<string[]>([]);
   const [themeId, setThemeId] = React.useState<string>(DEFAULT_THEME_ID);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
 
@@ -73,6 +75,7 @@ export default function App() {
       setSessions(nextSessions);
       setModels(modelList.models);
       setDefaultModelId(modelList.defaultModelId);
+      setModelMru(await loadModelMru(instanceId));
       setPreviews({});
       setSelectedSessionId(null);
       setMessages([]);
@@ -175,6 +178,13 @@ export default function App() {
     setMessages(await loadMessages(instanceId, selectedSessionId));
     const preview = await loadSessionPreview(instanceId, selectedSessionId);
     setPreviews((prev) => ({ ...prev, [selectedSessionId]: preview }));
+
+    const key = model ? `${model.providerID}/${model.modelID}` : '';
+    if (key) {
+      const next = [key, ...modelMru.filter((entry) => entry !== key)].slice(0, 8);
+      setModelMru(next);
+      void saveModelMru(instanceId, next);
+    }
   };
 
   const handlePickTheme = (nextThemeId: string) => {
@@ -208,6 +218,7 @@ export default function App() {
           messages={messages}
           models={models}
           defaultModelId={defaultModelId}
+          mru={modelMru}
           onSend={(text, model, mode) => void handleSend(text, model, mode)}
         />
       </div>

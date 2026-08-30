@@ -145,14 +145,21 @@ export const loadSessionPreview = async (
 export const loadModels = async (instanceId: string): Promise<ModelList> => {
   const response = await window.ember.request(instanceId, 'GET', '/api/provider');
   const root = asRecord(response.data);
-  const providers = Array.isArray(response.data)
+  const rawProviders = Array.isArray(response.data)
     ? response.data
     : asArray(root.all ?? root.providers);
 
+  const connected: string[] = Array.isArray(root.connected)
+    ? root.connected.map(String)
+    : [];
+  const providers = rawProviders.map((provider) => asRecord(provider));
+  const usable = connected.length
+    ? providers.filter((provider) => connected.includes(String(provider.id ?? provider.name ?? '')))
+    : providers;
+
   const models: ModelOption[] = [];
 
-  providers.forEach((provider) => {
-    const item = asRecord(provider);
+  usable.forEach((item) => {
     const providerID = String(item.id ?? item.providerID ?? item.name ?? '');
     const providerName = String(item.name ?? item.id ?? '');
 
@@ -185,6 +192,15 @@ export const loadModels = async (instanceId: string): Promise<ModelList> => {
   }
 
   return { models, defaultModelId };
+};
+
+export const loadModelMru = async (instanceId: string): Promise<string[]> => {
+  const data = await window.ember.modelsGet(instanceId);
+  return Array.isArray(data) ? data.filter((value): value is string => typeof value === 'string') : [];
+};
+
+export const saveModelMru = async (instanceId: string, order: string[]): Promise<void> => {
+  await window.ember.modelsSet(instanceId, order);
 };
 
 export const sendPrompt = async (

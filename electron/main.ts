@@ -34,6 +34,7 @@ type Instance = {
 
 type EmberSettings = {
   instanceThemes: Record<string, string>;
+  instanceModels: Record<string, string[]>;
 };
 
 const DEFAULT_THEME_ID = 'ember';
@@ -67,8 +68,10 @@ const isLocalUrl = (url: string): boolean => /^https?:\/\/(127\.0\.0\.1|localhos
 const readEmberSettings = (): EmberSettings => {
   const root = readJson(emberSettingsPath());
   const themes = root.instanceThemes;
+  const models = root.instanceModels;
   return {
     instanceThemes: themes && typeof themes === 'object' ? (themes as Record<string, string>) : {},
+    instanceModels: models && typeof models === 'object' ? (models as Record<string, string[]>) : {},
   };
 };
 
@@ -245,6 +248,24 @@ ipcMain.handle('ember:theme:set', (_event, args: { instanceId: string; themeId: 
 
   const settings = readEmberSettings();
   settings.instanceThemes[instanceId] = themeId;
+  writeJson(emberSettingsPath(), settings);
+  return null;
+});
+
+ipcMain.handle('ember:models:get', (_event, args: { instanceId: string }) => {
+  const instanceId = String(args?.instanceId || '');
+  if (!instanceId) return [];
+  const stored = readEmberSettings().instanceModels[instanceId];
+  return Array.isArray(stored) ? stored.slice(0, 8) : [];
+});
+
+ipcMain.handle('ember:models:set', (_event, args: { instanceId: string; order: string[] }) => {
+  const instanceId = String(args?.instanceId || '');
+  const order = Array.isArray(args?.order) ? args.order.map(String).slice(0, 8) : [];
+  if (!instanceId) return null;
+
+  const settings = readEmberSettings();
+  settings.instanceModels[instanceId] = order;
   writeJson(emberSettingsPath(), settings);
   return null;
 });
