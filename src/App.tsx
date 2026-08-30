@@ -10,6 +10,7 @@ import {
   loadMessages,
   loadModels,
   loadModelMru,
+  saveModelMru,
   loadProjects,
   loadSessionPreview,
   loadSessionStates,
