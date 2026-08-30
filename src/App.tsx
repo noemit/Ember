@@ -198,6 +198,7 @@ export default function App() {
     if (!instanceId || !selectedSessionId) return;
     await sendPrompt(instanceId, selectedSessionId, text, model, mode);
     setMessages(await loadMessages(instanceId, selectedSessionId));
+    setSessions(await loadSessions(instanceId));
     const preview = await loadSessionPreview(instanceId, selectedSessionId);
     setPreviews((prev) => ({ ...prev, [selectedSessionId]: preview }));
 

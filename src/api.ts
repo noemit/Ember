@@ -39,12 +39,22 @@ export const loadSessions = async (instanceId: string): Promise<Session[]> => {
   return asArray(response.data).map((entry, index) => {
     const item = asRecord(entry);
     const time = asRecord(item.time);
+    
+    // Parse potential string timestamps or date strings if not raw numbers
+    const parseTime = (val: unknown): number | undefined => {
+      if (typeof val === 'number') return val;
+      if (typeof val === 'string') {
+        const parsed = Date.parse(val);
+        if (!isNaN(parsed)) return parsed;
+      }
+      return undefined;
+    };
+
     const updated =
-      typeof time.updated === 'number'
-        ? time.updated
-        : typeof time.created === 'number'
-          ? time.created
-          : undefined;
+      parseTime(time.updated) ??
+      parseTime(item.updated) ??
+      parseTime(time.created) ??
+      parseTime(item.created);
 
     return {
       id: String(item.id ?? `session-${index}`),

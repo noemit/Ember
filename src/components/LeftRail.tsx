@@ -84,11 +84,14 @@ export default function LeftRail({
 
     if (loose.length > 0) result.push({ key: '__other', label: 'Other', sessions: loose });
 
-    result.sort((a, b) =>
-      sorter === 'name'
-        ? a.label.localeCompare(b.label)
-        : (b.sessions[0]?.updated ?? 0) - (a.sessions[0]?.updated ?? 0)
-    );
+    result.sort((a, b) => {
+      if (sorter === 'name') {
+        return a.label.localeCompare(b.label);
+      }
+      const aMax = Math.max(0, ...a.sessions.map((s) => s.updated ?? 0));
+      const bMax = Math.max(0, ...b.sessions.map((s) => s.updated ?? 0));
+      return bMax - aMax;
+    });
 
     return result;
   }, [sortedSessions, projects, sorter]);
