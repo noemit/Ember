@@ -4,14 +4,27 @@ import { PUFFY_CLAY_SHAPES } from '../shapes';
 import { hashString, mulberry32 } from '../seed';
 import type { BallState } from '../../types';
 
+type ActiveAction = 'bounce' | 'search' | 'backflip' | 'shimmy' | 'curious-lean';
+
+const ACTIVE_ACTIONS: ActiveAction[] = ['bounce', 'search', 'backflip', 'shimmy', 'curious-lean'];
+
 type Props = {
   seed: string;
   size: number;
   state: BallState;
   interactive?: boolean;
+  shapeIndex?: number;
+  colorIndex?: number;
 };
 
-export default function PuffyClayRenderer({ seed, size, state, interactive = true }: Props) {
+export default function PuffyClayRenderer({
+  seed,
+  size,
+  state,
+  interactive = true,
+  shapeIndex: explicitShapeIndex,
+  colorIndex: explicitColorIndex,
+}: Props) {
   const containerRef = React.useRef<SVGSVGElement>(null);
   const leftPupilRef = React.useRef<SVGGElement>(null);
   const rightPupilRef = React.useRef<SVGGElement>(null);
@@ -22,23 +35,77 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
   const floorShadowId = `puffy-floor-${uid}`;
   const auraGlowId = `puffy-aura-${uid}`;
   const alertBadgeGradId = `puffy-badge-${uid}`;
+  const clipLeftId = `eye-clip-l-${uid}`;
+  const clipRightId = `eye-clip-r-${uid}`;
 
   const seedHash = hashString(seed);
   const rng = mulberry32(seedHash);
 
-  const shapeIndex = Math.floor(rng() * PUFFY_CLAY_SHAPES.length);
-  const colorIndex = Math.floor(rng() * PUFFY_CLAY_PALETTE.length);
-  const eyeStyle = Math.floor(rng() * 4); // 0: Glossy Googly, 1: Sparkle Wonder, 2: Chill / Half-lidded, 3: Wide Curious
+  const derivedShapeIndex = Math.floor(rng() * PUFFY_CLAY_SHAPES.length);
+  const derivedColorIndex = Math.floor(rng() * PUFFY_CLAY_PALETTE.length);
+  const eyeStyle = Math.floor(rng() * 4); // 0: Classic Glossy, 1: Anime Sparkle, 2: Kawaii Round, 3: Deep Wonder
 
-  const shape = PUFFY_CLAY_SHAPES[shapeIndex];
-  const color = PUFFY_CLAY_PALETTE[colorIndex];
+  const shapeIdx = explicitShapeIndex !== undefined ? explicitShapeIndex % PUFFY_CLAY_SHAPES.length : derivedShapeIndex;
+  const colorIdx = explicitColorIndex !== undefined ? explicitColorIndex % PUFFY_CLAY_PALETTE.length : derivedColorIndex;
+
+  const shape = PUFFY_CLAY_SHAPES[shapeIdx];
+  const color = PUFFY_CLAY_PALETTE[colorIdx];
   const isError = state === 'error';
   const isNeedsInput = state === 'needs-input';
   const isActive = state === 'active';
 
+  // Procedural Active Action State Machine
+  const [activeAction, setActiveAction] = React.useState<ActiveAction>('bounce');
+  const [searchTarget, setSearchTarget] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Procedural Action Loop when Active
+  React.useEffect(() => {
+    if (!isActive) return;
+
+    let timer: number | undefined;
+    let scanTimer: number | undefined;
+    let currentAction: ActiveAction = 'bounce';
+
+    const pickNextAction = () => {
+      const pool = ACTIVE_ACTIONS.filter((a) => a !== currentAction);
+      const next = pool[Math.floor(Math.random() * pool.length)];
+      currentAction = next;
+      setActiveAction(next);
+
+      if (next === 'search') {
+        const scan = () => {
+          const sx = (Math.random() - 0.5) * 8;
+          const sy = (Math.random() - 0.5) * 6;
+          setSearchTarget({ x: sx, y: sy });
+        };
+        scan();
+        scanTimer = window.setInterval(scan, 350);
+      } else {
+        if (scanTimer) {
+          window.clearInterval(scanTimer);
+          scanTimer = undefined;
+        }
+        setSearchTarget({ x: 0, y: 0 });
+      }
+
+      const duration = 1200 + Math.random() * 1200;
+      timer = window.setTimeout(pickNextAction, duration);
+    };
+
+    pickNextAction();
+
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      if (scanTimer) window.clearInterval(scanTimer);
+    };
+  }, [isActive]);
+
+  // Mouse cursor tracking
   React.useEffect(() => {
     if (!interactive) return;
+
     const onMove = (event: MouseEvent) => {
+      if (isActive && activeAction === 'search') return;
       const el = containerRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
@@ -46,22 +113,32 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
       const dy = event.clientY - (rect.top + rect.height / 2);
       const dist = Math.hypot(dx, dy) || 1;
       const reach = Math.min(1, 280 / dist);
-      const tx = ((dx / dist) * 4.4 * reach).toFixed(2);
-      const ty = ((dy / dist) * 3.8 * reach).toFixed(2);
+      const tx = ((dx / dist) * 4.2 * reach).toFixed(2);
+      const ty = ((dy / dist) * 3.6 * reach).toFixed(2);
       const transform = `translate(${tx} ${ty})`;
       if (leftPupilRef.current) leftPupilRef.current.setAttribute('transform', transform);
       if (rightPupilRef.current) rightPupilRef.current.setAttribute('transform', transform);
     };
+
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, [interactive]);
+  }, [interactive, isActive, activeAction]);
+
+  // Update pupil position when active action is search
+  React.useEffect(() => {
+    if (isActive && activeAction === 'search') {
+      const transform = `translate(${searchTarget.x.toFixed(2)} ${searchTarget.y.toFixed(2)})`;
+      if (leftPupilRef.current) leftPupilRef.current.setAttribute('transform', transform);
+      if (rightPupilRef.current) rightPupilRef.current.setAttribute('transform', transform);
+    }
+  }, [isActive, activeAction, searchTarget]);
 
   const eyeY = shape.eyeY;
   const spacing = shape.eyeSpacing;
   const eyeR = shape.eyeRadius;
-  const mouthY = shape.mouthY ?? eyeY + eyeR + 8;
+  const naturalMouthY = eyeY + eyeR * 0.92;
 
-  const renderPupil = (ref: React.RefObject<SVGGElement>, isLeft: boolean) => {
+  const renderPupil = (ref: React.RefObject<SVGGElement>) => {
     if (isError) {
       return (
         <g stroke="#1a1824" strokeWidth="3.2" strokeLinecap="round" className="clay-error-x">
@@ -72,15 +149,12 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
     }
 
     if (eyeStyle === 1) {
-      // Sparkle Wonder Anime Eye
+      // Style 1: Anime Star Sparkle Pupil
       return (
         <g ref={ref} className="clay-pupil-group">
           <ellipse cx="0" cy="0" rx={eyeR * 0.58} ry={eyeR * 0.64} fill="#12111a" />
-          {/* Inner iris color crescent */}
-          <ellipse cx="0" cy={eyeR * 0.22} rx={eyeR * 0.44} ry={eyeR * 0.32} fill={color.base} opacity="0.8" />
-          {/* Primary diamond star highlight */}
+          <ellipse cx="0" cy={eyeR * 0.22} rx={eyeR * 0.44} ry={eyeR * 0.32} fill={color.base} opacity="0.85" />
           <circle cx={-eyeR * 0.22} cy={-eyeR * 0.25} r={eyeR * 0.22} fill="#ffffff" />
-          {/* Secondary sparkle */}
           <circle cx={eyeR * 0.2} cy={eyeR * 0.22} r={eyeR * 0.12} fill="#ffffff" opacity="0.9" />
           <circle cx={-eyeR * 0.18} cy={eyeR * 0.26} r={eyeR * 0.08} fill="#ffffff" opacity="0.85" />
         </g>
@@ -88,41 +162,28 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
     }
 
     if (eyeStyle === 2) {
-      // Chill / Half-Lidded Eyelid
+      // Style 2: Soft Kawaii Round Pupil
       return (
         <g ref={ref} className="clay-pupil-group">
-          <circle cx="0" cy="1" r={eyeR * 0.48} fill="#14141e" />
-          <circle cx={-eyeR * 0.16} cy={-eyeR * 0.12} r={eyeR * 0.18} fill="#ffffff" />
-          {/* Top sleepy eyelid shade */}
-          <path
-            d={`M ${-eyeR} ${-eyeR * 0.1} Q 0 ${eyeR * 0.3} ${eyeR} ${-eyeR * 0.1} L ${eyeR} ${-eyeR} L ${-eyeR} ${-eyeR} Z`}
-            fill={color.base}
-            stroke={color.edge}
-            strokeWidth="0.8"
-          />
+          <circle cx="0" cy="0" r={eyeR * 0.52} fill="#151420" />
+          <circle cx={-eyeR * 0.18} cy={-eyeR * 0.18} r={eyeR * 0.2} fill="#ffffff" />
+          <circle cx={eyeR * 0.16} cy={eyeR * 0.16} r={eyeR * 0.1} fill="#ffffff" opacity="0.9" />
         </g>
       );
     }
 
     if (eyeStyle === 3) {
-      // Wide Curious Pill-Round Pupil
+      // Style 3: Deep Wonder Large Eye
       return (
         <g ref={ref} className="clay-pupil-group">
-          <rect
-            x={-eyeR * 0.38}
-            y={-eyeR * 0.52}
-            width={eyeR * 0.76}
-            height={eyeR * 1.04}
-            rx={eyeR * 0.38}
-            fill="#12131a"
-          />
-          <circle cx={-eyeR * 0.12} cy={-eyeR * 0.22} r={eyeR * 0.18} fill="#ffffff" />
-          <circle cx={eyeR * 0.14} cy={eyeR * 0.2} r={eyeR * 0.1} fill="#ffffff" opacity="0.85" />
+          <circle cx="0" cy="0" r={eyeR * 0.6} fill="#101018" />
+          <circle cx={-eyeR * 0.22} cy={-eyeR * 0.24} r={eyeR * 0.24} fill="#ffffff" />
+          <circle cx={eyeR * 0.22} cy={eyeR * 0.22} r={eyeR * 0.12} fill="#ffffff" opacity="0.95" />
         </g>
       );
     }
 
-    // Default Style 0: Glossy 3D Googly Eye (Reference 05dcb78b151b13d955554fa4fc249a7b.jpg)
+    // Default Style 0: Classic 3D Glossy Googly (Reference 05dcb78b151b13d955554fa4fc249a7b.jpg)
     return (
       <g ref={ref} className="clay-pupil-group">
         <circle cx="0" cy="0" r={eyeR * 0.54} fill="#13131d" />
@@ -132,21 +193,27 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
     );
   };
 
-  const renderEye = (offsetX: number, pupilRef: React.RefObject<SVGGElement>, isLeft: boolean) => (
-    <g transform={`translate(${offsetX} 0)`} className="clay-eyeball-unit">
-      {/* 3D Eyeball Cast Shadow onto Clay Body */}
-      <ellipse cx="0" cy="4.5" rx={eyeR + 1.2} ry={eyeR * 0.88} fill="rgba(0, 0, 0, 0.24)" />
+  const renderEye = (offsetX: number, pupilRef: React.RefObject<SVGGElement>, isLeft: boolean) => {
+    const clipId = isLeft ? clipLeftId : clipRightId;
 
-      {/* 3D White Spherical Eyeball */}
-      <circle cx="0" cy="0" r={eyeR} fill={`url(#${eyeGradId})`} stroke="#cbd5e1" strokeWidth="0.8" />
+    return (
+      <g transform={`translate(${offsetX} 0)`} className="clay-eyeball-unit">
+        {/* 3D Eyeball Cast Shadow */}
+        <ellipse cx="0" cy="4" rx={eyeR + 1.2} ry={eyeR * 0.88} fill="rgba(0, 0, 0, 0.22)" />
 
-      {/* Eyeball Inner Soft Rim */}
-      <circle cx="0" cy="0" r={eyeR} fill="none" stroke="rgba(0,0,0,0.05)" strokeWidth="1.2" />
+        {/* 3D White Spherical Eyeball */}
+        <circle cx="0" cy="0" r={eyeR} fill={`url(#${eyeGradId})`} stroke="#cbd5e1" strokeWidth="0.8" />
 
-      {/* Pupil and Expression */}
-      {renderPupil(pupilRef, isLeft)}
-    </g>
-  );
+        {/* Eyeball Inner Soft Rim */}
+        <circle cx="0" cy="0" r={eyeR} fill="none" stroke="rgba(0,0,0,0.05)" strokeWidth="1.2" />
+
+        {/* Pupil and Highlights strictly clipped to the eye circle */}
+        <g clipPath={`url(#${clipId})`}>
+          {renderPupil(pupilRef)}
+        </g>
+      </g>
+    );
+  };
 
   return (
     <svg
@@ -154,10 +221,18 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
       viewBox="0 0 100 100"
       width={size}
       height={size}
-      className={`blob-clay-svg blob-state-${state}`}
+      className={`blob-clay-svg blob-state-${state} ${isActive ? `active-action-${activeAction}` : ''}`}
       style={{ overflow: 'visible' }}
     >
       <defs>
+        {/* Eye circular clip paths to prevent any leakage */}
+        <clipPath id={clipLeftId}>
+          <circle cx="0" cy="0" r={eyeR} />
+        </clipPath>
+        <clipPath id={clipRightId}>
+          <circle cx="0" cy="0" r={eyeR} />
+        </clipPath>
+
         {/* Stretched, ultra-soft subtle dual-tone body gradient */}
         <linearGradient id={bodyGradId} x1="15%" y1="0%" x2="85%" y2="100%">
           <stop offset="0%" stopColor={color.light} />
@@ -180,30 +255,30 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
           <stop offset="100%" stopColor="rgba(0,0,0,0)" />
         </radialGradient>
 
-        {/* Pulsing Luminous Attention Beacon Aura (Needs-Input) */}
+        {/* Pulsing Luminous Beacon Aura (Needs-Input) */}
         <radialGradient id={auraGlowId} cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor={color.glow ?? color.accent ?? '#ff007f'} stopOpacity={0.7} />
-          <stop offset="55%" stopColor={color.base} stopOpacity={0.35} />
+          <stop offset="0%" stopColor={color.glow ?? color.accent ?? '#ff007f'} stopOpacity={0.65} />
+          <stop offset="60%" stopColor={color.base} stopOpacity={0.25} />
           <stop offset="100%" stopColor="transparent" stopOpacity={0} />
         </radialGradient>
 
         {/* Notification Alert Badge Gradient */}
         <linearGradient id={alertBadgeGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff4d4d" />
+          <stop offset="0%" stopColor="#ff4d6d" />
           <stop offset="100%" stopColor="#d90429" />
         </linearGradient>
       </defs>
 
       {/* Needs-Input Radiant Glowing Aura Ring */}
       {isNeedsInput && (
-        <ellipse cx="50" cy="50" rx="52" ry="50" fill={`url(#${auraGlowId})`} className="clay-needs-input-aura" />
+        <ellipse cx="50" cy="50" rx="50" ry="48" fill={`url(#${auraGlowId})`} className="clay-needs-input-aura" />
       )}
 
       {/* Floor Contact Shadow */}
       <ellipse cx="50" cy="94" rx="38" ry="6" fill={`url(#${floorShadowId})`} className="clay-floor-shadow" />
 
       {/* Main Animated Clay Character Group */}
-      <g className="clay-character-body">
+      <g className={`clay-character-body ${isActive ? `anim-${activeAction}` : ''}`}>
         {/* Main 3D Soft Clay Body */}
         <path
           d={shape.path}
@@ -213,7 +288,7 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
           strokeLinejoin="round"
         />
 
-        {/* Top Volumetric Ambient Specular Sheen */}
+        {/* Top Volumetric Specular Highlight */}
         <path
           d={shape.path}
           fill="none"
@@ -226,87 +301,88 @@ export default function PuffyClayRenderer({ seed, size, state, interactive = tru
         {/* Rosy Blush Cheeks under eyes */}
         <ellipse
           cx={50 - spacing - eyeR * 0.72}
-          cy={eyeY + eyeR * 0.88}
-          rx={eyeR * 0.46}
-          ry={eyeR * 0.26}
+          cy={eyeY + eyeR * 0.85}
+          rx={eyeR * 0.44}
+          ry={eyeR * 0.25}
           fill={color.accent ?? '#ff4081'}
-          opacity="0.38"
+          opacity="0.36"
           className="clay-blush"
         />
         <ellipse
           cx={50 + spacing + eyeR * 0.72}
-          cy={eyeY + eyeR * 0.88}
-          rx={eyeR * 0.46}
-          ry={eyeR * 0.26}
+          cy={eyeY + eyeR * 0.85}
+          rx={eyeR * 0.44}
+          ry={eyeR * 0.25}
           fill={color.accent ?? '#ff4081'}
-          opacity="0.38"
+          opacity="0.36"
           className="clay-blush"
         />
-
-        {/* Mouth Expressions */}
-        {isNeedsInput ? (
-          /* Hilarious Rapidly Chattering / Yelling Mouth (Talking to user!) */
-          <g transform={`translate(50 ${mouthY})`} className="clay-yelling-mouth">
-            <ellipse cx="0" cy="0" rx="8.5" ry="7.5" fill="#181320" stroke="#0d0a12" strokeWidth="1" />
-            {/* Tongue inside mouth */}
-            <path d="M -5 3 Q 0 7 5 3 Q 3 0 -3 0 Z" fill="#ff5c8a" />
-            {/* Sound / exclamation lines next to mouth */}
-            <path d="M -12 -3 L -16 -6" stroke={color.dark} strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M 12 -3 L 16 -6" stroke={color.dark} strokeWidth="1.8" strokeLinecap="round" />
-          </g>
-        ) : isError ? (
-          /* Wobbly Sad Wavy Mouth */
-          <g transform={`translate(50 ${mouthY})`}>
-            <path
-              d="M -9 4 Q -4 -3 0 2 Q 4 -3 9 4"
-              fill="none"
-              stroke="#1c1824"
-              strokeWidth="3.2"
-              strokeLinecap="round"
-            />
-          </g>
-        ) : isActive ? (
-          /* Cheerful Open Smile */
-          <g transform={`translate(50 ${mouthY - 2})`}>
-            <path
-              d="M -7 0 Q 0 8 7 0"
-              fill="none"
-              stroke="#1a1824"
-              strokeWidth="2.8"
-              strokeLinecap="round"
-            />
-          </g>
-        ) : (
-          /* Subtle Idle Smile / Expression */
-          <g transform={`translate(50 ${mouthY - 2})`}>
-            <path
-              d="M -5 0 Q 0 4.5 5 0"
-              fill="none"
-              stroke="#1a1824"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              opacity="0.85"
-            />
-          </g>
-        )}
 
         {/* Eyeballs Group */}
         <g transform={`translate(50 ${eyeY})`} className="clay-eyes-group">
           {renderEye(-spacing, leftPupilRef, true)}
           {renderEye(spacing, rightPupilRef, false)}
         </g>
+
+        {/* Natural Facial Mouth Expression (Centered directly under eyes) */}
+        {isNeedsInput ? (
+          /* Cute Yelling / Talking Mouth on Face */
+          <g transform={`translate(50 ${naturalMouthY})`} className="clay-yelling-mouth">
+            <path
+              d="M -6 -1 Q 0 -3 6 -1 C 7 5, 5 9, 0 9 C -5 9, -7 5, -6 -1 Z"
+              fill="#181320"
+              stroke="#0d0a12"
+              strokeWidth="0.8"
+            />
+            <path d="M -3.5 4 Q 0 8 3.5 4 Q 2 2 -2 2 Z" fill="#ff5c8a" />
+          </g>
+        ) : isError ? (
+          /* Wobbly Sad Mouth */
+          <g transform={`translate(50 ${naturalMouthY})`}>
+            <path
+              d="M -7 2 Q -3 -3 0 1 Q 3 -3 7 2"
+              fill="none"
+              stroke="#1c1824"
+              strokeWidth="2.8"
+              strokeLinecap="round"
+            />
+          </g>
+        ) : isActive ? (
+          /* Cheerful Happy Open Smile */
+          <g transform={`translate(50 ${naturalMouthY - 1})`} className="clay-active-mouth">
+            <path
+              d="M -6 -1 Q 0 7 6 -1"
+              fill="none"
+              stroke="#1a1824"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+            />
+          </g>
+        ) : (
+          /* Sweet Idle Smile */
+          <g transform={`translate(50 ${naturalMouthY - 1})`}>
+            <path
+              d="M -4 0 Q 0 4 4 0"
+              fill="none"
+              stroke="#1a1824"
+              strokeWidth="2"
+              strokeLinecap="round"
+              opacity="0.85"
+            />
+          </g>
+        )}
       </g>
 
-      {/* Needs-Input Pulsing Alert Notification Badge at top-right */}
+      {/* Needs-Input Clean Notification Speech/Alert Badge */}
       {isNeedsInput && (
-        <g transform="translate(82 14)" className="clay-alert-badge">
-          <circle cx="0" cy="0" r="10" fill={`url(#${alertBadgeGradId})`} stroke="#ffffff" strokeWidth="1.8" />
+        <g transform="translate(78 16)" className="clay-alert-badge">
+          <circle cx="0" cy="0" r="9" fill={`url(#${alertBadgeGradId})`} stroke="#ffffff" strokeWidth="1.6" />
           <text
             x="0"
-            y="4"
+            y="3.8"
             textAnchor="middle"
             fill="#ffffff"
-            fontSize="12"
+            fontSize="11"
             fontWeight="900"
             fontFamily="system-ui, sans-serif"
           >
