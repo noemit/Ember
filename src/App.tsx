@@ -10,6 +10,7 @@ import {
   loadMessages,
   loadModels,
   loadProjects,
+  loadSessionPreview,
   loadSessionStates,
   loadSessions,
   sendPrompt,
@@ -22,9 +23,11 @@ export default function App() {
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [sessions, setSessions] = React.useState<Session[]>([]);
   const [states, setStates] = React.useState<Record<string, BallState>>({});
+  const [previews, setPreviews] = React.useState<Record<string, string>>({});
   const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [models, setModels] = React.useState<ModelOption[]>([]);
+  const [defaultModelId, setDefaultModelId] = React.useState<string | null>(null);
   const [themeId, setThemeId] = React.useState<string>(DEFAULT_THEME_ID);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
 
@@ -58,7 +61,7 @@ export default function App() {
     let cancelled = false;
 
     const load = async () => {
-      const [theme, nextProjects, nextSessions, nextModels] = await Promise.all([
+      const [theme, nextProjects, nextSessions, modelList] = await Promise.all([
         window.ember.getTheme(instanceId),
         loadProjects(instanceId),
         loadSessions(instanceId),
@@ -68,7 +71,9 @@ export default function App() {
       setThemeId(theme || DEFAULT_THEME_ID);
       setProjects(nextProjects);
       setSessions(nextSessions);
-      setModels(nextModels);
+      setModels(modelList.models);
+      setDefaultModelId(modelList.defaultModelId);
+      setPreviews({});
       setSelectedSessionId(null);
       setMessages([]);
     };
@@ -96,6 +101,41 @@ export default function App() {
       window.clearInterval(timer);
     };
   }, [instanceId]);
+
+  React.useEffect(() => {
+    if (!instanceId) return;
+    let cancelled = false;
+
+    const targets = [...sessions]
+      .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
+      .slice(0, 20)
+      .filter((session) => !(session.id in previews));
+
+    if (targets.length === 0) return;
+
+    const load = async () => {
+      const entries = await Promise.all(
+        targets.map(async (session) => {
+          const preview = await loadSessionPreview(instanceId, session.id);
+          return [session.id, preview] as const;
+        })
+      );
+      if (cancelled) return;
+
+      setPreviews((prev) => {
+        const next: Record<string, string> = { ...prev };
+        entries.forEach(([id, preview]) => {
+          next[id] = preview;
+        });
+        return next;
+      });
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [instanceId, sessions]);
 
   React.useEffect(() => {
     if (!instanceId || !selectedSessionId) {
@@ -129,6 +169,8 @@ export default function App() {
     if (!instanceId || !selectedSessionId) return;
     await sendPrompt(instanceId, selectedSessionId, text, model, mode);
     setMessages(await loadMessages(instanceId, selectedSessionId));
+    const preview = await loadSessionPreview(instanceId, selectedSessionId);
+    setPreviews((prev) => ({ ...prev, [selectedSessionId]: preview }));
   };
 
   const handlePickTheme = (nextThemeId: string) => {
@@ -145,6 +187,7 @@ export default function App() {
           projects={projects}
           sessions={sessions}
           states={states}
+          previews={previews}
           selectedSessionId={selectedSessionId}
           onSelectSession={setSelectedSessionId}
           onNewAgent={() => void handleNewAgent()}
@@ -155,6 +198,7 @@ export default function App() {
           sessionId={selectedSessionId}
           messages={messages}
           models={models}
+          defaultModelId={defaultModelId}
           onSend={(text, model, mode) => void handleSend(text, model, mode)}
         />
       </div>

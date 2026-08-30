@@ -20,8 +20,8 @@ export default function AgentBall({ state }: Props) {
       const dy = event.clientY - (rect.top + rect.height / 2);
       const distance = Math.hypot(dx, dy) || 1;
       const reach = Math.min(1, 240 / distance);
-      const x = ((dx / distance) * 1.6 * reach).toFixed(2);
-      const y = ((dy / distance) * 1.6 * reach).toFixed(2);
+      const x = ((dx / distance) * 3 * reach).toFixed(2);
+      const y = ((dy / distance) * 3 * reach).toFixed(2);
       const transform = `translate(${x}px, ${y}px)`;
 
       if (leftPupilRef.current) leftPupilRef.current.style.transform = transform;

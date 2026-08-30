@@ -1,9 +1,19 @@
 import type { BallState, ChatMessage, Instance, ModelOption, Project, Session } from './types';
 
+export type ModelList = {
+  models: ModelOption[];
+  defaultModelId: string | null;
+};
+
 const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const baseName = (value: string): string => {
+  const trimmed = value.replace(/\/+$/, '');
+  return trimmed.split('/').pop() || trimmed;
+};
 
 export const listInstances = async (): Promise<Instance[]> =>
   asArray(await window.ember.listInstances()) as Instance[];
@@ -11,27 +21,36 @@ export const listInstances = async (): Promise<Instance[]> =>
 export const loadProjects = async (instanceId: string): Promise<Project[]> => {
   const response = await window.ember.request(instanceId, 'GET', '/api/config/settings');
   const root = asRecord(response.data);
+
   return asArray(root.projects).map((entry, index) => {
     const item = asRecord(entry);
-    const id = String(item.id ?? item.path ?? `project-${index}`);
-    return {
-      id,
-      name: String(item.name ?? item.title ?? id),
-      path: typeof item.path === 'string' ? item.path : undefined,
-    };
+    const path = typeof item.path === 'string' ? item.path : undefined;
+    const id = String(item.id ?? path ?? `project-${index}`);
+    const label = typeof item.label === 'string' && item.label ? item.label : undefined;
+    const name = typeof item.name === 'string' && item.name ? item.name : undefined;
+
+    return { id, name: label ?? name ?? (path ? baseName(path) : id), path };
   });
 };
 
 export const loadSessions = async (instanceId: string): Promise<Session[]> => {
   const response = await window.ember.request(instanceId, 'GET', '/api/session');
+
   return asArray(response.data).map((entry, index) => {
     const item = asRecord(entry);
     const time = asRecord(item.time);
+    const updated =
+      typeof time.updated === 'number'
+        ? time.updated
+        : typeof time.created === 'number'
+          ? time.created
+          : undefined;
+
     return {
       id: String(item.id ?? `session-${index}`),
       title: typeof item.title === 'string' ? item.title : undefined,
       directory: typeof item.directory === 'string' ? item.directory : undefined,
-      updated: typeof time.updated === 'number' ? time.updated : undefined,
+      updated,
     };
   });
 };
@@ -76,10 +95,12 @@ export const loadSessionStates = async (instanceId: string): Promise<Record<stri
   const response = await window.ember.request(instanceId, 'GET', '/api/sessions/status');
   const sessions = asRecord(asRecord(response.data).sessions);
   const states: Record<string, BallState> = {};
+
   Object.entries(sessions).forEach(([id, value]) => {
     const entry = asRecord(value);
     states[id] = statusToState(entry.status ?? entry.state);
   });
+
   return states;
 };
 
@@ -92,7 +113,9 @@ export const loadMessages = async (
     'GET',
     `/api/session/${encodeURIComponent(sessionId)}/message`
   );
-  const list = Array.isArray(response.data) ? response.data : asArray(asRecord(response.data).messages);
+  const list = Array.isArray(response.data)
+    ? response.data
+    : asArray(asRecord(response.data).messages);
 
   return list
     .map((entry, index) => {
@@ -109,23 +132,59 @@ export const loadMessages = async (
     .filter((message) => message.text.length > 0);
 };
 
-export const loadModels = async (instanceId: string): Promise<ModelOption[]> => {
-  const response = await window.ember.request(instanceId, 'GET', '/api/config/providers');
+export const loadSessionPreview = async (
+  instanceId: string,
+  sessionId: string
+): Promise<string> => {
+  const messages = await loadMessages(instanceId, sessionId);
+  const last = messages[messages.length - 1];
+  if (!last) return '';
+  return last.text.replace(/\s+/g, ' ').trim().slice(0, 160);
+};
+
+export const loadModels = async (instanceId: string): Promise<ModelList> => {
+  const response = await window.ember.request(instanceId, 'GET', '/api/provider');
   const root = asRecord(response.data);
-  const providers = Array.isArray(response.data) ? response.data : asArray(root.providers);
+  const providers = Array.isArray(response.data)
+    ? response.data
+    : asArray(root.all ?? root.providers);
 
   const models: ModelOption[] = [];
+
   providers.forEach((provider) => {
     const item = asRecord(provider);
     const providerID = String(item.id ?? item.providerID ?? item.name ?? '');
-    asArray(item.models).forEach((model) => {
+    const providerName = String(item.name ?? item.id ?? '');
+
+    Object.values(asRecord(item.models)).forEach((model) => {
       const modelItem = asRecord(model);
-      const modelID = String(modelItem.id ?? modelItem.modelID ?? modelItem.name ?? '');
+      const modelID = String(modelItem.id ?? modelItem.modelID ?? '');
       if (!providerID || !modelID) return;
-      models.push({ providerID, modelID, label: `${providerID} / ${modelID}` });
+      models.push({
+        providerID,
+        modelID,
+        label: `${providerName} / ${String(modelItem.name ?? modelID)}`,
+      });
     });
   });
-  return models;
+
+  models.sort((a, b) => a.label.localeCompare(b.label));
+
+  const defaults = asRecord(root.default);
+  let defaultModelId: string | null = null;
+
+  const pairProvider = typeof defaults.providerID === 'string' ? defaults.providerID : '';
+  const pairModel = typeof defaults.modelID === 'string' ? defaults.modelID : '';
+  if (pairProvider && pairModel) {
+    defaultModelId = `${pairProvider}/${pairModel}`;
+  } else {
+    const entry = Object.entries(defaults).find(
+      ([, value]) => typeof value === 'string' && Boolean(value)
+    );
+    if (entry) defaultModelId = `${entry[0]}/${String(entry[1])}`;
+  }
+
+  return { models, defaultModelId };
 };
 
 export const sendPrompt = async (
@@ -137,7 +196,8 @@ export const sendPrompt = async (
 ): Promise<{ ok: boolean; status: number; data: unknown }> => {
   const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
   if (model) body.model = { providerID: model.providerID, modelID: model.modelID };
-  if (mode) body.mode = mode;
+  if (mode) body.agent = mode;
+
   return window.ember.request(
     instanceId,
     'POST',

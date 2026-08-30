@@ -5,15 +5,20 @@ type Props = {
   sessionId: string | null;
   messages: ChatMessage[];
   models: ModelOption[];
+  defaultModelId: string | null;
   onSend: (text: string, model: ModelOption | undefined, mode: string) => void;
 };
 
-export default function ChatView({ sessionId, messages, models, onSend }: Props) {
+export default function ChatView({ sessionId, messages, models, defaultModelId, onSend }: Props) {
   const [text, setText] = React.useState('');
   const [mode, setMode] = React.useState('build');
   const [modelId, setModelId] = React.useState('');
   const [attachment, setAttachment] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (defaultModelId) setModelId(defaultModelId);
+  }, [defaultModelId]);
 
   const model = models.find((entry) => `${entry.providerID}/${entry.modelID}` === modelId);
 

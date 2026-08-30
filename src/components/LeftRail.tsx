@@ -6,6 +6,7 @@ type Props = {
   projects: Project[];
   sessions: Session[];
   states: Record<string, BallState>;
+  previews: Record<string, string>;
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   onNewAgent: () => void;
@@ -14,10 +15,19 @@ type Props = {
 
 type Sorter = 'recent' | 'name';
 
+type Group = {
+  key: string;
+  label: string;
+  sessions: Session[];
+};
+
+const normalizeDir = (value: string): string => value.replace(/\/+$/, '');
+
 export default function LeftRail({
   projects,
   sessions,
   states,
+  previews,
   selectedSessionId,
   onSelectSession,
   onNewAgent,
@@ -36,28 +46,51 @@ export default function LeftRail({
     return copy;
   }, [sessions, sorter]);
 
-  const sortedProjects = React.useMemo(
-    () => [...projects].sort((a, b) => a.name.localeCompare(b.name)),
-    [projects]
-  );
-
-  const grouped = React.useMemo(() => {
+  const groups = React.useMemo(() => {
     const byProject = new Map<string, Session[]>();
     const loose: Session[] = [];
 
     sortedSessions.forEach((session) => {
-      const project = projects.find(
-        (candidate) => candidate.path && candidate.path === session.directory
-      );
-      if (project) {
-        byProject.set(project.id, [...(byProject.get(project.id) ?? []), session]);
+      const directory = session.directory ? normalizeDir(session.directory) : '';
+      let bestId: string | null = null;
+      let bestLength = -1;
+
+      projects.forEach((project) => {
+        if (!project.path) return;
+        const base = normalizeDir(project.path);
+        if (directory === base || directory.startsWith(`${base}/`)) {
+          if (base.length > bestLength) {
+            bestLength = base.length;
+            bestId = project.id;
+          }
+        }
+      });
+
+      if (bestId) {
+        byProject.set(bestId, [...(byProject.get(bestId) ?? []), session]);
       } else {
         loose.push(session);
       }
     });
 
-    return { byProject, loose };
-  }, [sortedSessions, projects]);
+    const result: Group[] = projects
+      .filter((project) => (byProject.get(project.id) ?? []).length > 0)
+      .map((project) => ({
+        key: project.id,
+        label: project.name,
+        sessions: byProject.get(project.id) ?? [],
+      }));
+
+    if (loose.length > 0) result.push({ key: '__other', label: 'Other', sessions: loose });
+
+    result.sort((a, b) =>
+      sorter === 'name'
+        ? a.label.localeCompare(b.label)
+        : (b.sessions[0]?.updated ?? 0) - (a.sessions[0]?.updated ?? 0)
+    );
+
+    return result;
+  }, [sortedSessions, projects, sorter]);
 
   const renderSession = (session: Session) => (
     <button
@@ -67,25 +100,27 @@ export default function LeftRail({
       onClick={() => onSelectSession(session.id)}
     >
       <AgentBall state={states[session.id] ?? 'idle'} />
-      <span className="session-title">{session.title ?? session.id}</span>
+      <span className="session-text">
+        <span className="session-title">{session.title ?? session.id}</span>
+        <span className="session-preview">{previews[session.id] ?? ''}</span>
+      </span>
     </button>
   );
 
-  const renderProject = (project: Project) => {
-    const items = grouped.byProject.get(project.id) ?? [];
-    const isCollapsed = collapsed[project.id] ?? false;
+  const renderGroup = (group: Group) => {
+    const isCollapsed = collapsed[group.key] ?? false;
 
     return (
-      <div className="project" key={project.id}>
+      <div className="project" key={group.key}>
         <button
           className="project-header"
-          onClick={() => setCollapsed((prev) => ({ ...prev, [project.id]: !isCollapsed }))}
+          onClick={() => setCollapsed((prev) => ({ ...prev, [group.key]: !isCollapsed }))}
         >
           <span>{isCollapsed ? '▸' : '▾'}</span>
-          <span className="project-name">{project.name}</span>
-          <span className="instance-meta">{items.length}</span>
+          <span className="project-name">{group.label}</span>
+          <span className="instance-meta">{group.sessions.length}</span>
         </button>
-        {isCollapsed ? null : <div className="session-list">{items.map(renderSession)}</div>}
+        {isCollapsed ? null : <div className="session-list">{group.sessions.map(renderSession)}</div>}
       </div>
     );
   };
@@ -107,20 +142,9 @@ export default function LeftRail({
       </div>
 
       <div className="rail-list">
-        {sortedProjects.map(renderProject)}
+        {groups.map(renderGroup)}
 
-        {grouped.loose.length > 0 ? (
-          <div className="project">
-            <div className="project-header">
-              <span>▾</span>
-              <span className="project-name">Other</span>
-              <span className="instance-meta">{grouped.loose.length}</span>
-            </div>
-            <div className="session-list">{grouped.loose.map(renderSession)}</div>
-          </div>
-        ) : null}
-
-        {sortedProjects.length === 0 && grouped.loose.length === 0 ? (
+        {groups.length === 0 ? (
           <div className="instance-meta" style={{ padding: 8 }}>
             No projects or sessions yet.
           </div>

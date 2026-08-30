@@ -141,7 +141,7 @@ input {
 }
 
 .rail {
-  width: 260px;
+  width: 300px;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -218,9 +218,10 @@ input {
 .session {
   width: 100%;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 46px;
+  padding: 8px;
   background: transparent;
   border: none;
   border-radius: 5px;
@@ -239,8 +240,24 @@ input {
   color: var(--text);
 }
 
-.session-title {
+.session-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
+  min-width: 0;
+}
+
+.session-title {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-preview {
+  font-size: 11px;
+  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -322,8 +339,8 @@ input {
 
 .agent-ball {
   position: relative;
-  width: 14px;
-  height: 14px;
+  width: 26px;
+  height: 26px;
   flex: none;
   border-radius: 50%;
   background: var(--ball);
@@ -331,28 +348,28 @@ input {
 
 .agent-ball .eye {
   position: absolute;
-  top: 3px;
-  width: 5px;
-  height: 5px;
+  top: 6px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--ball-eyeball);
   overflow: hidden;
 }
 
 .agent-ball .eye-left {
-  left: 2px;
+  left: 4px;
 }
 
 .agent-ball .eye-right {
-  right: 2px;
+  right: 4px;
 }
 
 .agent-ball .pupil {
   position: absolute;
-  left: 1px;
-  top: 1px;
-  width: 3px;
-  height: 3px;
+  left: 2px;
+  top: 2px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--ball-pupil);
   transition: transform 0.08s linear;
@@ -372,8 +389,8 @@ input {
 }
 
 .agent-ball[data-state='error'] .eye {
-  top: 5px;
-  height: 2px;
+  top: 12px;
+  height: 3px;
   border-radius: 1px;
 }
 
@@ -383,7 +400,7 @@ input {
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-3px);
+    transform: translateY(-5px);
   }
 }
 
