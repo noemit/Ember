@@ -49,26 +49,41 @@ export default function GemBlob({ seed, size = 30, state = 'idle', interactive =
 
   const renderEye = (offsetX: number, pupilRef: React.RefObject<SVGCircleElement>, isLeft: boolean) => (
     <g transform={`translate(${offsetX} 48)`}>
-      {/* Outer eye white / sclera - large, expressive anime/grokbot/poring style */}
-      {eyeShape === 'round' && <ellipse rx={12.5} ry={14} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
-      {eyeShape === 'almond' && <ellipse rx={14} ry={12} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
-      {eyeShape === 'tall' && <rect x={-11} y={-15} width={22} height={30} rx={11} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
+      {/* Outer eye white / sclera - anime/grokbot/poring style with eyelash accent */}
+      {eyeShape === 'round' && <ellipse rx={10} ry={11.5} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
+      {eyeShape === 'almond' && <ellipse rx={11} ry={9.5} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
+      {eyeShape === 'tall' && <rect x={-8.5} y={-11.5} width={17} height={23} rx={8.5} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
+
+      {/* Cute top eyelid / eyelash line */}
+      <path
+        d={isLeft ? "M -9 -8 Q 0 -13 9 -7" : "M -9 -7 Q 0 -13 9 -8"}
+        fill="none"
+        stroke="#1c1618"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
 
       {isError ? (
         <g stroke="#3a0d0d" strokeWidth={2.5} strokeLinecap="round">
-          <line x1={-6} y1={-6} x2={6} y2={6} />
-          <line x1={-6} y1={6} x2={6} y2={-6} />
+          <line x1={-5} y1={-5} x2={5} y2={5} />
+          <line x1={-5} y1={5} x2={5} y2={-5} />
         </g>
       ) : (
         <g>
-          {/* Main large pupil / iris */}
-          <ellipse ref={pupilRef} rx={7.5} ry={9} fill="#141419" />
+          {/* Main iris/pupil gradient - rich anime eye depth */}
+          <ellipse ref={pupilRef} rx={6} ry={7.5} fill="#181320" />
           
+          {/* Inner iris gradient tint */}
+          <ellipse cx={0} cy={2} rx={4.5} ry={4.5} fill={color.light} opacity={0.65} />
+          
+          {/* Pupil center */}
+          <circle cx={0} cy={1} r={2.5} fill="#0d0a10" />
+
           {/* Big primary sparkle highlight (top-left) */}
-          <circle cx={isLeft ? -3.5 : -3.5} cy={-4} r={3.2} fill="#ffffff" />
+          <circle cx={-2.2} cy={-3.2} r={2.6} fill="#ffffff" />
           
-          {/* Cute secondary bottom sparkle highlight */}
-          <circle cx={isLeft ? 2.5 : 2.5} cy={3.5} r={1.6} fill="#ffffff" opacity={0.85} />
+          {/* Cute secondary bottom-right sparkle highlight */}
+          <circle cx={2.2} cy={2.8} r={1.4} fill="#ffffff" opacity={0.9} />
         </g>
       )}
     </g>
@@ -119,9 +134,13 @@ export default function GemBlob({ seed, size = 30, state = 'idle', interactive =
         {isError && <circle cx={50} cy={50} r={46} fill="rgba(255,90,90,0.32)" />}
 
         <g className="gem-eyes">
-          {renderEye(-16, leftPupil, true)}
-          {renderEye(16, rightPupil, false)}
+          {renderEye(-10, leftPupil, true)}
+          {renderEye(10, rightPupil, false)}
         </g>
+
+        {/* Cute blush cheeks under the eyes like Poring / anime characters */}
+        <ellipse cx={27} cy={57} rx={5} ry={2.5} fill="#ff4d79" opacity={0.35} />
+        <ellipse cx={73} cy={57} rx={5} ry={2.5} fill="#ff4d79" opacity={0.35} />
       </svg>
     </div>
   );
