@@ -1,0 +1,82 @@
+.gem-blob {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+
+.gem-blob svg {
+  display: block;
+}
+
+.gem-blob[data-state='active'] {
+  animation: gem-bounce 0.6s ease-in-out infinite;
+}
+
+.gem-blob[data-state='needs-input'] {
+  animation: gem-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes gem-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes gem-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.showcase {
+  width: min(880px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.showcase-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.showcase-head h2 {
+  margin: 0;
+  font-size: 15px;
+  flex: 1;
+}
+
+.showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.showcase-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--bg-elev);
+  border-radius: 8px;
+}
+
+.showcase-seed {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+}

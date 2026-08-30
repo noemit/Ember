@@ -3,6 +3,7 @@ import InstanceBar from './components/InstanceBar';
 import LeftRail from './components/LeftRail';
 import ChatView from './components/ChatView';
 import SettingsPanel from './components/SettingsPanel';
+import BlobShowcase from './blob/BlobShowcase';
 import { applyTheme, DEFAULT_THEME_ID } from './themes';
 import {
   createSession,
@@ -31,10 +32,20 @@ export default function App() {
   const [models, setModels] = React.useState<ModelOption[]>([]);
   const [defaultModelId, setDefaultModelId] = React.useState<string | null>(null);
   const [modelMru, setModelMru] = React.useState<string[]>([]);
+  const [firstPromptBySession, setFirstPromptBySession] = React.useState<Record<string, string>>({});
+  const [showcaseOpen, setShowcaseOpen] = React.useState(false);
   const [themeId, setThemeId] = React.useState<string>(DEFAULT_THEME_ID);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
 
   const instance = instances.find((entry) => entry.id === instanceId) ?? null;
+
+  const sessionSeeds = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    sessions.forEach((session) => {
+      map[session.id] = firstPromptBySession[session.id] ?? session.id;
+    });
+    return map;
+  }, [sessions, firstPromptBySession]);
 
   React.useEffect(() => {
     applyTheme(themeId);
@@ -149,7 +160,17 @@ export default function App() {
     let cancelled = false;
 
     void loadMessages(instanceId, selectedSessionId).then((next) => {
-      if (!cancelled) setMessages(next);
+      if (!cancelled) {
+        setMessages(next);
+        const firstUser = next.find((message) => message.role === 'user');
+        if (firstUser) {
+          setFirstPromptBySession((prev) =>
+            prev[selectedSessionId] === firstUser.text
+              ? prev
+              : { ...prev, [selectedSessionId]: firstUser.text }
+          );
+        }
+      }
     });
 
     return () => {
@@ -208,10 +229,12 @@ export default function App() {
           sessions={sessions}
           states={states}
           previews={previews}
+          seeds={sessionSeeds}
           selectedSessionId={selectedSessionId}
           onSelectSession={setSelectedSessionId}
           onNewAgent={() => void handleNewAgent()}
           onOpenSettings={() => setSettingsOpen(true)}
+          onShowcase={() => setShowcaseOpen(true)}
         />
 
         <ChatView
@@ -232,6 +255,8 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
         />
       ) : null}
+
+      {showcaseOpen ? <BlobShowcase onClose={() => setShowcaseOpen(false)} /> : null}
     </div>
   );
 }

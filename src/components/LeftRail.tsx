@@ -1,5 +1,5 @@
 import * as React from 'react';
-import AgentBall from './AgentBall';
+import GemBlob from '../blob/GemBlob';
 import type { BallState, Project, Session } from '../types';
 
 type Props = {
@@ -7,10 +7,12 @@ type Props = {
   sessions: Session[];
   states: Record<string, BallState>;
   previews: Record<string, string>;
+  seeds: Record<string, string>;
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   onNewAgent: () => void;
   onOpenSettings: () => void;
+  onShowcase: () => void;
 };
 
 type Sorter = 'recent' | 'name';
@@ -28,10 +30,12 @@ export default function LeftRail({
   sessions,
   states,
   previews,
+  seeds,
   selectedSessionId,
   onSelectSession,
   onNewAgent,
   onOpenSettings,
+  onShowcase,
 }: Props) {
   const [sorter, setSorter] = React.useState<Sorter>('recent');
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
@@ -66,11 +70,8 @@ export default function LeftRail({
         }
       });
 
-      if (bestId) {
-        byProject.set(bestId, [...(byProject.get(bestId) ?? []), session]);
-      } else {
-        loose.push(session);
-      }
+      if (bestId) byProject.set(bestId, [...(byProject.get(bestId) ?? []), session]);
+      else loose.push(session);
     });
 
     const result: Group[] = projects
@@ -99,7 +100,11 @@ export default function LeftRail({
       data-selected={session.id === selectedSessionId}
       onClick={() => onSelectSession(session.id)}
     >
-      <AgentBall state={states[session.id] ?? 'idle'} />
+      <GemBlob
+        seed={seeds[session.id] ?? session.id}
+        size={32}
+        state={states[session.id] ?? 'idle'}
+      />
       <span className="session-text">
         <span className="session-title">{session.title ?? session.id}</span>
         <span className="session-preview">{previews[session.id] ?? ''}</span>
@@ -152,6 +157,9 @@ export default function LeftRail({
       </div>
 
       <div className="rail-bottom">
+        <button className="icon-button" onClick={onShowcase}>
+          Blobs
+        </button>
         <button className="icon-button" onClick={onOpenSettings}>
           Settings
         </button>
