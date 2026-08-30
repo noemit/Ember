@@ -5,18 +5,20 @@ const STORAGE_KEY = 'ember:blob-direction';
 const EVENT_NAME = 'ember:blob-direction-changed';
 export const DEFAULT_DIRECTION: BlobDirection = 'puffy-clay';
 
+const VALID_DIRECTIONS: BlobDirection[] = [
+  'puffy-clay',
+  'line-mascot',
+  'micro-critter',
+  'postcard-scene',
+  'squiggle-doodle',
+  'star-face',
+];
+
 export function getActiveBlobDirection(): BlobDirection {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (
-      saved === 'puffy-clay' ||
-      saved === 'star-candy' ||
-      saved === 'faceted-gem' ||
-      saved === 'retro-block' ||
-      saved === 'line-mascot' ||
-      saved === 'micro-critter'
-    ) {
-      return saved;
+    if (saved && VALID_DIRECTIONS.includes(saved as BlobDirection)) {
+      return saved as BlobDirection;
     }
   } catch {
     // fallback if localStorage not accessible

@@ -18,6 +18,10 @@ const CRITTER_PALETTE = [
   { name: 'Pure White Doodle', body: '#ffffff', line: '#18181b', accessory: '#f87171' },
 ];
 
+// Base eye position inside the 100x100 viewBox
+const EYE_X = 50;
+const EYE_Y = 52;
+
 export default function MicroCritterRenderer({ seed, size, state, interactive = true }: Props) {
   const containerRef = React.useRef<SVGSVGElement>(null);
   const eyeRef = React.useRef<SVGGElement>(null);
@@ -45,9 +49,10 @@ export default function MicroCritterRenderer({ seed, size, state, interactive = 
       const dy = event.clientY - (rect.top + rect.height / 2);
       const dist = Math.hypot(dx, dy) || 1;
       const reach = Math.min(1, 260 / dist);
-      const tx = ((dx / dist) * 3.5 * reach).toFixed(2);
-      const ty = ((dy / dist) * 3 * reach).toFixed(2);
-      eyeRef.current.setAttribute('transform', `translate(${tx} ${ty})`);
+      const tx = (dx / dist) * 3.5 * reach;
+      const ty = (dy / dist) * 3 * reach;
+      // Keep the base eye position and only add the small gaze offset on top
+      eyeRef.current.setAttribute('transform', `translate(${(EYE_X + tx).toFixed(2)} ${(EYE_Y + ty).toFixed(2)})`);
     };
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
@@ -161,7 +166,7 @@ export default function MicroCritterRenderer({ seed, size, state, interactive = 
         )}
 
         {/* Doodle Eyes */}
-        <g ref={eyeRef} transform="translate(50 52)">
+        <g ref={eyeRef} transform={`translate(${EYE_X} ${EYE_Y})`}>
           {isError ? (
             <g stroke={color.line} strokeWidth="2.8" strokeLinecap="round">
               <line x1="-14" y1="-4" x2="-6" y2="4" />

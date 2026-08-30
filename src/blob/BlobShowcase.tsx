@@ -3,7 +3,6 @@ import GemBlob from './GemBlob';
 import { BLOB_DIRECTIONS, type BlobDirection } from './types';
 import { PUFFY_CLAY_SHAPES } from './shapes';
 import { useActiveBlobDirection } from './directionState';
-import LivingSlabRenderer from './renderers/LivingSlabRenderer';
 import type { BallState } from '../types';
 
 type Props = {
@@ -64,10 +63,10 @@ export default function BlobShowcase({ onClose }: Props) {
           <div className="showcase-header-top">
             <div className="showcase-title-group">
               <h2>
-                Agent Personality Showcase <span className="showcase-badge">7 Directions + Living Slab</span>
+                Agent Personality Showcase <span className="showcase-badge">{BLOB_DIRECTIONS.length} Directions</span>
               </h2>
               <p className="showcase-subtitle">
-                Explore the new Living Character Slab where the background spans the session card with an embedded animated face
+                Explore the {BLOB_DIRECTIONS.length} agent personality directions across seeded colors, states, and animations
               </p>
             </div>
 
@@ -109,7 +108,7 @@ export default function BlobShowcase({ onClose }: Props) {
               data-active={currentTab === 'matrix'}
               onClick={() => setCurrentTab('matrix')}
             >
-              ⊞ All 7 Side-by-Side Matrix
+              ⊞ All {BLOB_DIRECTIONS.length} Side-by-Side Matrix
             </button>
           </div>
         </div>
@@ -117,15 +116,15 @@ export default function BlobShowcase({ onClose }: Props) {
         {/* Body Content */}
         <div className="showcase-body">
           {currentTab === 'matrix' ? (
-            /* Matrix Comparison View (All 7 Side-by-Side) */
+            /* Matrix Comparison View (All 3 Side-by-Side) */
             <div className="matrix-container">
               <div className="direction-meta-card">
                 <div className="direction-meta-top">
-                  <span className="direction-meta-title">Side-by-Side Comparison Matrix (All 7 Directions)</span>
+                  <span className="direction-meta-title">Side-by-Side Comparison Matrix (All 3 Directions)</span>
                   <span className="direction-inspiration-tag">Compare in {themeMode === 'dark' ? 'Dark' : 'Light'} Mode</span>
                 </div>
                 <p className="direction-desc">
-                  Review the exact same agent seeds and states rendered simultaneously across all 7 design directions to test silhouette contrast, eye readability, and animation personality.
+                  Review the exact same agent seeds and states rendered simultaneously across all {BLOB_DIRECTIONS.length} design directions to test silhouette contrast, eye readability, and animation personality.
                 </p>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
                   <div className="control-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -148,7 +147,7 @@ export default function BlobShowcase({ onClose }: Props) {
                     <input
                       type="text"
                       className="custom-seed-input"
-                      placeholder="Type any agent name to test across all 7..."
+                      placeholder={`Type any agent name to test across all ${BLOB_DIRECTIONS.length}...`}
                       value={customMatrixSeed}
                       onChange={(e) => setCustomMatrixSeed(e.target.value)}
                     />
@@ -160,7 +159,7 @@ export default function BlobShowcase({ onClose }: Props) {
               {customMatrixSeed.trim() && (
                 <div className="matrix-row">
                   <span className="matrix-row-title">Custom: "{customMatrixSeed}"</span>
-                  <div className="matrix-columns" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
+                  <div className="matrix-columns" style={{ gridTemplateColumns: `repeat(${BLOB_DIRECTIONS.length}, 1fr)` }}>
                     {BLOB_DIRECTIONS.map((dir) => (
                       <div
                         key={dir.id}
@@ -192,7 +191,7 @@ export default function BlobShowcase({ onClose }: Props) {
                     <span className="matrix-row-title">{item.name}</span>
                     <span className="instance-meta" style={{ fontSize: 10 }}>seed: {item.seed}</span>
                   </div>
-                  <div className="matrix-columns" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
+                  <div className="matrix-columns" style={{ gridTemplateColumns: `repeat(${BLOB_DIRECTIONS.length}, 1fr)` }}>
                     {BLOB_DIRECTIONS.map((dir) => (
                       <div
                         key={dir.id}
@@ -244,28 +243,16 @@ export default function BlobShowcase({ onClose }: Props) {
                 </div>
               </div>
 
-              {/* Interactive Hero Sandbox (120px / Full Slab) */}
+              {/* Interactive Hero Sandbox (120px) */}
               <div className="sandbox-section">
                 <div className="sandbox-hero" style={{ minHeight: 180 }}>
-                  {currentDirectionMeta.id === 'living-slab' ? (
-                    <div style={{ width: '100%', maxWidth: 380 }}>
-                      <LivingSlabRenderer
-                        seed={sandboxSeed}
-                        size={80}
-                        state={sandboxState}
-                        interactive={true}
-                        title={sandboxSeed}
-                      />
-                    </div>
-                  ) : (
-                    <GemBlob
-                      seed={sandboxSeed}
-                      direction={currentDirectionMeta.id}
-                      size={120}
-                      state={sandboxState}
-                      interactive={true}
-                    />
-                  )}
+                  <GemBlob
+                    seed={sandboxSeed}
+                    direction={currentDirectionMeta.id}
+                    size={120}
+                    state={sandboxState}
+                    interactive={true}
+                  />
                   <div className="sandbox-hint">Move cursor to test gaze tracking (no container bouncing)</div>
                   <span className="showcase-cell-name" style={{ fontSize: 14 }}>{sandboxSeed}</span>
                   <span className="instance-meta" style={{ fontSize: 11 }}>State: <strong>{sandboxState}</strong></span>
@@ -326,7 +313,7 @@ export default function BlobShowcase({ onClose }: Props) {
                 <div className="section-heading">
                   <span>State Animation Behaviors (In {themeMode} mode)</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: currentDirectionMeta.id === 'living-slab' ? 'repeat(auto-fit, minmax(280px, 1fr))' : 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   {STATES.map((st) => (
                     <div
                       key={st.id}
@@ -338,25 +325,13 @@ export default function BlobShowcase({ onClose }: Props) {
                       }}
                       onClick={() => setSandboxState(st.id)}
                     >
-                      {currentDirectionMeta.id === 'living-slab' ? (
-                        <div style={{ width: '100%' }}>
-                          <LivingSlabRenderer
-                            seed={sandboxSeed}
-                            size={72}
-                            state={st.id}
-                            interactive={true}
-                            title={`${sandboxSeed} (${st.label})`}
-                          />
-                        </div>
-                      ) : (
-                        <GemBlob
-                          seed={sandboxSeed}
-                          direction={currentDirectionMeta.id}
-                          size={96}
-                          state={st.id}
-                          interactive={true}
-                        />
-                      )}
+                      <GemBlob
+                        seed={sandboxSeed}
+                        direction={currentDirectionMeta.id}
+                        size={96}
+                        state={st.id}
+                        interactive={true}
+                      />
                       <span className="showcase-cell-name" style={{ fontSize: 13, marginTop: 4 }}>
                         {st.label}
                       </span>
@@ -436,48 +411,26 @@ export default function BlobShowcase({ onClose }: Props) {
                   </button>
                 </div>
 
-                {currentDirectionMeta.id === 'living-slab' ? (
-                  /* Living Slab Roster Cards */
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
-                    {SAMPLE_AGENTS.map((agentName) => (
-                      <div
-                        key={agentName}
-                        onClick={() => setSandboxSeed(agentName)}
-                        style={{ cursor: 'pointer' }}
-                        title="Click to load into sandbox"
-                      >
-                        <LivingSlabRenderer
-                          seed={agentName}
-                          size={70}
-                          state={sandboxState}
-                          interactive={true}
-                          title={agentName}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="showcase-grid">
-                    {SAMPLE_AGENTS.map((agentName) => (
-                      <div
-                        key={agentName}
-                        className="showcase-cell"
-                        onClick={() => setSandboxSeed(agentName)}
-                        style={{ cursor: 'pointer' }}
-                        title="Click to load into sandbox"
-                      >
-                        <GemBlob
-                          seed={agentName}
-                          direction={currentDirectionMeta.id}
-                          size={64}
-                          state="idle"
-                          interactive={true}
-                        />
-                        <span className="showcase-cell-name">{agentName}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="showcase-grid">
+                  {SAMPLE_AGENTS.map((agentName) => (
+                    <div
+                      key={agentName}
+                      className="showcase-cell"
+                      onClick={() => setSandboxSeed(agentName)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to load into sandbox"
+                    >
+                      <GemBlob
+                        seed={agentName}
+                        direction={currentDirectionMeta.id}
+                        size={64}
+                        state="idle"
+                        interactive={true}
+                      />
+                      <span className="showcase-cell-name">{agentName}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           ) : null}
@@ -489,11 +442,8 @@ export default function BlobShowcase({ onClose }: Props) {
             Active UI Style: <strong>{BLOB_DIRECTIONS.find((d) => d.id === activeGlobalDirection)?.title}</strong>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="icon-button" onClick={() => setCurrentTab('living-slab')}>
-              Living Slab View
-            </button>
             <button className="icon-button" onClick={() => setCurrentTab('matrix')}>
-              Matrix View (All 7)
+              Matrix View (All {BLOB_DIRECTIONS.length})
             </button>
             <button className="primary-button" style={{ width: 'auto' }} onClick={onClose}>
               Done Reviewing

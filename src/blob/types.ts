@@ -2,12 +2,11 @@ import type { BallState } from '../types';
 
 export type BlobDirection =
   | 'puffy-clay'
-  | 'living-slab'
-  | 'star-candy'
-  | 'faceted-gem'
-  | 'retro-block'
   | 'line-mascot'
-  | 'micro-critter';
+  | 'micro-critter'
+  | 'postcard-scene'
+  | 'squiggle-doodle'
+  | 'star-face';
 
 export type DirectionMeta = {
   id: BlobDirection;
@@ -34,64 +33,8 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
     ],
   },
   {
-    id: 'living-slab',
-    title: 'Direction 2: Living Character Slab',
-    subtitle: 'Unified Background & Expressive Embedded Face',
-    inspiration: 'User Concept (Seamless session background with animated eyes & mouth)',
-    description:
-      'The entire session card is the living character: a colored rounded-corner slab where the background spans the character, title, and subtitle. No container bouncing or pulsing — all alive activity is communicated purely through expressive eyes and mouth.',
-    highlights: [
-      'Background color spans the entire session card & typography',
-      'Embedded animated face on the left (gaze tracking, blinking, active scan, talking)',
-      '100% stable layout: no container hopping, pulsing, or glowing',
-      'Rich seeded colorways with high-contrast text integration',
-    ],
-  },
-  {
-    id: 'star-candy',
-    title: 'Direction 3: Gummy Konpeitō / Star Candy',
-    subtitle: 'Crystalline Sugar Star & Internal Glitter Bloom',
-    inspiration: 'synced/agent-personality (72a77f99 gif & 7ec270c4)',
-    description:
-      'Glistening multi-pointed konpeitō sugar star candies with internal starlight sparkle dust, translucent jelly depth, refractive sugar facet rims, and cute animated emotional faces.',
-    highlights: [
-      'Tactile sugar star geometry with 8-9 rounded crystallized nodules',
-      'Internal glowing starlight dust & sparkling glitter particles',
-      'Gummy refraction shine with rich jewel-candy colors',
-      '15 expressive emotional faces (star eyes, glasses, winks, cheeky smiles)',
-    ],
-  },
-  {
-    id: 'faceted-gem',
-    title: 'Direction 4: Faceted Cyber Gem',
-    subtitle: 'Sharp Multi-Plane Facets & Pixel-Glitch Accents',
-    inspiration: 'synced/agent-personality (e26eb778 & 64508875)',
-    description:
-      'Sharp, crisp, multi-plane faceted gemstones (emerald cut, brilliant diamond, marquise, octagon, prism triangle) featuring sharp light refractions and cyber pixel-art expressive eye visors.',
-    highlights: [
-      'Sharp geometric facet planes with dynamic specular sheen arcs',
-      'Cyber pixel-art expressive eyes (sunglasses, pixel hearts, pixel glints, XX)',
-      'Rich saturated gemstone brilliance (emerald, sapphire, amethyst, ruby, topaz)',
-      'Rotating crystalline reflections on hover & active states',
-    ],
-  },
-  {
-    id: 'retro-block',
-    title: 'Direction 5: Retro Blockheads',
-    subtitle: 'Warm Color Squares & Expressive Graphic Faces',
-    inspiration: 'synced/agent-personality (f9cbec03)',
-    description:
-      'Warm, charming, retro-pop color blocks (soft squares, vertical cuboids, split dual-blocks) with large expressive round cartoon eyes, ink smiles, and clean tactile graphic presence.',
-    highlights: [
-      'Modern retro-pop blocky silhouettes (square, cuboid, rounded brick)',
-      'Big expressive round cartoon eyes with offset pupil tracking',
-      'Warm saturated risograph-inspired palette (sun yellow, cobalt, poppy, bubblegum)',
-      'Charming clean graphic personality with maximum list readability',
-    ],
-  },
-  {
     id: 'line-mascot',
-    title: 'Direction 6: Sprout Kewpie Mascot',
+    title: 'Direction 2: Sprout Kewpie Mascot',
     subtitle: 'Vintage Line Art & Iconic Sprout Cheeks',
     inspiration: 'synced/agent-personality (77e9cab4 & 7e824755)',
     description:
@@ -105,7 +48,7 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
   },
   {
     id: 'micro-critter',
-    title: 'Direction 7: Quirky Micro-Critters',
+    title: 'Direction 3: Quirky Micro-Critters',
     subtitle: 'Playful Line Doodles with Animated Little Legs',
     inspiration: 'synced/agent-personality (131eeba4 & 99124d0d)',
     description:
@@ -115,6 +58,48 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
       'Cute little animated walking stick legs/feet that tiptoe & dance',
       'Quirky accessories (tiny laptop, snail shell, antenna nubs, sleeping cap)',
       'Delightful handmade indie personality with unique charm',
+    ],
+  },
+  {
+    id: 'postcard-scene',
+    title: 'Direction 4: Animated Scene Postcards',
+    subtitle: 'Framed Mini Landscapes with a Living Sun',
+    inspiration: 'synced/agent-personality (fbedf22b & 41506930)',
+    description:
+      'Flat vintage travel-postcard tiles: bold-outlined rounded frames holding tiny desert, farm, mountain, island, volcano, and hills scenes where the sun is the agent face, clouds drift, water shimmers, and birds fly by.',
+    highlights: [
+      '6 seeded scene postcards (Desert, Farm, Mountains, Island, Volcano, Rolling Hills)',
+      'The sun doubles as the agent face with full state expressions',
+      'Drifting clouds, shimmering water dashes & flying birds',
+      'Error summons a rain storm over the whole scene',
+    ],
+  },
+  {
+    id: 'squiggle-doodle',
+    title: 'Direction 5: Scribble Squiggle',
+    subtitle: 'One Continuous Looping Line with Nested Eyes',
+    inspiration: 'synced/agent-personality (d7cb9e8b)',
+    description:
+      'A single confident marker stroke looping into cursive teardrop squiggles, with dot eyes nested inside the loop openings and a dark navy smile — pure minimal scribble energy.',
+    highlights: [
+      'Seeded cursive loop counts (2, 3, or 4 loops) with wavy exit tails',
+      'Dot eyes tucked inside the loop openings like the reference scribble',
+      'Marker-weight round strokes in cobalt, coral, forest & more inks',
+      'Active state scans eyes left-right; error shakes the whole scribble',
+    ],
+  },
+  {
+    id: 'star-face',
+    title: 'Direction 6: Kawaii Star Faces',
+    subtitle: 'Flat Yellow Stars with Simple Marker Faces',
+    inspiration: 'synced/agent-personality (7ec270c43)',
+    description:
+      'Flat rounded-tip yellow stars wearing tiny black marker faces — dot eyes, round glasses, sleepy arcs, smirks and blushes — twinkling gently and spinning when excited.',
+    highlights: [
+      '6 seeded face styles (Smile, Glasses, Sleepy, Smirk, Grumpy, Blush)',
+      'Rounded-tip star silhouettes in warm seeded yellows',
+      'Gentle idle twinkle & excited active spin-wobble',
+      'Alert brows with popping exclamation; dizzy X eyes on error',
     ],
   },
 ];

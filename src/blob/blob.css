@@ -85,72 +85,21 @@
 }
 
 /* =========================================================================
-   New Inspiration Animations
-   ========================================================================= */
+    New Inspiration Animations
+    ========================================================================= */
 
-/* Direction 2: Star Candy */
-.blob-star-candy-svg[data-state='idle'] .star-candy-body {
-  animation: star-candy-breathe 3s ease-in-out infinite;
-  transform-origin: 50% 50%;
+/* Direction 2: Line Mascot */
+
+/* Outline color adapts to light/dark mode: dark app background defaults to the
+   lightened ink, light showcase theme switches back to the seeded dark ink. */
+.blob-line-mascot-svg {
+  --mascot-outline: var(--mascot-ink-on-dark, #e8e8f0);
 }
 
-.gem-blob-star-candy[data-state='active'] {
-  animation: star-candy-sparkle-bounce 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+.showcase-container[data-theme='light'] .blob-line-mascot-svg {
+  --mascot-outline: var(--mascot-ink, #1a1a24);
 }
 
-@keyframes star-candy-breathe {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.05) rotate(3deg); }
-}
-
-@keyframes star-candy-sparkle-bounce {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  40% { transform: translateY(-7px) rotate(-12deg); }
-  70% { transform: translateY(1px) rotate(6deg); }
-}
-
-/* Direction 3: Faceted Gem */
-.blob-faceted-gem-svg[data-state='idle'] .faceted-gem-body {
-  animation: gem-idle-float 3.2s ease-in-out infinite;
-  transform-origin: 50% 50%;
-}
-
-.gem-blob-faceted-gem[data-state='active'] {
-  animation: gem-active-tumble 1.4s ease-in-out infinite;
-}
-
-@keyframes gem-idle-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-
-@keyframes gem-active-tumble {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  35% { transform: translateY(-6px) rotate(-10deg); }
-  70% { transform: translateY(-1px) rotate(10deg); }
-}
-
-/* Direction 4: Retro Block */
-.blob-retro-block-svg[data-state='idle'] .retro-block-body {
-  animation: block-idle-breathe 2.8s ease-in-out infinite;
-  transform-origin: 50% 90%;
-}
-
-.gem-blob-retro-block[data-state='active'] {
-  animation: block-active-hop 0.55s ease-in-out infinite alternate;
-}
-
-@keyframes block-idle-breathe {
-  0%, 100% { transform: scale(1, 1); }
-  50% { transform: scale(1.03, 0.97); }
-}
-
-@keyframes block-active-hop {
-  0% { transform: translateY(0) scale(1.04, 0.96); }
-  100% { transform: translateY(-6px) scale(0.96, 1.04); }
-}
-
-/* Direction 5: Line Mascot */
 .blob-line-mascot-svg[data-state='idle'] .line-mascot-body {
   animation: mascot-idle-sway 3.2s ease-in-out infinite;
   transform-origin: 50% 90%;
@@ -171,7 +120,7 @@
   50% { transform: translateY(-6px); }
 }
 
-/* Direction 6: Micro Critter */
+/* Direction 3: Micro Critter */
 .blob-micro-critter-svg[data-state='idle'] .micro-critter-body {
   animation: critter-idle-bob 2.6s ease-in-out infinite;
   transform-origin: 50% 90%;
@@ -191,6 +140,235 @@
 @keyframes critter-walk-tiptoe {
   0% { transform: translateY(0) rotate(-4deg); }
   100% { transform: translateY(-4px) rotate(4deg); }
+}
+
+/* Direction 4: Postcard Scene */
+.blob-postcard-svg[data-state='idle'] .postcard-scene-body {
+  animation: postcard-idle-sway 4s ease-in-out infinite;
+  transform-origin: 50% 50%;
+}
+
+.postcard-sun-rays {
+  animation: postcard-rays-spin 16s linear infinite;
+  transform-origin: 66px 28px;
+}
+
+.gem-blob-postcard-scene[data-state='active'] .postcard-sun-rays {
+  animation-duration: 4s;
+}
+
+.gem-blob-postcard-scene[data-state='active'] .postcard-scene-body {
+  animation: postcard-active-bounce 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+.gem-blob-postcard-scene[data-state='needs-input'] .postcard-scene-body {
+  animation: clay-needs-input-hop 1.4s ease-in-out infinite;
+}
+
+.gem-blob-postcard-scene[data-state='error'] .postcard-scene-body {
+  animation: clay-error-wobble 0.45s ease-in-out infinite alternate;
+}
+
+.postcard-cloud {
+  animation: postcard-cloud-drift 8s ease-in-out infinite alternate;
+}
+
+.postcard-cloud-2 {
+  animation: postcard-cloud-drift 11s ease-in-out infinite alternate-reverse;
+}
+
+.gem-blob-postcard-scene[data-state='active'] .postcard-cloud,
+.gem-blob-postcard-scene[data-state='active'] .postcard-cloud-2 {
+  animation-duration: 3.5s;
+}
+
+.postcard-wave {
+  animation: postcard-water-shimmer 3.2s ease-in-out infinite;
+}
+
+.postcard-bird {
+  opacity: 0;
+}
+
+.gem-blob-postcard-scene[data-state='active'] .postcard-bird {
+  opacity: 1;
+  animation: postcard-bird-fly 4.5s linear infinite;
+}
+
+.postcard-storm {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.gem-blob-postcard-scene[data-state='error'] .postcard-storm {
+  opacity: 1;
+}
+
+.gem-blob-postcard-scene[data-state='error'] .postcard-rain line {
+  animation: postcard-rain-fall 0.7s linear infinite;
+}
+
+.gem-blob-postcard-scene[data-state='error'] .postcard-rain line:nth-child(2n) {
+  animation-delay: -0.35s;
+}
+
+.postcard-alert {
+  opacity: 0;
+}
+
+.gem-blob-postcard-scene[data-state='needs-input'] .postcard-alert {
+  opacity: 1;
+  animation: clay-badge-pop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate;
+  transform-origin: 84px 14px;
+}
+
+@keyframes postcard-idle-sway {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  33% { transform: rotate(1.2deg) translateY(-1px); }
+  66% { transform: rotate(-1.2deg) translateY(-1px); }
+}
+
+@keyframes postcard-rays-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes postcard-active-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes postcard-cloud-drift {
+  0% { transform: translateX(-4px); }
+  100% { transform: translateX(6px); }
+}
+
+@keyframes postcard-water-shimmer {
+  0%, 100% { transform: translateX(0); opacity: 0.85; }
+  50% { transform: translateX(3px); opacity: 1; }
+}
+
+@keyframes postcard-bird-fly {
+  0% { transform: translate(-16px, 26px); opacity: 0; }
+  12% { opacity: 1; }
+  50% { transform: translate(42px, 18px); }
+  88% { opacity: 1; }
+  100% { transform: translate(108px, 24px); opacity: 0; }
+}
+
+@keyframes postcard-rain-fall {
+  0% { transform: translateY(-4px); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateY(8px); opacity: 0; }
+}
+
+/* Direction 5: Scribble Squiggle */
+.blob-squiggle-svg[data-state='idle'] .squiggle-body {
+  animation: squiggle-idle-sway 3.6s ease-in-out infinite;
+  transform-origin: 50% 60%;
+}
+
+.gem-blob-squiggle-doodle[data-state='active'] .squiggle-body {
+  animation: squiggle-active-wiggle 0.5s ease-in-out infinite alternate;
+  transform-origin: 50% 60%;
+}
+
+.gem-blob-squiggle-doodle[data-state='active'] .squiggle-eyes {
+  animation: squiggle-eye-scan 1.6s ease-in-out infinite;
+}
+
+.gem-blob-squiggle-doodle[data-state='needs-input'] .squiggle-body {
+  animation: squiggle-alert-tighten 0.9s ease-in-out infinite;
+  transform-origin: 50% 58%;
+}
+
+.gem-blob-squiggle-doodle[data-state='error'] .squiggle-body {
+  animation: clay-error-wobble 0.4s ease-in-out infinite alternate;
+}
+
+.squiggle-alert {
+  opacity: 0;
+}
+
+.gem-blob-squiggle-doodle[data-state='needs-input'] .squiggle-alert {
+  opacity: 1;
+  animation: clay-badge-pop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate;
+}
+
+@keyframes squiggle-idle-sway {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-2px) rotate(2.5deg); }
+  66% { transform: translateY(-1px) rotate(-2.5deg); }
+}
+
+@keyframes squiggle-active-wiggle {
+  0% { transform: translateX(-2.5px) rotate(-3deg) scaleY(1); }
+  100% { transform: translateX(2.5px) rotate(3deg) scaleY(1.05); }
+}
+
+@keyframes squiggle-eye-scan {
+  0%, 100% { transform: translateX(-3px); }
+  50% { transform: translateX(3px); }
+}
+
+@keyframes squiggle-alert-tighten {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.04, 0.96) translateY(1px); }
+}
+
+/* Direction 6: Kawaii Star Faces */
+.blob-star-svg[data-state='idle'] .star-body {
+  animation: star-idle-twinkle 3.4s ease-in-out infinite;
+  transform-origin: 50% 52%;
+}
+
+.gem-blob-star-face[data-state='active'] .star-body {
+  animation: star-active-spin 1s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  transform-origin: 50% 52%;
+}
+
+.gem-blob-star-face[data-state='active'] .star-sparkles {
+  animation: star-sparkle-blink 0.8s ease-in-out infinite alternate;
+}
+
+.gem-blob-star-face[data-state='needs-input'] .star-body {
+  animation: clay-needs-input-hop 1.3s ease-in-out infinite;
+}
+
+.gem-blob-star-face[data-state='error'] .star-body {
+  animation: star-error-dizzy 0.9s ease-in-out infinite;
+  transform-origin: 50% 52%;
+}
+
+.star-alert {
+  opacity: 0;
+}
+
+.gem-blob-star-face[data-state='needs-input'] .star-alert {
+  opacity: 1;
+  animation: clay-badge-pop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate;
+  transform-origin: 76px 18px;
+}
+
+@keyframes star-idle-twinkle {
+  0%, 100% { transform: rotate(-2.5deg) scale(1); }
+  50% { transform: rotate(2.5deg) scale(1.05); }
+}
+
+@keyframes star-active-spin {
+  0% { transform: rotate(-8deg) scale(1); }
+  50% { transform: rotate(8deg) scale(1.08); }
+  100% { transform: rotate(-8deg) scale(1); }
+}
+
+@keyframes star-sparkle-blink {
+  0% { opacity: 0.25; }
+  100% { opacity: 1; }
+}
+
+@keyframes star-error-dizzy {
+  0%, 100% { transform: translateX(-2px) rotate(-4deg); }
+  50% { transform: translateX(2px) rotate(4deg) translateY(-2px); }
 }
 
 /* General Keyframes */
