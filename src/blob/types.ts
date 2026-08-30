@@ -6,7 +6,8 @@ export type BlobDirection =
   | 'micro-critter'
   | 'postcard-scene'
   | 'squiggle-doodle'
-  | 'star-face';
+  | 'star-face'
+  | 'agentic-gradient';
 
 export type DirectionMeta = {
   id: BlobDirection;
@@ -100,6 +101,21 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
       'Rounded-tip star silhouettes in warm seeded yellows',
       'Gentle idle twinkle & excited active spin-wobble',
       'Alert brows with popping exclamation; dizzy X eyes on error',
+    ],
+  },
+  {
+    id: 'agentic-gradient',
+    title: 'Direction 7: Agentic Gradient Poof',
+    subtitle: 'Amorphous Glow with No Face — Mood via Marks',
+    inspiration: 'habit ExperimentalLoaders aura look + user brief',
+    description:
+      'A faceless glowing gradient poof in dreamy pastel radial gradients with drifting core and breathing halo. Moods are expressed purely through marks: it just glows and floats when idle, sketches curls, circles and loops while working, scratches messy angry squiggles when it needs input, and the whole gradient transitions to red and back on error.',
+    highlights: [
+      'Seeded amorphous blob silhouette & 6 pastel glow palettes',
+      'Idle: counter-rotating layers, breathing halo & drifting bright core',
+      'Active: orbiting doodles (curls, circles, spirals) that sketch themselves in',
+      'Needs-input: messy angry scratch marks with a fast shiver',
+      'Error: 2s transition to red and 2s back, over the whole gradient',
     ],
   },
 ];

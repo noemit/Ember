@@ -371,6 +371,118 @@
   50% { transform: translateX(2px) rotate(4deg) translateY(-2px); }
 }
 
+/* Direction 7: Agentic Gradient Poof (faceless amorphous glow) */
+.blob-agentic-svg .agentic-float,
+.blob-agentic-svg .agentic-halo,
+.blob-agentic-svg .agentic-body,
+.blob-agentic-svg .agentic-core,
+.blob-agentic-svg .agentic-doodles {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+}
+
+.blob-agentic-svg[data-state='idle'] .agentic-float,
+.blob-agentic-svg[data-state='active'] .agentic-float,
+.blob-agentic-svg[data-state='needs-input'] .agentic-float {
+  animation: agentic-float-drift 5.5s ease-in-out infinite;
+}
+
+.blob-agentic-svg .agentic-halo {
+  animation: agentic-halo-breathe 6.5s ease-in-out infinite;
+}
+
+.blob-agentic-svg .agentic-body {
+  animation: agentic-body-drift 26s linear infinite;
+}
+
+.blob-agentic-svg .agentic-core {
+  animation: agentic-core-pulse 3.8s ease-in-out infinite;
+}
+
+.gem-blob-agentic-gradient[data-state='active'] .agentic-doodles {
+  animation: agentic-doodle-orbit 14s linear infinite;
+}
+
+.agentic-doodle {
+  stroke-dasharray: 1;
+  animation-name: agentic-doodle-draw;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+}
+
+.gem-blob-agentic-gradient[data-state='needs-input'] .agentic-float {
+  animation: agentic-agitate-throb 0.55s ease-in-out infinite alternate;
+}
+
+.gem-blob-agentic-gradient[data-state='needs-input'] .agentic-anger {
+  animation: agentic-anger-shiver 0.14s steps(2) infinite;
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+}
+
+.gem-blob-agentic-gradient[data-state='error'] .agentic-float {
+  animation: clay-error-wobble 0.45s ease-in-out infinite alternate;
+}
+
+.gem-blob-agentic-gradient[data-state='error'] .agentic-red {
+  animation: agentic-error-flash 4s ease-in-out infinite;
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+}
+
+@keyframes agentic-float-drift {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.02); }
+}
+
+@keyframes agentic-halo-breathe {
+  0%, 100% { transform: scale(1.18) rotate(0deg); opacity: 0.55; }
+  50% { transform: scale(1.32) rotate(10deg); opacity: 0.8; }
+}
+
+@keyframes agentic-body-drift {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(90deg) scale(1.05); }
+  50% { transform: rotate(180deg) scale(0.98); }
+  75% { transform: rotate(270deg) scale(1.04); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes agentic-core-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.25) translate(2px, -2px); opacity: 1; }
+}
+
+@keyframes agentic-doodle-orbit {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes agentic-doodle-draw {
+  0% { stroke-dashoffset: 1; opacity: 0; }
+  35% { opacity: 0.85; }
+  55% { stroke-dashoffset: 0; opacity: 0.85; }
+  100% { stroke-dashoffset: 0; opacity: 0.15; }
+}
+
+@keyframes agentic-agitate-throb {
+  0% { transform: scale(1.02); }
+  100% { transform: scale(1.09); }
+}
+
+@keyframes agentic-anger-shiver {
+  0% { transform: translate(-1.4px, -0.8px) rotate(-1.5deg); }
+  100% { transform: translate(1.4px, 0.8px) rotate(1.5deg); }
+}
+
+/* 2s to red, 2s back = 4s cycle */
+@keyframes agentic-error-flash {
+  0% { opacity: 0; }
+  50% { opacity: 0.95; }
+  100% { opacity: 0; }
+}
+
 /* General Keyframes */
 @keyframes clay-idle-breathe {
   0%, 100% {

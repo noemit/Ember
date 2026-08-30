@@ -59,7 +59,7 @@ if (typeof window !== 'undefined' && !window.ember) {
           status: 200,
           data: [
             { id: 'm1', role: 'user', content: 'Help me review the new blob avatar designs' },
-            { id: 'm2', role: 'assistant', content: 'Here are the 6 experimental personality directions ready for review!' },
+            { id: 'm2', role: 'assistant', content: 'Here are the 7 experimental personality directions ready for review!' },
           ],
         };
       }

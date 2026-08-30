@@ -12,6 +12,7 @@ const VALID_DIRECTIONS: BlobDirection[] = [
   'postcard-scene',
   'squiggle-doodle',
   'star-face',
+  'agentic-gradient',
 ];
 
 export function getActiveBlobDirection(): BlobDirection {

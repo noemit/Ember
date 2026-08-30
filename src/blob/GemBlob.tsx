@@ -7,6 +7,7 @@ import MicroCritterRenderer from './renderers/MicroCritterRenderer';
 import PostcardSceneRenderer from './renderers/PostcardSceneRenderer';
 import SquiggleRenderer from './renderers/SquiggleRenderer';
 import StarFaceRenderer from './renderers/StarFaceRenderer';
+import AgenticGradientRenderer from './renderers/AgenticGradientRenderer';
 import './blob.css';
 
 export default function GemBlob({
@@ -46,6 +47,8 @@ export default function GemBlob({
         return <SquiggleRenderer seed={seed} size={size} state={state} interactive={interactive} />;
       case 'star-face':
         return <StarFaceRenderer seed={seed} size={size} state={state} interactive={interactive} />;
+      case 'agentic-gradient':
+        return <AgenticGradientRenderer seed={seed} size={size} state={state} />;
       default:
         return (
           <PuffyClayRenderer
