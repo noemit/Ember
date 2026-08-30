@@ -1,10 +1,13 @@
 export type InstanceKind = 'local' | 'remote' | 'ssh' | 'relay';
 
+export type InstanceStatus = 'ready' | 'unreachable' | 'unsupported';
+
 export type Instance = {
   id: string;
   label: string;
   kind: InstanceKind;
   url?: string;
+  status: InstanceStatus;
   attachable: boolean;
 };
 

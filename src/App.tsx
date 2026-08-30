@@ -157,6 +157,10 @@ export default function App() {
     void window.ember.openInstance(nextId, mode);
   };
 
+  const refreshInstances = React.useCallback(async () => {
+    setInstances(await listInstances());
+  }, []);
+
   const handleNewAgent = async () => {
     if (!instanceId) return;
     const created = await createSession(instanceId, projects[0]?.path);
@@ -180,7 +184,12 @@ export default function App() {
 
   return (
     <div className="app">
-      <InstanceBar instances={instances} currentId={instanceId} onOpen={handleOpenInstance} />
+      <InstanceBar
+        instances={instances}
+        currentId={instanceId}
+        onOpen={handleOpenInstance}
+        onRefresh={() => void refreshInstances()}
+      />
 
       <div className="body-row">
         <LeftRail

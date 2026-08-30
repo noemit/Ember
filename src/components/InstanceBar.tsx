@@ -1,10 +1,11 @@
 import * as React from 'react';
-import type { Instance } from '../types';
+import type { Instance, InstanceStatus } from '../types';
 
 type Props = {
   instances: Instance[];
   currentId: string | null;
   onOpen: (instanceId: string, mode: 'replace' | 'new') => void;
+  onRefresh: () => void;
 };
 
 const kindLabel: Record<Instance['kind'], string> = {
@@ -14,7 +15,13 @@ const kindLabel: Record<Instance['kind'], string> = {
   relay: 'private relay',
 };
 
-export default function InstanceBar({ instances, currentId, onOpen }: Props) {
+const statusLabel: Record<InstanceStatus, string> = {
+  ready: 'connected',
+  unreachable: 'not connected — open it in OpenChamber',
+  unsupported: 'needs OpenChamber',
+};
+
+export default function InstanceBar({ instances, currentId, onOpen, onRefresh }: Props) {
   const [open, setOpen] = React.useState(false);
   const current = instances.find((instance) => instance.id === currentId) ?? null;
 
@@ -26,17 +33,27 @@ export default function InstanceBar({ instances, currentId, onOpen }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) onRefresh();
+  };
+
   return (
     <div className="topbar">
       <span className="brand">Ember</span>
 
-      <button className="instance-button" onClick={() => setOpen((value) => !value)}>
+      <button className="instance-button" onClick={toggle}>
         <span>{current ? current.label : 'Choose an instance'}</span>
         <span className="instance-meta">{open ? '▲' : '▼'}</span>
       </button>
 
-      {current && !current.attachable ? (
-        <span className="instance-meta">needs OpenChamber</span>
+      <button className="icon-button" title="Refresh instances" onClick={onRefresh}>
+        ⟳
+      </button>
+
+      {current && current.status !== 'ready' ? (
+        <span className="instance-meta">{statusLabel[current.status]}</span>
       ) : null}
 
       {open ? (
@@ -56,7 +73,7 @@ export default function InstanceBar({ instances, currentId, onOpen }: Props) {
                 <div className="instance-meta">
                   {kindLabel[instance.kind]}
                   {instance.url ? ` · ${instance.url}` : ''}
-                  {instance.attachable ? '' : ' · needs OpenChamber'}
+                  {` · ${statusLabel[instance.status]}`}
                 </div>
               </div>
 

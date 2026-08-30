@@ -9,21 +9,26 @@ type StoredHost = {
   url?: string;
   apiUrl?: string;
   token?: string;
+  clientToken?: string;
   requestHeaders?: Record<string, string>;
   relay?: unknown;
 };
 
 type StoredSshInstance = {
   id?: string;
-  label?: string;
+  nickname?: string;
   host?: string;
+  sshParsed?: { destination?: string };
 };
+
+type InstanceStatus = 'ready' | 'unreachable' | 'unsupported';
 
 type Instance = {
   id: string;
   label: string;
   kind: 'local' | 'remote' | 'ssh' | 'relay';
   url?: string;
+  status: InstanceStatus;
   attachable: boolean;
 };
 
@@ -32,6 +37,7 @@ type EmberSettings = {
 };
 
 const DEFAULT_THEME_ID = 'ember';
+const PROBE_TIMEOUT_MS = 1500;
 
 const openchamberSettingsPath = (): string =>
   process.env.OPENCHAMBER_DATA_DIR
@@ -66,39 +72,99 @@ const readEmberSettings = (): EmberSettings => {
   };
 };
 
-const loadInstances = (): Instance[] => {
+const hostUrl = (host: StoredHost): string => {
+  const url = typeof host.url === 'string' ? host.url : '';
+  return typeof host.apiUrl === 'string' && host.apiUrl ? host.apiUrl : url;
+};
+
+const hostToken = (host: StoredHost, root: Record<string, unknown>): string => {
+  if (typeof host.clientToken === 'string' && host.clientToken.trim()) return host.clientToken.trim();
+  if (typeof host.token === 'string' && host.token.trim()) return host.token.trim();
+  if (isLocalUrl(hostUrl(host)) && typeof root.desktopLocalClientToken === 'string') {
+    return root.desktopLocalClientToken;
+  }
+  return '';
+};
+
+const probeHealth = async (url: string, token: string): Promise<boolean> => {
+  try {
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(`${url}/api/health`, {
+      headers,
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+const loadInstances = async (): Promise<Instance[]> => {
   const root = readJson(openchamberSettingsPath());
   const hosts = Array.isArray(root.desktopHosts) ? (root.desktopHosts as StoredHost[]) : [];
   const sshInstances = Array.isArray(root.desktopSshInstances)
     ? (root.desktopSshInstances as StoredSshInstance[])
     : [];
 
-  const fromHosts: Instance[] = hosts.map((host, index) => {
-    const url = typeof host.url === 'string' ? host.url : '';
-    const apiUrl = typeof host.apiUrl === 'string' && host.apiUrl ? host.apiUrl : url;
-    const isRelay = url.startsWith('relay://') || Boolean(host.relay);
+  const hostIds = new Set(hosts.map((host, index) => hostId(host, index)));
+  const candidates: Array<{ instance: Instance; token: string }> = [];
+
+  hosts.forEach((host, index) => {
+    const url = hostUrl(host);
+    const rawUrl = typeof host.url === 'string' ? host.url : '';
+    const isRelay = rawUrl.startsWith('relay://') || Boolean(host.relay);
     const id = hostId(host, index);
-    const kind: Instance['kind'] = isRelay ? 'relay' : isLocalUrl(apiUrl) ? 'local' : 'remote';
-    return {
-      id,
-      label: host.label || (isRelay ? url : apiUrl) || id,
-      kind,
-      url: apiUrl || undefined,
-      attachable: !isRelay && Boolean(apiUrl),
-    };
+    const sshMatch = sshInstances.find((entry) => String(entry.id || '') === id);
+    const kind: Instance['kind'] = isRelay
+      ? 'relay'
+      : sshMatch
+        ? 'ssh'
+        : isLocalUrl(url)
+          ? 'local'
+          : 'remote';
+    const usable = !isRelay && Boolean(url);
+
+    candidates.push({
+      instance: {
+        id,
+        label: host.label || (isRelay ? rawUrl : url) || id,
+        kind,
+        url: usable ? url : undefined,
+        status: usable ? 'unreachable' : 'unsupported',
+        attachable: false,
+      },
+      token: hostToken(host, root),
+    });
   });
 
-  const fromSsh: Instance[] = sshInstances.map((entry, index) => {
+  sshInstances.forEach((entry, index) => {
     const id = String(entry.id || `ssh-${index}`);
-    return {
-      id,
-      label: entry.label || entry.host || id,
-      kind: 'ssh' as const,
-      attachable: false,
-    };
+    if (hostIds.has(id)) return;
+
+    candidates.push({
+      instance: {
+        id,
+        label: entry.nickname || entry.sshParsed?.destination || entry.host || id,
+        kind: 'ssh',
+        status: 'unsupported',
+        attachable: false,
+      },
+      token: '',
+    });
   });
 
-  return [...fromHosts, ...fromSsh];
+  await Promise.all(
+    candidates.map(async (candidate) => {
+      const url = candidate.instance.url;
+      if (!url || candidate.instance.status === 'unsupported') return;
+      const reachable = await probeHealth(url.replace(/\/+$/, ''), candidate.token);
+      candidate.instance.status = reachable ? 'ready' : 'unreachable';
+      candidate.instance.attachable = reachable;
+    })
+  );
+
+  return candidates.map((candidate) => candidate.instance);
 };
 
 const instanceTarget = (instanceId: string): { url: string; headers: Record<string, string> } | null => {
@@ -108,18 +174,20 @@ const instanceTarget = (instanceId: string): { url: string; headers: Record<stri
   if (index === -1) return null;
 
   const host = hosts[index];
-  const rawUrl = typeof host.apiUrl === 'string' && host.apiUrl ? host.apiUrl : host.url;
-  if (!rawUrl || rawUrl.startsWith('relay://')) return null;
+  const rawUrl = hostUrl(host);
+  const rawDirectUrl = typeof host.url === 'string' ? host.url : '';
+  if (!rawUrl || rawDirectUrl.startsWith('relay://')) return null;
 
   const headers: Record<string, string> = { ...(host.requestHeaders || {}) };
-  const localToken = typeof root.desktopLocalClientToken === 'string' ? root.desktopLocalClientToken : '';
-  const token = host.token || (isLocalUrl(rawUrl) ? localToken : '');
+  const token = hostToken(host, root);
   if (token) headers.Authorization = `Bearer ${token}`;
 
   return { url: rawUrl.replace(/\/+$/, ''), headers };
 };
 
 type BoundWindow = BrowserWindow & { emberInstanceId?: string | null };
+
+const windows = new Map<number, BoundWindow>();
 
 const createWindow = (instanceId: string | null): BrowserWindow => {
   const win = new BrowserWindow({
@@ -140,8 +208,6 @@ const createWindow = (instanceId: string | null): BrowserWindow => {
   windows.set(win.id, win);
   return win;
 };
-
-const windows = new Map<number, BoundWindow>();
 
 ipcMain.handle('ember:instances', () => loadInstances());
 

@@ -26,8 +26,9 @@ Open questions for when we build it:
 
 ## Other parked items
 
-- **Send attachments with the prompt.** Attach currently only records the filename. The prompt body
-  accepts file parts, so this is a sender-side change.
+- ~~**Send attachments with the prompt.**~~ Dropped: attachments don't work over SSH (the primary
+  setup), and showing the file name is enough. The prompt body accepts file parts if this ever
+  changes.
 - **Private Relay instances.** Their tunnel exists only in OpenChamber's memory, so Ember can't
   attach to them even while connected. Revisit if a local URL ever gets persisted.
 - **Live updates over SSE.** Ball states and messages poll every 3s today. `/api/event` is an SSE
