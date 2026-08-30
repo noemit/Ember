@@ -97,12 +97,14 @@ export default function LeftRail({
       }
     });
 
-    // Show all projects in the rail, even empty ones
-    const result: Group[] = projects.map((project) => ({
-      key: project.id,
-      label: project.name,
-      sessions: byProject.get(project.id) ?? [],
-    }));
+    // Only show project folders that actually have active sessions in them
+    const result: Group[] = projects
+      .map((project) => ({
+        key: project.id,
+        label: project.name,
+        sessions: byProject.get(project.id) ?? [],
+      }))
+      .filter((group) => group.sessions.length > 0);
 
     // Sort folders by most recent activity within them (or name if sorter is name)
     result.sort((a, b) => {

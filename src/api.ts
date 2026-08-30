@@ -68,17 +68,25 @@ export const loadSessions = async (instanceId: string): Promise<Session[]> => {
       return undefined;
     };
 
-    const updated =
+    // Only use the raw numeric/string fields for the updated property
+    let updated =
       parseTime(time.updated) ??
       parseTime(item.updated) ??
       parseTime(time.created) ??
       parseTime(item.created);
+      
+    // If OpenChamber project_id-style path encoding (L3dvcmtzcGFjZS9lbWJlcg) is detected in ID, it is a project, not a session!
+    const idStr = String(item.id ?? `session-${index}`);
+    const isProjectEncoded = idStr.startsWith('path_');
+    if (isProjectEncoded) {
+      updated = undefined; // Prevent sorting issues by forcing project-like items to have no recency timestamp
+    }
 
     return {
       id: String(item.id ?? `session-${index}`),
       title: typeof item.title === 'string' ? item.title : undefined,
       directory: typeof item.directory === 'string' ? item.directory : undefined,
-      updated,
+      updated: String(item.id ?? '').startsWith('path_') ? undefined : updated,
     };
   });
 };
