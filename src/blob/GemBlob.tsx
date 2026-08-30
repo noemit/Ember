@@ -133,9 +133,9 @@ export default function GemBlob({ seed, size = 30, state = 'idle', interactive =
 
         {isError && <circle cx={50} cy={50} r={46} fill="rgba(255,90,90,0.32)" />}
 
-        <g className="gem-eyes">
-          {renderEye(-10, leftPupil, true)}
-          {renderEye(10, rightPupil, false)}
+        <g className="gem-eyes" transform="translate(50 0)">
+          {renderEye(-13, leftPupil, true)}
+          {renderEye(13, rightPupil, false)}
         </g>
 
         {/* Cute blush cheeks under the eyes like Poring / anime characters */}
