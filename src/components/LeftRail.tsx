@@ -24,6 +24,7 @@ type Group = {
 };
 
 const normalizeDir = (value: string): string => value.replace(/\/+$/, '');
+const LIMIT = 10;
 
 export default function LeftRail({
   projects,
@@ -50,9 +51,27 @@ export default function LeftRail({
     return copy;
   }, [sessions, sorter]);
 
-  const groups = React.useMemo(() => {
+  // Top 10 most recent sessions across all projects
+  const recentSessions = React.useMemo(() => {
+    return sortedSessions.slice(0, LIMIT);
+  }, [sortedSessions]);
+
+  // All loose/unassigned sessions (no directory match to a project)
+  const looseSessions = React.useMemo(() => {
+    return sortedSessions.filter((session) => {
+      const directory = session.directory ? normalizeDir(session.directory) : '';
+      const hasMatch = projects.some((project) => {
+        if (!project.path) return false;
+        const base = normalizeDir(project.path);
+        return directory === base || directory.startsWith(`${base}/`);
+      });
+      return !hasMatch;
+    });
+  }, [sortedSessions, projects]);
+
+  // Group sessions by project path prefix, limiting each folder to top 10
+  const projectGroups = React.useMemo(() => {
     const byProject = new Map<string, Session[]>();
-    const loose: Session[] = [];
 
     sortedSessions.forEach((session) => {
       const directory = session.directory ? normalizeDir(session.directory) : '';
@@ -70,20 +89,22 @@ export default function LeftRail({
         }
       });
 
-      if (bestId) byProject.set(bestId, [...(byProject.get(bestId) ?? []), session]);
-      else loose.push(session);
+      if (bestId) {
+        const list = byProject.get(bestId) ?? [];
+        if (list.length < LIMIT) {
+          byProject.set(bestId, [...list, session]);
+        }
+      }
     });
 
-    const result: Group[] = projects
-      .map((project) => ({
-        key: project.id,
-        label: project.name,
-        sessions: byProject.get(project.id) ?? [],
-      }))
-      .filter((group) => group.sessions.length > 0);
+    // Show all projects in the rail, even empty ones
+    const result: Group[] = projects.map((project) => ({
+      key: project.id,
+      label: project.name,
+      sessions: byProject.get(project.id) ?? [],
+    }));
 
-    if (loose.length > 0) result.push({ key: '__other', label: 'Other', sessions: loose });
-
+    // Sort folders by most recent activity within them (or name if sorter is name)
     result.sort((a, b) => {
       if (sorter === 'name') {
         return a.label.localeCompare(b.label);
@@ -115,23 +136,16 @@ export default function LeftRail({
     </button>
   );
 
-  const renderGroup = (group: Group) => {
-    const isCollapsed = collapsed[group.key] ?? false;
-
-    return (
-      <div className="project" key={group.key}>
-        <button
-          className="project-header"
-          onClick={() => setCollapsed((prev) => ({ ...prev, [group.key]: !isCollapsed }))}
-        >
-          <span>{isCollapsed ? '▸' : '▾'}</span>
-          <span className="project-name">{group.label}</span>
-          <span className="instance-meta">{group.sessions.length}</span>
-        </button>
-        {isCollapsed ? null : <div className="session-list">{group.sessions.map(renderSession)}</div>}
-      </div>
-    );
-  };
+  const renderSectionHeader = (label: string, count: number, key: string) => (
+    <button
+      className="project-header"
+      onClick={() => setCollapsed((prev) => ({ ...prev, [key]: !(prev[key] ?? false) }))}
+    >
+      <span>{collapsed[key] ? '▸' : '▾'}</span>
+      <span className="project-name">{label}</span>
+      <span className="instance-meta">{count}</span>
+    </button>
+  );
 
   return (
     <div className="rail">
@@ -150,22 +164,39 @@ export default function LeftRail({
       </div>
 
       <div className="rail-list">
-        {groups.map(renderGroup)}
+        {/* Recent Section: Top 10 sessions across all folders */}
+        {recentSessions.length > 0 && (
+          <div className="project">
+            {renderSectionHeader('Recent', recentSessions.length, '__recent')}
+            {collapsed['__recent'] ? null : (
+              <div className="session-list">{recentSessions.map(renderSession)}</div>
+            )}
+          </div>
+        )}
 
-        {/* Show empty configured projects that don't have sessions yet */}
-        {projects
-          .filter((p) => !groups.some((g) => g.key === p.id))
-          .map((project) => (
-            <div className="project" key={project.id}>
-              <div className="project-header" style={{ opacity: 0.6, cursor: 'default' }}>
-                <span>▸</span>
-                <span className="project-name">{project.name}</span>
-                <span className="instance-meta">0</span>
+        {/* Chats Section: Sessions without matching project folder (top 10) */}
+        {looseSessions.length > 0 && (
+          <div className="project">
+            {renderSectionHeader('Chats', looseSessions.length, '__chats')}
+            {collapsed['__chats'] ? null : (
+              <div className="session-list">{looseSessions.slice(0, LIMIT).map(renderSession)}</div>
+            )}
+          </div>
+        )}
+
+        {/* Project Folders */}
+        {projectGroups.map((group) => (
+          <div className="project" key={group.key}>
+            {renderSectionHeader(group.label, group.sessions.length, group.key)}
+            {collapsed[group.key] ? null : (
+              <div className="session-list">
+                {group.sessions.map(renderSession)}
               </div>
-            </div>
-          ))}
+            )}
+          </div>
+        ))}
 
-        {projects.length === 0 && groups.length === 0 ? (
+        {projects.length === 0 && sessions.length === 0 ? (
           <div className="instance-meta" style={{ padding: 8 }}>
             No projects or sessions yet.
           </div>
