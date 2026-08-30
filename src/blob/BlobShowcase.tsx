@@ -1,6 +1,8 @@
 import * as React from 'react';
 import GemBlob from './GemBlob';
 import { BLOB_DIRECTIONS, type BlobDirection } from './types';
+import { PUFFY_CLAY_SHAPES } from './shapes';
+import { PUFFY_CLAY_PALETTE } from './palette';
 import { useActiveBlobDirection } from './directionState';
 import type { BallState } from '../types';
 
@@ -36,7 +38,12 @@ const MATRIX_AGENTS = [
   { name: 'Habit Instagram', seed: 'Habit Instagram media crawler' },
 ];
 
-const STATES: BallState[] = ['idle', 'active', 'needs-input', 'error'];
+const STATES: { id: BallState; label: string; desc: string }[] = [
+  { id: 'idle', label: 'Idle (Breathing)', desc: 'Subtle organic breathing & floating bob movement' },
+  { id: 'active', label: 'Active (Bouncy)', desc: 'Joyful bouncy spring squash & stretch' },
+  { id: 'needs-input', label: 'Needs Input (Yelling & Glowing)', desc: 'Radiant glowing beacon aura + yelling chattering mouth + alert badge' },
+  { id: 'error', label: 'Error (Hilarious Dizzy)', desc: 'Hilarious spinning X eyes + wobbly shivering body' },
+];
 
 export default function BlobShowcase({ onClose }: Props) {
   const [activeGlobalDirection, setGlobalDirection] = useActiveBlobDirection();
@@ -56,10 +63,10 @@ export default function BlobShowcase({ onClose }: Props) {
           <div className="showcase-header-top">
             <div className="showcase-title-group">
               <h2>
-                Agent Personality Showcase <span className="showcase-badge">5 Experimental Directions</span>
+                Agent Personality Showcase <span className="showcase-badge">3D Puffy Clay Suite</span>
               </h2>
               <p className="showcase-subtitle">
-                Review and select the best design direction inspired by synced/agent-personality
+                Tactile 3D volumetric puffy creatures with stretched subtle gradients, animated states, and interactive gaze
               </p>
             </div>
             <button className="icon-button" onClick={onClose}>
@@ -92,7 +99,247 @@ export default function BlobShowcase({ onClose }: Props) {
 
         {/* Body Content */}
         <div className="showcase-body">
-          {currentTab === 'matrix' ? (
+          {currentTab === 'puffy-clay' ? (
+            /* Dedicated 3D Puffy Clay Variants Suite */
+            <>
+              {/* Meta Card */}
+              <div className="direction-meta-card">
+                <div className="direction-meta-top">
+                  <div>
+                    <span className="direction-meta-title">3D Puffy Clay — Personality & Variant Suite</span>
+                    <span style={{ color: 'var(--text-dim)', fontSize: 13, marginLeft: 8 }}>
+                      (Selected Direction)
+                    </span>
+                  </div>
+                  <span className="direction-inspiration-tag">synced/agent-personality</span>
+                </div>
+                <p className="direction-desc">
+                  Featuring stretched subtle dual-tone gradients, gentle idle breathing movement, a hilarious yelling/glowing beacon for needs-input, 8 organic body shapes, 10 stretched colorways, and large 3D glossy cartoon eyes with interactive gaze tracking.
+                </p>
+                <div className="direction-highlights">
+                  <span className="direction-highlight-pill">✓ Idle Organic Breathing Movement</span>
+                  <span className="direction-highlight-pill">✓ Needs-Input: Glowing Aura Beacon + Chattering Mouth + Alert Badge</span>
+                  <span className="direction-highlight-pill">✓ Active: Joyful Bouncy Spring Squash/Stretch</span>
+                  <span className="direction-highlight-pill">✓ Error: Hilarious Spinning X Eyes</span>
+                  <span className="direction-highlight-pill">✓ Stretched Subtle Dual-Tone Gradients</span>
+                  <span className="direction-highlight-pill">✓ Prioritizes 64px & 96px UI Presence</span>
+                </div>
+              </div>
+
+              {/* Interactive Hero Sandbox */}
+              <div className="sandbox-section">
+                <div className="sandbox-hero">
+                  <GemBlob
+                    seed={sandboxSeed}
+                    direction="puffy-clay"
+                    size={120}
+                    state={sandboxState}
+                    interactive={true}
+                  />
+                  <div className="sandbox-hint">Move cursor to test eye gaze tracking</div>
+                  <span className="showcase-cell-name" style={{ fontSize: 14 }}>{sandboxSeed}</span>
+                  <span className="instance-meta" style={{ fontSize: 11 }}>State: {sandboxState}</span>
+                </div>
+
+                <div className="sandbox-controls">
+                  <div className="control-group">
+                    <span className="control-label">Agent Name / Seed</span>
+                    <input
+                      type="text"
+                      className="custom-seed-input"
+                      value={sandboxSeed}
+                      onChange={(e) => setSandboxSeed(e.target.value)}
+                      placeholder="Type agent name or seed..."
+                    />
+                  </div>
+
+                  <div className="control-group">
+                    <span className="control-label">Test Agent State Animations</span>
+                    <div className="control-buttons-row">
+                      {STATES.map((st) => (
+                        <button
+                          key={st.id}
+                          className="control-btn"
+                          data-selected={sandboxState === st.id}
+                          onClick={() => setSandboxState(st.id)}
+                        >
+                          {st.label.split(' ')[0]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <button
+                      className="primary-button"
+                      style={{ width: 'auto', padding: '6px 14px', fontSize: 12 }}
+                      onClick={() => setGlobalDirection('puffy-clay')}
+                    >
+                      {activeGlobalDirection === 'puffy-clay'
+                        ? '✓ Currently Active in UI'
+                        : 'Set 3D Puffy Clay as Active UI Style'}
+                    </button>
+                    <button
+                      className="icon-button"
+                      onClick={() =>
+                        setSandboxSeed(SAMPLE_AGENTS[Math.floor(Math.random() * SAMPLE_AGENTS.length)])
+                      }
+                    >
+                      Randomize Agent
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* State Behaviors Showcase (96px High-Res) */}
+              <div className="agent-grid-section">
+                <div className="section-heading">
+                  <span>State Animation Behaviors (96px High-Res)</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                  {STATES.map((st) => (
+                    <div
+                      key={st.id}
+                      className="showcase-cell"
+                      style={{
+                        padding: 16,
+                        border: sandboxState === st.id ? '1px solid var(--accent)' : '1px solid var(--border)',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => setSandboxState(st.id)}
+                    >
+                      <GemBlob
+                        seed={sandboxSeed}
+                        direction="puffy-clay"
+                        size={96}
+                        state={st.id}
+                        interactive={true}
+                      />
+                      <span className="showcase-cell-name" style={{ fontSize: 13, marginTop: 4 }}>
+                        {st.label}
+                      </span>
+                      <span className="instance-meta" style={{ textAlign: 'center', fontSize: 11 }}>
+                        {st.desc}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 8 Body Shape Silhouettes (64px) */}
+              <div className="agent-grid-section">
+                <div className="section-heading">
+                  <span>8 Body Shape Silhouettes (64px)</span>
+                </div>
+                <div className="showcase-grid">
+                  {PUFFY_CLAY_SHAPES.map((shape, idx) => (
+                    <div
+                      key={shape.id}
+                      className="showcase-cell"
+                      onClick={() => setSandboxSeed(`shape-seed-${idx}-${shape.name}`)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to load into sandbox"
+                    >
+                      <GemBlob
+                        seed={`shape-seed-${idx}-${shape.name}`}
+                        direction="puffy-clay"
+                        size={64}
+                        state={sandboxState}
+                        interactive={true}
+                      />
+                      <span className="showcase-cell-name">{shape.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 10 Stretched Subtle Colorways (64px) */}
+              <div className="agent-grid-section">
+                <div className="section-heading">
+                  <span>10 Stretched Subtle Dual-Tone Colorways (64px)</span>
+                </div>
+                <div className="showcase-grid">
+                  {PUFFY_CLAY_PALETTE.map((pal, idx) => (
+                    <div
+                      key={pal.name}
+                      className="showcase-cell"
+                      onClick={() => setSandboxSeed(`color-seed-${idx}-${pal.name}`)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to load into sandbox"
+                    >
+                      <GemBlob
+                        seed={`color-seed-${idx}-${pal.name}`}
+                        direction="puffy-clay"
+                        size={64}
+                        state={sandboxState}
+                        interactive={true}
+                      />
+                      <span className="showcase-cell-name">{pal.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* UI Sizing Breakdown */}
+              <div className="size-strip-section">
+                <span className="control-label">UI Sizing Scale (24px, 44px, 64px, 96px, 128px)</span>
+                <div className="size-strip">
+                  {[
+                    { size: 24, label: '24px (Chat Avatar / Tool Calls)' },
+                    { size: 44, label: '44px (Sidebar Session List)' },
+                    { size: 64, label: '64px (Card / Panel View)' },
+                    { size: 96, label: '96px (Showcase High-Res)' },
+                    { size: 128, label: '128px (Hero Avatar)' },
+                  ].map((s) => (
+                    <div key={s.size} className="size-item">
+                      <GemBlob
+                        seed={sandboxSeed}
+                        direction="puffy-clay"
+                        size={s.size}
+                        state={sandboxState}
+                        interactive={true}
+                      />
+                      <span className="size-tag">{s.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generated Agent Samples (64px) */}
+              <div className="agent-grid-section">
+                <div className="section-heading">
+                  <span>Live Agent Roster in 3D Puffy Clay (64px)</span>
+                  <button
+                    className="icon-button"
+                    style={{ fontSize: 11 }}
+                    onClick={() => setSandboxSeed(SAMPLE_AGENTS[Math.floor(Math.random() * SAMPLE_AGENTS.length)])}
+                  >
+                    Shuffle Sample
+                  </button>
+                </div>
+                <div className="showcase-grid">
+                  {SAMPLE_AGENTS.map((agentName) => (
+                    <div
+                      key={agentName}
+                      className="showcase-cell"
+                      onClick={() => setSandboxSeed(agentName)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to load into sandbox"
+                    >
+                      <GemBlob
+                        seed={agentName}
+                        direction="puffy-clay"
+                        size={64}
+                        state="idle"
+                        interactive={true}
+                      />
+                      <span className="showcase-cell-name">{agentName}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : currentTab === 'matrix' ? (
             /* Matrix Comparison View */
             <div className="matrix-container">
               <div className="direction-meta-card">
@@ -101,7 +348,7 @@ export default function BlobShowcase({ onClose }: Props) {
                   <span className="direction-inspiration-tag">Compare All 5 Directions</span>
                 </div>
                 <p className="direction-desc">
-                  Review the exact same agent seeds and states rendered simultaneously across all 5 design directions to compare silhouette readability, eye personality, color depth, and visual presence.
+                  Review the exact same agent seeds and states rendered simultaneously across all 5 design directions.
                 </p>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
                   <div className="control-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -109,12 +356,12 @@ export default function BlobShowcase({ onClose }: Props) {
                     <div className="control-buttons-row">
                       {STATES.map((st) => (
                         <button
-                          key={st}
+                          key={st.id}
                           className="control-btn"
-                          data-selected={matrixState === st}
-                          onClick={() => setMatrixState(st)}
+                          data-selected={matrixState === st.id}
+                          onClick={() => setMatrixState(st.id)}
                         >
-                          {st}
+                          {st.label.split(' ')[0]}
                         </button>
                       ))}
                     </div>
@@ -132,7 +379,7 @@ export default function BlobShowcase({ onClose }: Props) {
                 </div>
               </div>
 
-              {/* Custom Seed Row if typed */}
+              {/* Custom Seed Row */}
               {customMatrixSeed.trim() && (
                 <div className="matrix-row">
                   <span className="matrix-row-title">Custom: "{customMatrixSeed}"</span>
@@ -182,7 +429,7 @@ export default function BlobShowcase({ onClose }: Props) {
                         <GemBlob
                           seed={item.seed}
                           direction={dir.id}
-                          size={56}
+                          size={64}
                           state={matrixState}
                           interactive={true}
                         />
@@ -197,9 +444,8 @@ export default function BlobShowcase({ onClose }: Props) {
               ))}
             </div>
           ) : currentDirectionMeta ? (
-            /* Single Direction Deep Dive */
+            /* Other Direction Preview */
             <>
-              {/* Direction Meta Card */}
               <div className="direction-meta-card">
                 <div className="direction-meta-top">
                   <div>
@@ -211,16 +457,8 @@ export default function BlobShowcase({ onClose }: Props) {
                   <span className="direction-inspiration-tag">{currentDirectionMeta.inspiration}</span>
                 </div>
                 <p className="direction-desc">{currentDirectionMeta.description}</p>
-                <div className="direction-highlights">
-                  {currentDirectionMeta.highlights.map((h, i) => (
-                    <span key={i} className="direction-highlight-pill">
-                      ✓ {h}
-                    </span>
-                  ))}
-                </div>
               </div>
 
-              {/* Interactive Sandbox */}
               <div className="sandbox-section">
                 <div className="sandbox-hero">
                   <GemBlob
@@ -230,7 +468,6 @@ export default function BlobShowcase({ onClose }: Props) {
                     state={sandboxState}
                     interactive={true}
                   />
-                  <div className="sandbox-hint">Move cursor over blob to test gaze</div>
                   <span className="showcase-cell-name">{sandboxSeed}</span>
                 </div>
 
@@ -242,7 +479,6 @@ export default function BlobShowcase({ onClose }: Props) {
                       className="custom-seed-input"
                       value={sandboxSeed}
                       onChange={(e) => setSandboxSeed(e.target.value)}
-                      placeholder="Type agent name or prompt..."
                     />
                   </div>
 
@@ -251,75 +487,30 @@ export default function BlobShowcase({ onClose }: Props) {
                     <div className="control-buttons-row">
                       {STATES.map((st) => (
                         <button
-                          key={st}
+                          key={st.id}
                           className="control-btn"
-                          data-selected={sandboxState === st}
-                          onClick={() => setSandboxState(st)}
+                          data-selected={sandboxState === st.id}
+                          onClick={() => setSandboxState(st.id)}
                         >
-                          {st}
+                          {st.label.split(' ')[0]}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                    <button
-                      className="primary-button"
-                      style={{ width: 'auto', padding: '6px 14px', fontSize: 12 }}
-                      onClick={() => setGlobalDirection(currentDirectionMeta.id)}
-                    >
-                      {activeGlobalDirection === currentDirectionMeta.id
-                        ? '✓ Currently Active in UI'
-                        : `Set as Active UI Style (${currentDirectionMeta.title.split(':')[1].trim()})`}
-                    </button>
-                    <button
-                      className="icon-button"
-                      onClick={() =>
-                        setSandboxSeed(SAMPLE_AGENTS[Math.floor(Math.random() * SAMPLE_AGENTS.length)])
-                      }
-                    >
-                      Randomize Name
-                    </button>
-                  </div>
+                  <button
+                    className="primary-button"
+                    style={{ width: 'auto', padding: '6px 14px', fontSize: 12, marginTop: 4 }}
+                    onClick={() => setGlobalDirection(currentDirectionMeta.id)}
+                  >
+                    Set as Active UI Style
+                  </button>
                 </div>
               </div>
 
-              {/* Sizing Scale Strip */}
-              <div className="size-strip-section">
-                <span className="control-label">UI Sizing Scale (Mini, Sidebar, Card, Showcase, Hero)</span>
-                <div className="size-strip">
-                  {[
-                    { size: 24, label: '24px (compact)' },
-                    { size: 36, label: '36px (left rail)' },
-                    { size: 48, label: '48px (card)' },
-                    { size: 64, label: '64px (modal)' },
-                    { size: 96, label: '96px (hero)' },
-                  ].map((s) => (
-                    <div key={s.size} className="size-item">
-                      <GemBlob
-                        seed={sandboxSeed}
-                        direction={currentDirectionMeta.id}
-                        size={s.size}
-                        state={sandboxState}
-                        interactive={true}
-                      />
-                      <span className="size-tag">{s.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Generated Agent Grid */}
               <div className="agent-grid-section">
                 <div className="section-heading">
-                  <span>Generated Agents in this Style ({SAMPLE_AGENTS.length} samples)</span>
-                  <button
-                    className="icon-button"
-                    style={{ fontSize: 11 }}
-                    onClick={() => setSandboxSeed(SAMPLE_AGENTS[Math.floor(Math.random() * SAMPLE_AGENTS.length)])}
-                  >
-                    Shuffle Samples
-                  </button>
+                  <span>Samples (64px)</span>
                 </div>
                 <div className="showcase-grid">
                   {SAMPLE_AGENTS.map((agentName) => (
@@ -328,12 +519,11 @@ export default function BlobShowcase({ onClose }: Props) {
                       className="showcase-cell"
                       onClick={() => setSandboxSeed(agentName)}
                       style={{ cursor: 'pointer' }}
-                      title="Click to load into sandbox"
                     >
                       <GemBlob
                         seed={agentName}
                         direction={currentDirectionMeta.id}
-                        size={56}
+                        size={64}
                         state="idle"
                         interactive={true}
                       />
@@ -352,6 +542,9 @@ export default function BlobShowcase({ onClose }: Props) {
             Active UI Style: <strong>{BLOB_DIRECTIONS.find((d) => d.id === activeGlobalDirection)?.title}</strong>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button className="icon-button" onClick={() => setCurrentTab('puffy-clay')}>
+              3D Puffy Suite
+            </button>
             <button className="icon-button" onClick={() => setCurrentTab('matrix')}>
               Matrix View
             </button>

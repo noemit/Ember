@@ -240,6 +240,9 @@ export default function App() {
 
         <ChatView
           sessionId={selectedSessionId}
+          sessionTitle={sessions.find((s) => s.id === selectedSessionId)?.title ?? selectedSessionId}
+          seed={selectedSessionId ? (sessionSeeds[selectedSessionId] ?? selectedSessionId) : 'ember'}
+          state={selectedSessionId ? (states[selectedSessionId] ?? 'idle') : 'idle'}
           messages={messages}
           models={models}
           defaultModelId={defaultModelId}

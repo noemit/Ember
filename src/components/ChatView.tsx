@@ -1,8 +1,12 @@
 import * as React from 'react';
-import type { ChatMessage, ModelOption } from '../types';
+import type { BallState, ChatMessage, ModelOption } from '../types';
+import GemBlob from '../blob/GemBlob';
 
 type Props = {
   sessionId: string | null;
+  sessionTitle?: string | null;
+  seed?: string;
+  state?: BallState;
   messages: ChatMessage[];
   models: ModelOption[];
   defaultModelId: string | null;
@@ -10,7 +14,17 @@ type Props = {
   onSend: (text: string, model: ModelOption | undefined, mode: string) => void;
 };
 
-export default function ChatView({ sessionId, messages, models, defaultModelId, mru, onSend }: Props) {
+export default function ChatView({
+  sessionId,
+  sessionTitle,
+  seed = 'ember',
+  state = 'idle',
+  messages,
+  models,
+  defaultModelId,
+  mru,
+  onSend,
+}: Props) {
   const [text, setText] = React.useState('');
   const [mode, setMode] = React.useState('build');
   const [modelId, setModelId] = React.useState('');
@@ -43,16 +57,59 @@ export default function ChatView({ sessionId, messages, models, defaultModelId, 
     setAttachment(null);
   };
 
+  const getStatusLabel = (s: BallState) => {
+    switch (s) {
+      case 'active':
+        return 'Thinking…';
+      case 'needs-input':
+        return 'Waiting for input';
+      case 'error':
+        return 'Error occurred';
+      default:
+        return 'Ready';
+    }
+  };
+
   return (
     <div className="chat">
       {sessionId ? (
-        <div className="messages">
-          {messages.map((message) => (
-            <div className="message" data-role={message.role} key={message.id}>
-              {message.text}
+        <>
+          {/* Agent Header with 48px 3D Puffy Avatar */}
+          <div className="chat-header">
+            <GemBlob seed={seed} size={48} state={state} interactive={true} />
+            <div className="chat-header-info">
+              <span className="chat-header-title">{sessionTitle ?? sessionId}</span>
+              <span className="chat-header-status" data-state={state}>
+                <span className="status-dot" />
+                {getStatusLabel(state)}
+              </span>
             </div>
-          ))}
-        </div>
+          </div>
+
+          <div className="messages">
+            {messages.map((message, index) => {
+              const isAssistant = message.role === 'assistant';
+              const isLastAssistant = isAssistant && index === messages.length - 1;
+
+              return (
+                <div className={`message-row ${message.role}`} key={message.id}>
+                  {isAssistant && (
+                    <GemBlob
+                      seed={seed}
+                      size={24}
+                      state={isLastAssistant && state !== 'idle' ? state : 'idle'}
+                      interactive={false}
+                      className="message-avatar"
+                    />
+                  )}
+                  <div className="message" data-role={message.role}>
+                    {message.text}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       ) : (
         <div className="empty-state">Pick a session, or start a new agent.</div>
       )}

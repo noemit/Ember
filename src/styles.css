@@ -279,18 +279,93 @@ input {
   min-width: 0;
 }
 
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.chat-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-header-status {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-header-status[data-state='active'] {
+  color: var(--accent);
+}
+
+.chat-header-status[data-state='needs-input'] {
+  color: #ff4081;
+  font-weight: 600;
+}
+
+.chat-header-status[data-state='error'] {
+  color: var(--danger);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .messages {
   flex: 1;
   overflow: auto;
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+}
+
+.message-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 760px;
+}
+
+.message-row.user {
+  align-self: flex-end;
+  justify-content: flex-end;
+}
+
+.message-row.assistant {
+  align-self: flex-start;
+}
+
+.message-avatar {
+  flex: none;
+  margin-bottom: 4px;
 }
 
 .message {
   max-width: 720px;
-  padding: 8px 11px;
+  padding: 8px 12px;
   border-radius: 8px;
   background: var(--bg-elev);
   white-space: pre-wrap;

@@ -3,7 +3,7 @@ import type { BlobDirection } from './types';
 
 const STORAGE_KEY = 'ember:blob-direction';
 const EVENT_NAME = 'ember:blob-direction-changed';
-export const DEFAULT_DIRECTION: BlobDirection = 'habit-pill';
+export const DEFAULT_DIRECTION: BlobDirection = 'puffy-clay';
 
 export function getActiveBlobDirection(): BlobDirection {
   try {

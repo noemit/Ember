@@ -6,9 +6,114 @@ export type ColorEntry = {
   edge: string;
   secondary?: string;
   accent?: string;
+  glow?: string;
 };
 
-// Direction 1: Habit Pill Palette (Bold vibrant modern flat-plus tones from Habit app reference)
+// 3D Puffy Clay Palette: Stretched, ultra-soft subtle dual-tone gradients
+export const PUFFY_CLAY_PALETTE: ColorEntry[] = [
+  {
+    name: 'Sky to Cotton Pink',
+    base: '#70b9ff',
+    light: '#bce1ff',
+    secondary: '#e5c9f8',
+    dark: '#ff9ec6',
+    edge: '#3888d9',
+    accent: '#ff4d88',
+    glow: '#ff69b4',
+  },
+  {
+    name: 'Mint to Soft Apricot',
+    base: '#52deb2',
+    light: '#aefae2',
+    secondary: '#cdf5d6',
+    dark: '#ffcaa4',
+    edge: '#1eab80',
+    accent: '#ff8c42',
+    glow: '#48d8a8',
+  },
+  {
+    name: 'Lavender to Creamy Peach',
+    base: '#a484ff',
+    light: '#d8c8ff',
+    secondary: '#f0d2f8',
+    dark: '#ffbf9e',
+    edge: '#754fd9',
+    accent: '#ff5c8a',
+    glow: '#c084fc',
+  },
+  {
+    name: 'Coral to Sweet Rose',
+    base: '#ff6b7e',
+    light: '#ffb3bf',
+    secondary: '#ffccd4',
+    dark: '#ff8fb1',
+    edge: '#d93248',
+    accent: '#e6005c',
+    glow: '#ff4081',
+  },
+  {
+    name: 'Soft Butter to Lilac Mist',
+    base: '#ffd45e',
+    light: '#ffefa8',
+    secondary: '#f6e2f4',
+    dark: '#d1aeff',
+    edge: '#d49b13',
+    accent: '#9d4edd',
+    glow: '#ffb703',
+  },
+  {
+    name: 'Ice Aqua to Electric Sky',
+    base: '#38d2f0',
+    light: '#a6f2ff',
+    secondary: '#c2e3ff',
+    dark: '#85a4ff',
+    edge: '#0ea5c6',
+    accent: '#3b82f6',
+    glow: '#00f0ff',
+  },
+  {
+    name: 'Seafoam to Mint Breeze',
+    base: '#34d399',
+    light: '#a7f3d0',
+    secondary: '#c8f7e2',
+    dark: '#6ee7b7',
+    edge: '#059669',
+    accent: '#0f766e',
+    glow: '#10b981',
+  },
+  {
+    name: 'Tangerine to Bubblegum',
+    base: '#ff8e52',
+    light: '#ffc8a8',
+    secondary: '#ffd0df',
+    dark: '#ff7fa8',
+    edge: '#d95d18',
+    accent: '#d90429',
+    glow: '#ff5400',
+  },
+  {
+    name: 'Royal Violet to Cyan Glow',
+    base: '#6d61ff',
+    light: '#b6afff',
+    secondary: '#afe5ff',
+    dark: '#48d8ff',
+    edge: '#4334d9',
+    accent: '#00b4d8',
+    glow: '#7c4dff',
+  },
+  {
+    name: 'Pearl White to Rosy Glaze',
+    base: '#e8edf8',
+    light: '#ffffff',
+    secondary: '#ffe6f0',
+    dark: '#ffc4de',
+    edge: '#b0c0d8',
+    accent: '#ff4081',
+    glow: '#ff80bf',
+  },
+];
+
+// Direction 1: Habit Pill Palette
 export const HABIT_PALETTE: ColorEntry[] = [
   { name: 'pink', base: '#ff2a7a', light: '#ff66a3', dark: '#cc1054', edge: '#990038' },
   { name: 'red', base: '#ff3b30', light: '#ff7066', dark: '#c72118', edge: '#8e120b' },
@@ -24,19 +129,7 @@ export const HABIT_PALETTE: ColorEntry[] = [
   { name: 'indigo', base: '#3f51b5', light: '#7986cb', dark: '#283593', edge: '#1a237e' },
 ];
 
-// Direction 2: Puffy Clay Palette (Soft dual-tone clay gradients like 3D cloud reference)
-export const PUFFY_CLAY_PALETTE: ColorEntry[] = [
-  { name: 'cloud-sky-pink', base: '#68b8ff', light: '#a8d8ff', dark: '#4090e0', edge: '#266bb3', secondary: '#ff9ec6', accent: '#ff4d88' },
-  { name: 'mint-lemon', base: '#48d8a8', light: '#92f3d2', dark: '#28a87c', edge: '#167a57', secondary: '#ffe66d', accent: '#ff9f1c' },
-  { name: 'lavender-peach', base: '#9d7cff', light: '#ccaaff', dark: '#734ed9', edge: '#4e2ab3', secondary: '#ffb088', accent: '#ff6b4a' },
-  { name: 'coral-rose', base: '#ff6565', light: '#ffa3a3', dark: '#d93b3b', edge: '#a81c1c', secondary: '#ff85b3', accent: '#d91b68' },
-  { name: 'bubblegum-sky', base: '#ff70b8', light: '#ffb0da', dark: '#d93d8b', edge: '#a31b60', secondary: '#70d6ff', accent: '#20a4dc' },
-  { name: 'butter-lilac', base: '#ffcb47', light: '#ffe28a', dark: '#d99e1a', edge: '#a37107', secondary: '#c792ea', accent: '#8e44ad' },
-  { name: 'cyan-grape', base: '#22d3ee', light: '#7eeaf8', dark: '#0891b2', edge: '#0e7490', secondary: '#c084fc', accent: '#9333ea' },
-  { name: 'emerald-mint', base: '#10b981', light: '#6ee7b7', dark: '#047857', edge: '#064e3b', secondary: '#5eead4', accent: '#0d9488' },
-];
-
-// Direction 3: Luminous Glow Palette (Deep radiant tech gradients like glowing sphere reference)
+// Direction 3: Luminous Glow Palette
 export const LUMINOUS_PALETTE: ColorEntry[] = [
   { name: 'electric-violet', base: '#6366f1', light: '#a5b4fc', dark: '#1e1b4b', edge: '#4338ca', secondary: '#818cf8', accent: '#38bdf8' },
   { name: 'cyan-beacon', base: '#06b6d4', light: '#67e8f9', dark: '#083344', edge: '#0891b2', secondary: '#22d3ee', accent: '#3b82f6' },
@@ -48,7 +141,7 @@ export const LUMINOUS_PALETTE: ColorEntry[] = [
   { name: 'aurora-teal', base: '#14b8a6', light: '#5eead4', dark: '#042f2e', edge: '#0f766e', secondary: '#2dd4bf', accent: '#6366f1' },
 ];
 
-// Direction 4: Playful Doodle Palette (Energetic pop colors from 3x3 bouncy smileys reference)
+// Direction 4: Playful Doodle Palette
 export const DOODLE_PALETTE: ColorEntry[] = [
   { name: 'forest-emerald', base: '#00965e', light: '#22c55e', dark: '#00633e', edge: '#004229' },
   { name: 'candy-pink', base: '#ff75a0', light: '#ffa3be', dark: '#d94672', edge: '#a81c46' },
@@ -60,7 +153,7 @@ export const DOODLE_PALETTE: ColorEntry[] = [
   { name: 'coral-fire', base: '#ff334b', light: '#ff7384', dark: '#c7162b', edge: '#8a0a19' },
 ];
 
-// Direction 5: Pastel Companion Palette (Gentle cloud pastels + mini friend colors)
+// Direction 5: Pastel Companion Palette
 export const PASTEL_PALETTE: ColorEntry[] = [
   { name: 'cloud-sky', base: '#5ba4fc', light: '#99cbff', dark: '#3b82d9', edge: '#235fad', secondary: '#f783ac', accent: '#ff4081' },
   { name: 'dreamy-lavender', base: '#9c84f7', light: '#c5b6fa', dark: '#7357d6', edge: '#4c33ad', secondary: '#ffd166', accent: '#f39c12' },
@@ -72,5 +165,4 @@ export const PASTEL_PALETTE: ColorEntry[] = [
   { name: 'apple-green', base: '#6ab04c', light: '#badc58', dark: '#488530', edge: '#2b591b', secondary: '#ffbe76', accent: '#f0932b' },
 ];
 
-// Default compatibility export
-export const GEM_COLORS = HABIT_PALETTE;
+export const GEM_COLORS = PUFFY_CLAY_PALETTE;
