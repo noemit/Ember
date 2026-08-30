@@ -47,18 +47,29 @@ export default function GemBlob({ seed, size = 30, state = 'idle', interactive =
     return () => window.removeEventListener('mousemove', onMove);
   }, [interactive]);
 
-  const renderEye = (offsetX: number, pupilRef: React.RefObject<SVGCircleElement>) => (
-    <g transform={`translate(${offsetX} 40)`}>
-      {eyeShape === 'round' && <circle r={8} fill="#fbfbff" />}
-      {eyeShape === 'almond' && <ellipse rx={9.5} ry={7} fill="#fbfbff" />}
-      {eyeShape === 'tall' && <rect x={-6} y={-9} width={12} height={18} rx={6} fill="#fbfbff" />}
+  const renderEye = (offsetX: number, pupilRef: React.RefObject<SVGCircleElement>, isLeft: boolean) => (
+    <g transform={`translate(${offsetX} 48)`}>
+      {/* Outer eye white / sclera - large, expressive anime/grokbot/poring style */}
+      {eyeShape === 'round' && <ellipse rx={12.5} ry={14} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
+      {eyeShape === 'almond' && <ellipse rx={14} ry={12} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
+      {eyeShape === 'tall' && <rect x={-11} y={-15} width={22} height={30} rx={11} fill="#ffffff" stroke={color.dark} strokeWidth={1.2} />}
+
       {isError ? (
-        <g stroke="#3a0d0d" strokeWidth={1.6} strokeLinecap="round">
-          <line x1={-4} y1={-4} x2={4} y2={4} />
-          <line x1={-4} y1={4} x2={4} y2={-4} />
+        <g stroke="#3a0d0d" strokeWidth={2.5} strokeLinecap="round">
+          <line x1={-6} y1={-6} x2={6} y2={6} />
+          <line x1={-6} y1={6} x2={6} y2={-6} />
         </g>
       ) : (
-        <circle ref={pupilRef} r={4.2} fill="#16130f" />
+        <g>
+          {/* Main large pupil / iris */}
+          <ellipse ref={pupilRef} rx={7.5} ry={9} fill="#141419" />
+          
+          {/* Big primary sparkle highlight (top-left) */}
+          <circle cx={isLeft ? -3.5 : -3.5} cy={-4} r={3.2} fill="#ffffff" />
+          
+          {/* Cute secondary bottom sparkle highlight */}
+          <circle cx={isLeft ? 2.5 : 2.5} cy={3.5} r={1.6} fill="#ffffff" opacity={0.85} />
+        </g>
       )}
     </g>
   );
@@ -67,9 +78,10 @@ export default function GemBlob({ seed, size = 30, state = 'idle', interactive =
     <div className="gem-blob" data-state={state} ref={wrapperRef} style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" width={size} height={size}>
         <defs>
-          <radialGradient id={gradientId} cx="38%" cy="32%" r="80%">
-            <stop offset="0%" stopColor={color.light} />
-            <stop offset="55%" stopColor={color.base} />
+          <radialGradient id={gradientId} cx="35%" cy="28%" r="78%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity={0.85} />
+            <stop offset="20%" stopColor={color.light} />
+            <stop offset="65%" stopColor={color.base} />
             <stop offset="100%" stopColor={color.dark} />
           </radialGradient>
         </defs>
@@ -83,17 +95,32 @@ export default function GemBlob({ seed, size = 30, state = 'idle', interactive =
           strokeLinejoin="round"
         />
 
-        <g stroke={color.light} strokeOpacity={0.45} strokeWidth={0.8} fill="none">
+        {/* Polished cabochon sheen & contour lines */}
+        <g stroke="#ffffff" strokeOpacity={0.35} strokeWidth={1} fill="none">
           {shape.facets.map((facet, index) => (
             <path key={index} d={facet} />
           ))}
         </g>
 
+        {/* Glossy top-left primary specular highlight ellipse */}
+        <ellipse
+          cx={shape.highlight.cx}
+          cy={shape.highlight.cy}
+          rx={shape.highlight.rx}
+          ry={shape.highlight.ry}
+          fill="#ffffff"
+          opacity={0.48}
+          transform={shape.highlight.transform}
+        />
+
+        {/* Secondary soft rim highlight */}
+        {shape.shine && <path d={shape.shine} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" opacity={0.4} fill="none" />}
+
         {isError && <circle cx={50} cy={50} r={46} fill="rgba(255,90,90,0.32)" />}
 
         <g className="gem-eyes">
-          {renderEye(-11, leftPupil)}
-          {renderEye(11, rightPupil)}
+          {renderEye(-16, leftPupil, true)}
+          {renderEye(16, rightPupil, false)}
         </g>
       </svg>
     </div>
