@@ -136,8 +136,10 @@ export default function PuffyClayRenderer({
   const eyeY = shape.eyeY;
   const spacing = shape.eyeSpacing;
   const eyeR = shape.eyeRadius;
-  const naturalMouthY = eyeY + eyeR * 0.92;
+  // Position mouth with plenty of breathing room below the eyes & blush
+  const mouthY = shape.mouthY ?? eyeY + eyeR + 12;
 
+  // Pure dark pupils with white reflections (NO color inside the eyes)
   const renderPupil = (ref: React.RefObject<SVGGElement>) => {
     if (isError) {
       return (
@@ -149,11 +151,10 @@ export default function PuffyClayRenderer({
     }
 
     if (eyeStyle === 1) {
-      // Style 1: Anime Star Sparkle Pupil
+      // Style 1: Anime Star Sparkle Pupil (Pure dark with multiple bright white glints)
       return (
         <g ref={ref} className="clay-pupil-group">
-          <ellipse cx="0" cy="0" rx={eyeR * 0.58} ry={eyeR * 0.64} fill="#12111a" />
-          <ellipse cx="0" cy={eyeR * 0.22} rx={eyeR * 0.44} ry={eyeR * 0.32} fill={color.base} opacity="0.85" />
+          <ellipse cx="0" cy="0" rx={eyeR * 0.58} ry={eyeR * 0.64} fill="#111118" />
           <circle cx={-eyeR * 0.22} cy={-eyeR * 0.25} r={eyeR * 0.22} fill="#ffffff" />
           <circle cx={eyeR * 0.2} cy={eyeR * 0.22} r={eyeR * 0.12} fill="#ffffff" opacity="0.9" />
           <circle cx={-eyeR * 0.18} cy={eyeR * 0.26} r={eyeR * 0.08} fill="#ffffff" opacity="0.85" />
@@ -165,7 +166,7 @@ export default function PuffyClayRenderer({
       // Style 2: Soft Kawaii Round Pupil
       return (
         <g ref={ref} className="clay-pupil-group">
-          <circle cx="0" cy="0" r={eyeR * 0.52} fill="#151420" />
+          <circle cx="0" cy="0" r={eyeR * 0.52} fill="#12121a" />
           <circle cx={-eyeR * 0.18} cy={-eyeR * 0.18} r={eyeR * 0.2} fill="#ffffff" />
           <circle cx={eyeR * 0.16} cy={eyeR * 0.16} r={eyeR * 0.1} fill="#ffffff" opacity="0.9" />
         </g>
@@ -176,7 +177,7 @@ export default function PuffyClayRenderer({
       // Style 3: Deep Wonder Large Eye
       return (
         <g ref={ref} className="clay-pupil-group">
-          <circle cx="0" cy="0" r={eyeR * 0.6} fill="#101018" />
+          <circle cx="0" cy="0" r={eyeR * 0.6} fill="#0d0d14" />
           <circle cx={-eyeR * 0.22} cy={-eyeR * 0.24} r={eyeR * 0.24} fill="#ffffff" />
           <circle cx={eyeR * 0.22} cy={eyeR * 0.22} r={eyeR * 0.12} fill="#ffffff" opacity="0.95" />
         </g>
@@ -186,7 +187,7 @@ export default function PuffyClayRenderer({
     // Default Style 0: Classic 3D Glossy Googly (Reference 05dcb78b151b13d955554fa4fc249a7b.jpg)
     return (
       <g ref={ref} className="clay-pupil-group">
-        <circle cx="0" cy="0" r={eyeR * 0.54} fill="#13131d" />
+        <circle cx="0" cy="0" r={eyeR * 0.54} fill="#111116" />
         <circle cx={-eyeR * 0.2} cy={-eyeR * 0.2} r={eyeR * 0.22} fill="#ffffff" />
         <circle cx={eyeR * 0.18} cy={eyeR * 0.18} r={eyeR * 0.11} fill="#ffffff" opacity="0.9" />
       </g>
@@ -225,7 +226,7 @@ export default function PuffyClayRenderer({
       style={{ overflow: 'visible' }}
     >
       <defs>
-        {/* Eye circular clip paths to prevent any leakage */}
+        {/* Eye circular clip paths */}
         <clipPath id={clipLeftId}>
           <circle cx="0" cy="0" r={eyeR} />
         </clipPath>
@@ -301,7 +302,7 @@ export default function PuffyClayRenderer({
         {/* Rosy Blush Cheeks under eyes */}
         <ellipse
           cx={50 - spacing - eyeR * 0.72}
-          cy={eyeY + eyeR * 0.85}
+          cy={eyeY + eyeR * 0.75}
           rx={eyeR * 0.44}
           ry={eyeR * 0.25}
           fill={color.accent ?? '#ff4081'}
@@ -310,7 +311,7 @@ export default function PuffyClayRenderer({
         />
         <ellipse
           cx={50 + spacing + eyeR * 0.72}
-          cy={eyeY + eyeR * 0.85}
+          cy={eyeY + eyeR * 0.75}
           rx={eyeR * 0.44}
           ry={eyeR * 0.25}
           fill={color.accent ?? '#ff4081'}
@@ -324,21 +325,21 @@ export default function PuffyClayRenderer({
           {renderEye(spacing, rightPupilRef, false)}
         </g>
 
-        {/* Natural Facial Mouth Expression (Centered directly under eyes) */}
-        {isNeedsInput ? (
-          /* Cute Yelling / Talking Mouth on Face */
-          <g transform={`translate(50 ${naturalMouthY})`} className="clay-yelling-mouth">
-            <path
-              d="M -6 -1 Q 0 -3 6 -1 C 7 5, 5 9, 0 9 C -5 9, -7 5, -6 -1 Z"
-              fill="#181320"
-              stroke="#0d0a12"
-              strokeWidth="0.8"
-            />
-            <path d="M -3.5 4 Q 0 8 3.5 4 Q 2 2 -2 2 Z" fill="#ff5c8a" />
-          </g>
-        ) : isError ? (
-          /* Wobbly Sad Mouth */
-          <g transform={`translate(50 ${naturalMouthY})`}>
+        {/* Natural Facial Mouth Expression (nested in outer positioned <g> to preserve translate) */}
+        <g transform={`translate(50 ${mouthY})`}>
+          {isNeedsInput ? (
+            /* Yelling / Talking Mouth on Face with animated chatter */
+            <g className="clay-yelling-mouth">
+              <path
+                d="M -7 -2 Q 0 -5 7 -2 C 8 5, 6 10, 0 10 C -6 10, -8 5, -7 -2 Z"
+                fill="#16131e"
+                stroke="#0a0810"
+                strokeWidth="0.9"
+              />
+              <path d="M -4 4 Q 0 9 4 4 Q 2 2 -2 2 Z" fill="#ff5c8a" />
+            </g>
+          ) : isError ? (
+            /* Wobbly Sad Mouth */
             <path
               d="M -7 2 Q -3 -3 0 1 Q 3 -3 7 2"
               fill="none"
@@ -346,10 +347,8 @@ export default function PuffyClayRenderer({
               strokeWidth="2.8"
               strokeLinecap="round"
             />
-          </g>
-        ) : isActive ? (
-          /* Cheerful Happy Open Smile */
-          <g transform={`translate(50 ${naturalMouthY - 1})`} className="clay-active-mouth">
+          ) : isActive ? (
+            /* Cheerful Happy Open Smile */
             <path
               d="M -6 -1 Q 0 7 6 -1"
               fill="none"
@@ -357,37 +356,37 @@ export default function PuffyClayRenderer({
               strokeWidth="2.6"
               strokeLinecap="round"
             />
-          </g>
-        ) : (
-          /* Sweet Idle Smile */
-          <g transform={`translate(50 ${naturalMouthY - 1})`}>
+          ) : (
+            /* Sweet Idle Smile */
             <path
-              d="M -4 0 Q 0 4 4 0"
+              d="M -4.5 0 Q 0 4.5 4.5 0"
               fill="none"
               stroke="#1a1824"
-              strokeWidth="2"
+              strokeWidth="2.2"
               strokeLinecap="round"
-              opacity="0.85"
+              opacity="0.88"
             />
-          </g>
-        )}
+          )}
+        </g>
       </g>
 
       {/* Needs-Input Clean Notification Speech/Alert Badge */}
       {isNeedsInput && (
-        <g transform="translate(78 16)" className="clay-alert-badge">
-          <circle cx="0" cy="0" r="9" fill={`url(#${alertBadgeGradId})`} stroke="#ffffff" strokeWidth="1.6" />
-          <text
-            x="0"
-            y="3.8"
-            textAnchor="middle"
-            fill="#ffffff"
-            fontSize="11"
-            fontWeight="900"
-            fontFamily="system-ui, sans-serif"
-          >
-            !
-          </text>
+        <g transform="translate(78 16)">
+          <g className="clay-alert-badge">
+            <circle cx="0" cy="0" r="9" fill={`url(#${alertBadgeGradId})`} stroke="#ffffff" strokeWidth="1.6" />
+            <text
+              x="0"
+              y="3.8"
+              textAnchor="middle"
+              fill="#ffffff"
+              fontSize="11"
+              fontWeight="900"
+              fontFamily="system-ui, sans-serif"
+            >
+              !
+            </text>
+          </g>
         </g>
       )}
     </svg>

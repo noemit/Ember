@@ -66,14 +66,12 @@
 
 .gem-blob-puffy-clay .clay-yelling-mouth {
   animation: clay-mouth-chatter 0.22s ease-in-out infinite alternate;
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
+  transform-origin: 0px 0px;
 }
 
 .gem-blob-puffy-clay .clay-alert-badge {
   animation: clay-badge-pop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate;
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
+  transform-origin: 0px 0px;
 }
 
 /* Error State: Hilarious Dizzy Wobble & Shivering X Eyes */

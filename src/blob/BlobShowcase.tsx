@@ -63,10 +63,10 @@ export default function BlobShowcase({ onClose }: Props) {
           <div className="showcase-header-top">
             <div className="showcase-title-group">
               <h2>
-                3D Puffy Clay <span className="showcase-badge">18 Experimental Shapes</span>
+                3D Puffy Clay <span className="showcase-badge">Curated 8-Shape Suite</span>
               </h2>
               <p className="showcase-subtitle">
-                Review all 18 proposed shapes below to decide which ones to keep in the final roster
+                Curated shapes with stretched subtle gradients, stable session seeds, and procedural active loops
               </p>
             </div>
             <button className="icon-button" onClick={onClose}>
@@ -82,7 +82,7 @@ export default function BlobShowcase({ onClose }: Props) {
                 data-active={activeTab === 'shapes'}
                 onClick={() => setActiveTab('shapes')}
               >
-                ★ 18 Shape Catalog ({PUFFY_CLAY_SHAPES.length})
+                ★ 8 Selected Shapes ({PUFFY_CLAY_SHAPES.length})
               </button>
               <button
                 className="showcase-tab"

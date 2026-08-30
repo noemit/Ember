@@ -32,7 +32,6 @@ export default function App() {
   const [models, setModels] = React.useState<ModelOption[]>([]);
   const [defaultModelId, setDefaultModelId] = React.useState<string | null>(null);
   const [modelMru, setModelMru] = React.useState<string[]>([]);
-  const [firstPromptBySession, setFirstPromptBySession] = React.useState<Record<string, string>>({});
   const [showcaseOpen, setShowcaseOpen] = React.useState(false);
   const [themeId, setThemeId] = React.useState<string>(DEFAULT_THEME_ID);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -42,10 +41,10 @@ export default function App() {
   const sessionSeeds = React.useMemo(() => {
     const map: Record<string, string> = {};
     sessions.forEach((session) => {
-      map[session.id] = firstPromptBySession[session.id] ?? session.id;
+      map[session.id] = session.id;
     });
     return map;
-  }, [sessions, firstPromptBySession]);
+  }, [sessions]);
 
   React.useEffect(() => {
     applyTheme(themeId);
@@ -162,14 +161,6 @@ export default function App() {
     void loadMessages(instanceId, selectedSessionId).then((next) => {
       if (!cancelled) {
         setMessages(next);
-        const firstUser = next.find((message) => message.role === 'user');
-        if (firstUser) {
-          setFirstPromptBySession((prev) =>
-            prev[selectedSessionId] === firstUser.text
-              ? prev
-              : { ...prev, [selectedSessionId]: firstUser.text }
-          );
-        }
       }
     });
 
