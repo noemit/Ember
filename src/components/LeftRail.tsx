@@ -128,7 +128,7 @@ export default function LeftRail({
     >
       <GemBlob
         seed={seeds[session.id] ?? session.id}
-        size={32}
+        size={38}
         state={states[session.id] ?? 'idle'}
       />
       <span className="session-text">

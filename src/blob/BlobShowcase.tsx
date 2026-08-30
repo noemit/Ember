@@ -1,67 +1,365 @@
 import * as React from 'react';
 import GemBlob from './GemBlob';
+import { BLOB_DIRECTIONS, type BlobDirection } from './types';
+import { useActiveBlobDirection } from './directionState';
 import type { BallState } from '../types';
-
-const SAMPLE_WORDS = [
-  'amber', 'ocean', 'quiet', 'pixel', 'storm', 'lunar', 'coral', 'birch', 'violet', 'onyx',
-  'drift', 'maple', 'cobalt', 'pearl', 'raven', 'solar', 'mint', 'obsidian', 'cinder', 'willow',
-  'azure', 'quartz', 'thorn', 'frost', 'sable', 'jade', 'saffron', 'nocturne', 'garnet', 'topaz',
-];
-
-const STATES: BallState[] = ['idle', 'active', 'needs-input', 'error'];
-
-const randomSeed = (): string => {
-  const first = SAMPLE_WORDS[Math.floor(Math.random() * SAMPLE_WORDS.length)];
-  const second = SAMPLE_WORDS[Math.floor(Math.random() * SAMPLE_WORDS.length)];
-  return `${first} ${second}`;
-};
 
 type Props = {
   onClose: () => void;
 };
 
+const SAMPLE_AGENTS = [
+  'Habit QA',
+  'Habit distribution',
+  'Youtube Manager',
+  'Habit.am manager',
+  'QA Engineer',
+  'Habit Instagram',
+  'Search Console',
+  'Design Critic',
+  'Prompt Tuner',
+  'Build Runner',
+  'Code Refactor',
+  'Data Pipeline',
+  'Release Manager',
+  'Security Audit',
+  'Documentation Bot',
+  'Metrics Analyst',
+];
+
+const MATRIX_AGENTS = [
+  { name: 'Habit QA', seed: 'Habit QA testing agent' },
+  { name: 'Habit distribution', seed: 'Habit distribution search console' },
+  { name: 'Youtube Manager', seed: 'Youtube Manager studio stats' },
+  { name: 'Habit.am manager', seed: 'Habit.am manager habit distribution' },
+  { name: 'QA Engineer', seed: 'QA Engineer list verifier' },
+  { name: 'Habit Instagram', seed: 'Habit Instagram media crawler' },
+];
+
+const STATES: BallState[] = ['idle', 'active', 'needs-input', 'error'];
+
 export default function BlobShowcase({ onClose }: Props) {
-  const [seeds, setSeeds] = React.useState<string[]>(() => Array.from({ length: 30 }, randomSeed));
-  const [showStates, setShowStates] = React.useState(false);
+  const [activeGlobalDirection, setGlobalDirection] = useActiveBlobDirection();
+  const [currentTab, setCurrentTab] = React.useState<BlobDirection | 'matrix'>(activeGlobalDirection);
+  const [sandboxSeed, setSandboxSeed] = React.useState('Habit QA');
+  const [sandboxState, setSandboxState] = React.useState<BallState>('idle');
+  const [matrixState, setMatrixState] = React.useState<BallState>('idle');
+  const [customMatrixSeed, setCustomMatrixSeed] = React.useState('');
+
+  const currentDirectionMeta = BLOB_DIRECTIONS.find((d) => d.id === currentTab);
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="showcase" onClick={(event) => event.stopPropagation()}>
-        <div className="showcase-head">
-          <h2>Blob showcase</h2>
-          <button className="icon-button" onClick={() => setSeeds(Array.from({ length: 30 }, randomSeed))}>
-            Shuffle
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => setShowStates((prev) => !prev)}
-          >
-            {showStates ? 'Hide states' : 'Show active state'}
-          </button>
-          <button className="icon-button" onClick={onClose}>
-            Close
-          </button>
+    <div className="showcase-overlay" onClick={onClose}>
+      <div className="showcase-container" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="showcase-header">
+          <div className="showcase-header-top">
+            <div className="showcase-title-group">
+              <h2>
+                Agent Personality Showcase <span className="showcase-badge">5 Experimental Directions</span>
+              </h2>
+              <p className="showcase-subtitle">
+                Review and select the best design direction inspired by synced/agent-personality
+              </p>
+            </div>
+            <button className="icon-button" onClick={onClose}>
+              ✕ Close
+            </button>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="showcase-nav-tabs">
+            {BLOB_DIRECTIONS.map((dir) => (
+              <button
+                key={dir.id}
+                className="showcase-tab"
+                data-active={currentTab === dir.id}
+                onClick={() => setCurrentTab(dir.id)}
+              >
+                {dir.title}
+                {activeGlobalDirection === dir.id ? ' ★ (Active)' : ''}
+              </button>
+            ))}
+            <button
+              className="showcase-tab"
+              data-active={currentTab === 'matrix'}
+              onClick={() => setCurrentTab('matrix')}
+            >
+              ⊞ All 5 Side-by-Side Matrix
+            </button>
+          </div>
         </div>
 
-        {showStates ? (
-          <div className="showcase-grid">
-            {STATES.map((state) => (
-              <div className="showcase-cell" key={state} style={{ gridColumn: 'span 1' }}>
-                <GemBlob seed="demo" size={64} state={state} interactive={false} />
-                <span className="showcase-seed">{state}</span>
+        {/* Body Content */}
+        <div className="showcase-body">
+          {currentTab === 'matrix' ? (
+            /* Matrix Comparison View */
+            <div className="matrix-container">
+              <div className="direction-meta-card">
+                <div className="direction-meta-top">
+                  <span className="direction-meta-title">Side-by-Side Comparison Matrix</span>
+                  <span className="direction-inspiration-tag">Compare All 5 Directions</span>
+                </div>
+                <p className="direction-desc">
+                  Review the exact same agent seeds and states rendered simultaneously across all 5 design directions to compare silhouette readability, eye personality, color depth, and visual presence.
+                </p>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+                  <div className="control-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <span className="control-label">State:</span>
+                    <div className="control-buttons-row">
+                      {STATES.map((st) => (
+                        <button
+                          key={st}
+                          className="control-btn"
+                          data-selected={matrixState === st}
+                          onClick={() => setMatrixState(st)}
+                        >
+                          {st}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <input
+                      type="text"
+                      className="custom-seed-input"
+                      placeholder="Type any agent name to test across all 5..."
+                      value={customMatrixSeed}
+                      onChange={(e) => setCustomMatrixSeed(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="showcase-grid">
-            {seeds.map((seed, index) => (
-              <div className="showcase-cell" key={index}>
-                <GemBlob seed={seed} size={64} state="idle" interactive={false} />
-                <span className="showcase-seed">{seed}</span>
+
+              {/* Custom Seed Row if typed */}
+              {customMatrixSeed.trim() && (
+                <div className="matrix-row">
+                  <span className="matrix-row-title">Custom: "{customMatrixSeed}"</span>
+                  <div className="matrix-columns">
+                    {BLOB_DIRECTIONS.map((dir) => (
+                      <div
+                        key={dir.id}
+                        className="matrix-card"
+                        onClick={() => {
+                          setGlobalDirection(dir.id);
+                          setCurrentTab(dir.id);
+                        }}
+                      >
+                        <GemBlob
+                          seed={customMatrixSeed}
+                          direction={dir.id}
+                          size={64}
+                          state={matrixState}
+                          interactive={true}
+                        />
+                        <span className="matrix-card-name">{dir.title.split(':')[1]}</span>
+                        <span className="matrix-card-style">{dir.subtitle}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Standard Agents Matrix Rows */}
+              {MATRIX_AGENTS.map((item) => (
+                <div className="matrix-row" key={item.name}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="matrix-row-title">{item.name}</span>
+                    <span className="instance-meta" style={{ fontSize: 10 }}>seed: {item.seed}</span>
+                  </div>
+                  <div className="matrix-columns">
+                    {BLOB_DIRECTIONS.map((dir) => (
+                      <div
+                        key={dir.id}
+                        className="matrix-card"
+                        onClick={() => {
+                          setGlobalDirection(dir.id);
+                          setCurrentTab(dir.id);
+                        }}
+                        title={`Click to switch app to ${dir.title}`}
+                      >
+                        <GemBlob
+                          seed={item.seed}
+                          direction={dir.id}
+                          size={56}
+                          state={matrixState}
+                          interactive={true}
+                        />
+                        <span className="matrix-card-name">{dir.title.split(':')[1]}</span>
+                        <span className="matrix-card-style">
+                          {activeGlobalDirection === dir.id ? '★ Active Style' : 'Click to preview'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : currentDirectionMeta ? (
+            /* Single Direction Deep Dive */
+            <>
+              {/* Direction Meta Card */}
+              <div className="direction-meta-card">
+                <div className="direction-meta-top">
+                  <div>
+                    <span className="direction-meta-title">{currentDirectionMeta.title}</span>
+                    <span style={{ color: 'var(--text-dim)', fontSize: 13, marginLeft: 8 }}>
+                      — {currentDirectionMeta.subtitle}
+                    </span>
+                  </div>
+                  <span className="direction-inspiration-tag">{currentDirectionMeta.inspiration}</span>
+                </div>
+                <p className="direction-desc">{currentDirectionMeta.description}</p>
+                <div className="direction-highlights">
+                  {currentDirectionMeta.highlights.map((h, i) => (
+                    <span key={i} className="direction-highlight-pill">
+                      ✓ {h}
+                    </span>
+                  ))}
+                </div>
               </div>
-            ))}
+
+              {/* Interactive Sandbox */}
+              <div className="sandbox-section">
+                <div className="sandbox-hero">
+                  <GemBlob
+                    seed={sandboxSeed}
+                    direction={currentDirectionMeta.id}
+                    size={110}
+                    state={sandboxState}
+                    interactive={true}
+                  />
+                  <div className="sandbox-hint">Move cursor over blob to test gaze</div>
+                  <span className="showcase-cell-name">{sandboxSeed}</span>
+                </div>
+
+                <div className="sandbox-controls">
+                  <div className="control-group">
+                    <span className="control-label">Agent Name / Seed</span>
+                    <input
+                      type="text"
+                      className="custom-seed-input"
+                      value={sandboxSeed}
+                      onChange={(e) => setSandboxSeed(e.target.value)}
+                      placeholder="Type agent name or prompt..."
+                    />
+                  </div>
+
+                  <div className="control-group">
+                    <span className="control-label">Test Agent State</span>
+                    <div className="control-buttons-row">
+                      {STATES.map((st) => (
+                        <button
+                          key={st}
+                          className="control-btn"
+                          data-selected={sandboxState === st}
+                          onClick={() => setSandboxState(st)}
+                        >
+                          {st}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <button
+                      className="primary-button"
+                      style={{ width: 'auto', padding: '6px 14px', fontSize: 12 }}
+                      onClick={() => setGlobalDirection(currentDirectionMeta.id)}
+                    >
+                      {activeGlobalDirection === currentDirectionMeta.id
+                        ? '✓ Currently Active in UI'
+                        : `Set as Active UI Style (${currentDirectionMeta.title.split(':')[1].trim()})`}
+                    </button>
+                    <button
+                      className="icon-button"
+                      onClick={() =>
+                        setSandboxSeed(SAMPLE_AGENTS[Math.floor(Math.random() * SAMPLE_AGENTS.length)])
+                      }
+                    >
+                      Randomize Name
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sizing Scale Strip */}
+              <div className="size-strip-section">
+                <span className="control-label">UI Sizing Scale (Mini, Sidebar, Card, Showcase, Hero)</span>
+                <div className="size-strip">
+                  {[
+                    { size: 24, label: '24px (compact)' },
+                    { size: 36, label: '36px (left rail)' },
+                    { size: 48, label: '48px (card)' },
+                    { size: 64, label: '64px (modal)' },
+                    { size: 96, label: '96px (hero)' },
+                  ].map((s) => (
+                    <div key={s.size} className="size-item">
+                      <GemBlob
+                        seed={sandboxSeed}
+                        direction={currentDirectionMeta.id}
+                        size={s.size}
+                        state={sandboxState}
+                        interactive={true}
+                      />
+                      <span className="size-tag">{s.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generated Agent Grid */}
+              <div className="agent-grid-section">
+                <div className="section-heading">
+                  <span>Generated Agents in this Style ({SAMPLE_AGENTS.length} samples)</span>
+                  <button
+                    className="icon-button"
+                    style={{ fontSize: 11 }}
+                    onClick={() => setSandboxSeed(SAMPLE_AGENTS[Math.floor(Math.random() * SAMPLE_AGENTS.length)])}
+                  >
+                    Shuffle Samples
+                  </button>
+                </div>
+                <div className="showcase-grid">
+                  {SAMPLE_AGENTS.map((agentName) => (
+                    <div
+                      key={agentName}
+                      className="showcase-cell"
+                      onClick={() => setSandboxSeed(agentName)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to load into sandbox"
+                    >
+                      <GemBlob
+                        seed={agentName}
+                        direction={currentDirectionMeta.id}
+                        size={56}
+                        state="idle"
+                        interactive={true}
+                      />
+                      <span className="showcase-cell-name">{agentName}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="showcase-footer">
+          <div className="showcase-active-indicator">
+            Active UI Style: <strong>{BLOB_DIRECTIONS.find((d) => d.id === activeGlobalDirection)?.title}</strong>
           </div>
-        )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="icon-button" onClick={() => setCurrentTab('matrix')}>
+              Matrix View
+            </button>
+            <button className="primary-button" style={{ width: 'auto' }} onClick={onClose}>
+              Done Reviewing
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
