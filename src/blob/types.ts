@@ -2,6 +2,7 @@ import type { BallState } from '../types';
 
 export type BlobDirection =
   | 'puffy-clay'
+  | 'living-slab'
   | 'star-candy'
   | 'faceted-gem'
   | 'retro-block'
@@ -33,8 +34,22 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
     ],
   },
   {
+    id: 'living-slab',
+    title: 'Direction 2: Living Character Slab',
+    subtitle: 'Unified Background & Expressive Embedded Face',
+    inspiration: 'User Concept (Seamless session background with animated eyes & mouth)',
+    description:
+      'The entire session card is the living character: a colored rounded-corner slab where the background spans the character, title, and subtitle. No container bouncing or pulsing — all alive activity is communicated purely through expressive eyes and mouth.',
+    highlights: [
+      'Background color spans the entire session card & typography',
+      'Embedded animated face on the left (gaze tracking, blinking, active scan, talking)',
+      '100% stable layout: no container hopping, pulsing, or glowing',
+      'Rich seeded colorways with high-contrast text integration',
+    ],
+  },
+  {
     id: 'star-candy',
-    title: 'Direction 2: Gummy Konpeitō / Star Candy',
+    title: 'Direction 3: Gummy Konpeitō / Star Candy',
     subtitle: 'Crystalline Sugar Star & Internal Glitter Bloom',
     inspiration: 'synced/agent-personality (72a77f99 gif & 7ec270c4)',
     description:
@@ -48,7 +63,7 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
   },
   {
     id: 'faceted-gem',
-    title: 'Direction 3: Faceted Cyber Gem',
+    title: 'Direction 4: Faceted Cyber Gem',
     subtitle: 'Sharp Multi-Plane Facets & Pixel-Glitch Accents',
     inspiration: 'synced/agent-personality (e26eb778 & 64508875)',
     description:
@@ -62,7 +77,7 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
   },
   {
     id: 'retro-block',
-    title: 'Direction 4: Retro Blockheads',
+    title: 'Direction 5: Retro Blockheads',
     subtitle: 'Warm Color Squares & Expressive Graphic Faces',
     inspiration: 'synced/agent-personality (f9cbec03)',
     description:
@@ -76,7 +91,7 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
   },
   {
     id: 'line-mascot',
-    title: 'Direction 5: Sprout Kewpie Mascot',
+    title: 'Direction 6: Sprout Kewpie Mascot',
     subtitle: 'Vintage Line Art & Iconic Sprout Cheeks',
     inspiration: 'synced/agent-personality (77e9cab4 & 7e824755)',
     description:
@@ -90,7 +105,7 @@ export const BLOB_DIRECTIONS: DirectionMeta[] = [
   },
   {
     id: 'micro-critter',
-    title: 'Direction 6: Quirky Micro-Critters',
+    title: 'Direction 7: Quirky Micro-Critters',
     subtitle: 'Playful Line Doodles with Animated Little Legs',
     inspiration: 'synced/agent-personality (131eeba4 & 99124d0d)',
     description:

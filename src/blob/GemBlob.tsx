@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { BlobDirection, BlobProps } from './types';
 import { useActiveBlobDirection } from './directionState';
 import PuffyClayRenderer from './renderers/PuffyClayRenderer';
+import LivingSlabRenderer from './renderers/LivingSlabRenderer';
 import StarCandyRenderer from './renderers/StarCandyRenderer';
 import FacetedGemRenderer from './renderers/FacetedGemRenderer';
 import RetroBlockRenderer from './renderers/RetroBlockRenderer';
@@ -36,6 +37,8 @@ export default function GemBlob({
             colorIndex={colorIndex}
           />
         );
+      case 'living-slab':
+        return <LivingSlabRenderer seed={seed} size={size} state={state} interactive={interactive} />;
       case 'star-candy':
         return <StarCandyRenderer seed={seed} size={size} state={state} interactive={interactive} />;
       case 'faceted-gem':

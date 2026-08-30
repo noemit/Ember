@@ -1,5 +1,8 @@
 import * as React from 'react';
 import GemBlob from '../blob/GemBlob';
+import { useActiveBlobDirection } from '../blob/directionState';
+import LivingSlabFace, { SLAB_PALETTE } from '../blob/renderers/LivingSlabFace';
+import { hashString, mulberry32 } from '../blob/seed';
 import type { BallState, Project, Session } from '../types';
 
 type Props = {
@@ -119,24 +122,72 @@ export default function LeftRail({
     return result;
   }, [sortedSessions, projects, sorter]);
 
-  const renderSession = (session: Session) => (
-    <button
-      className="session"
-      key={session.id}
-      data-selected={session.id === selectedSessionId}
-      onClick={() => onSelectSession(session.id)}
-    >
-      <GemBlob
-        seed={seeds[session.id] ?? session.id}
-        size={44}
-        state={states[session.id] ?? 'idle'}
-      />
-      <span className="session-text">
-        <span className="session-title">{session.title ?? session.id}</span>
-        <span className="session-preview">{previews[session.id] ?? ''}</span>
-      </span>
-    </button>
-  );
+  const [globalDirection] = useActiveBlobDirection();
+
+  const renderSession = (session: Session) => {
+    const isSelected = session.id === selectedSessionId;
+    const sessionSeed = seeds[session.id] ?? session.id;
+    const sessionState = states[session.id] ?? 'idle';
+
+    if (globalDirection === 'living-slab') {
+      const seedHash = hashString(sessionSeed);
+      const rng = mulberry32(seedHash);
+      const slabColor = SLAB_PALETTE[Math.floor(rng() * SLAB_PALETTE.length)];
+
+      return (
+        <button
+          className="session living-slab-session"
+          key={session.id}
+          data-selected={isSelected}
+          onClick={() => onSelectSession(session.id)}
+          style={{
+            background: slabColor.bg,
+            border: `1.5px solid ${isSelected ? 'var(--accent)' : slabColor.border}`,
+            boxShadow: isSelected ? `0 0 0 1px var(--accent), 0 4px 14px ${slabColor.bg}99` : `0 3px 10px ${slabColor.bg}80`,
+            borderRadius: 9,
+            padding: '6px 9px',
+            marginBottom: 4,
+          }}
+        >
+          <div style={{ flex: 'none', display: 'flex', alignItems: 'center' }}>
+            <LivingSlabFace
+              seed={sessionSeed}
+              size={36}
+              state={sessionState}
+              interactive={true}
+            />
+          </div>
+          <span className="session-text">
+            <span className="session-title" style={{ color: slabColor.text, fontWeight: 600 }}>
+              {session.title ?? session.id}
+            </span>
+            <span className="session-preview" style={{ color: slabColor.textDim }}>
+              {previews[session.id] ?? ''}
+            </span>
+          </span>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        className="session"
+        key={session.id}
+        data-selected={isSelected}
+        onClick={() => onSelectSession(session.id)}
+      >
+        <GemBlob
+          seed={sessionSeed}
+          size={44}
+          state={sessionState}
+        />
+        <span className="session-text">
+          <span className="session-title">{session.title ?? session.id}</span>
+          <span className="session-preview">{previews[session.id] ?? ''}</span>
+        </span>
+      </button>
+    );
+  };
 
   const renderSectionHeader = (label: string, count: number, key: string) => (
     <button
