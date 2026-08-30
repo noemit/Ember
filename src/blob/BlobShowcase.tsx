@@ -1,9 +1,10 @@
 import * as React from 'react';
 import GemBlob from './GemBlob';
+import { BLOB_DIRECTIONS, type BlobDirection } from './types';
 import { PUFFY_CLAY_SHAPES } from './shapes';
 import { PUFFY_CLAY_PALETTE } from './palette';
+import { useActiveBlobDirection } from './directionState';
 import type { BallState } from '../types';
-import type { PuffyShape } from './types';
 
 type Props = {
   onClose: () => void;
@@ -28,6 +29,15 @@ const SAMPLE_AGENTS = [
   'Metrics Analyst',
 ];
 
+const MATRIX_AGENTS = [
+  { name: 'Habit QA', seed: 'Habit QA testing agent' },
+  { name: 'Habit distribution', seed: 'Habit distribution search console' },
+  { name: 'Youtube Manager', seed: 'Youtube Manager studio stats' },
+  { name: 'Habit.am manager', seed: 'Habit.am manager habit distribution' },
+  { name: 'QA Engineer', seed: 'QA Engineer list verifier' },
+  { name: 'Habit Instagram', seed: 'Habit Instagram media crawler' },
+];
+
 const STATES: { id: BallState; label: string; desc: string }[] = [
   { id: 'idle', label: 'Idle', desc: 'Organic breathing & floating bob movement' },
   { id: 'active', label: 'Active', desc: 'Busy procedural loop: hopping, scanning code, 360° backflips, shimmies & curious lean' },
@@ -35,388 +45,406 @@ const STATES: { id: BallState; label: string; desc: string }[] = [
   { id: 'error', label: 'Error', desc: 'Hilarious spinning X eyes + shivering body' },
 ];
 
-const CATEGORIES = ['All', 'Clouds & Organic', 'Creatures & Characters', 'Geometric & Puffs', 'Playful & Novelty'] as const;
-
 export default function BlobShowcase({ onClose }: Props) {
-  const [selectedShapeIndex, setSelectedShapeIndex] = React.useState<number>(0);
-  const [selectedColorIndex, setSelectedColorIndex] = React.useState<number>(0);
+  const [activeGlobalDirection, setGlobalDirection] = useActiveBlobDirection();
+  const [currentTab, setCurrentTab] = React.useState<BlobDirection | 'matrix'>(activeGlobalDirection);
+  const [sandboxSeed, setSandboxSeed] = React.useState('Habit QA');
   const [sandboxState, setSandboxState] = React.useState<BallState>('idle');
-  const [categoryFilter, setCategoryFilter] = React.useState<string>('All');
-  const [cardSize, setCardSize] = React.useState<96 | 64>(96);
-  const [activeTab, setActiveTab] = React.useState<'shapes' | 'states' | 'roster'>('shapes');
+  const [matrixState, setMatrixState] = React.useState<BallState>('idle');
+  const [customMatrixSeed, setCustomMatrixSeed] = React.useState('');
+  const [themeMode, setThemeMode] = React.useState<'dark' | 'light'>('dark');
 
-  const selectedShape: PuffyShape = PUFFY_CLAY_SHAPES[selectedShapeIndex] ?? PUFFY_CLAY_SHAPES[0];
-  const selectedColor = PUFFY_CLAY_PALETTE[selectedColorIndex] ?? PUFFY_CLAY_PALETTE[0];
-
-  const filteredShapes = React.useMemo(() => {
-    if (categoryFilter === 'All') return PUFFY_CLAY_SHAPES.map((shape, index) => ({ shape, index }));
-    return PUFFY_CLAY_SHAPES.map((shape, index) => ({ shape, index })).filter(
-      (item) => item.shape.category === categoryFilter
-    );
-  }, [categoryFilter]);
+  const currentDirectionMeta = BLOB_DIRECTIONS.find((d) => d.id === currentTab);
 
   return (
     <div className="showcase-overlay" onClick={onClose}>
-      <div className="showcase-container" onClick={(e) => e.stopPropagation()}>
+      <div className="showcase-container" data-theme={themeMode} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="showcase-header">
           <div className="showcase-header-top">
             <div className="showcase-title-group">
               <h2>
-                3D Puffy Clay <span className="showcase-badge">Curated 8-Shape Suite</span>
+                Agent Personality Showcase <span className="showcase-badge">6 New Experimental Directions</span>
               </h2>
               <p className="showcase-subtitle">
-                Curated shapes with stretched subtle gradients, stable session seeds, and procedural active loops
+                Compare our saved 3D Puffy Clay suite against 5 new inspiration directions from synced/agent-personality
               </p>
             </div>
-            <button className="icon-button" onClick={onClose}>
-              ✕ Close
-            </button>
-          </div>
 
-          {/* Navigation & Category Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <div className="showcase-nav-tabs">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Light / Dark Mode Toggle Button */}
               <button
-                className="showcase-tab"
-                data-active={activeTab === 'shapes'}
-                onClick={() => setActiveTab('shapes')}
+                className="control-btn"
+                style={{
+                  background: themeMode === 'light' ? '#ffffff' : 'var(--bg-elev)',
+                  borderColor: 'var(--accent)',
+                  fontWeight: 600,
+                }}
+                onClick={() => setThemeMode((m) => (m === 'dark' ? 'light' : 'dark'))}
               >
-                ★ 8 Selected Shapes ({PUFFY_CLAY_SHAPES.length})
+                {themeMode === 'dark' ? '☀️ Light Background' : '🌙 Dark Background'}
               </button>
-              <button
-                className="showcase-tab"
-                data-active={activeTab === 'states'}
-                onClick={() => setActiveTab('states')}
-              >
-                ⚡ State Animations & Active Loop
-              </button>
-              <button
-                className="showcase-tab"
-                data-active={activeTab === 'roster'}
-                onClick={() => setActiveTab('roster')}
-              >
-                👥 Live Agent Roster ({SAMPLE_AGENTS.length})
+
+              <button className="icon-button" onClick={onClose}>
+                ✕ Close
               </button>
             </div>
+          </div>
 
-            {activeTab === 'shapes' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="control-label" style={{ fontSize: 10 }}>Card Size:</span>
-                <button
-                  className="control-btn"
-                  data-selected={cardSize === 96}
-                  onClick={() => setCardSize(96)}
-                >
-                  96px (Large)
-                </button>
-                <button
-                  className="control-btn"
-                  data-selected={cardSize === 64}
-                  onClick={() => setCardSize(64)}
-                >
-                  64px (Compact)
-                </button>
-              </div>
-            )}
+          {/* Navigation Tabs */}
+          <div className="showcase-nav-tabs">
+            {BLOB_DIRECTIONS.map((dir) => (
+              <button
+                key={dir.id}
+                className="showcase-tab"
+                data-active={currentTab === dir.id}
+                onClick={() => setCurrentTab(dir.id)}
+              >
+                {dir.title}
+                {activeGlobalDirection === dir.id ? ' ★ (Active)' : ''}
+              </button>
+            ))}
+            <button
+              className="showcase-tab"
+              data-active={currentTab === 'matrix'}
+              onClick={() => setCurrentTab('matrix')}
+            >
+              ⊞ All 6 Side-by-Side Matrix
+            </button>
           </div>
         </div>
 
         {/* Body Content */}
         <div className="showcase-body">
-          {/* Interactive Inspector Sandbox (Always accessible at top) */}
-          <div className="sandbox-section">
-            <div className="sandbox-hero">
-              <GemBlob
-                seed={`preview-${selectedShape.id}-${selectedColor.name}`}
-                shapeIndex={selectedShapeIndex}
-                colorIndex={selectedColorIndex}
-                size={120}
-                state={sandboxState}
-                interactive={true}
-              />
-              <div className="sandbox-hint">Move cursor to test gaze tracking</div>
-              <span className="showcase-cell-name" style={{ fontSize: 14 }}>
-                #{selectedShapeIndex + 1}: {selectedShape.name}
-              </span>
-              <span className="instance-meta" style={{ fontSize: 11 }}>
-                {selectedShape.category} • State: <strong>{sandboxState}</strong>
-              </span>
-            </div>
-
-            <div className="sandbox-controls">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-                    {selectedShape.name}
-                  </span>
-                  <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-dim)' }}>
-                    {selectedShape.description}
-                  </p>
+          {currentTab === 'matrix' ? (
+            /* Matrix Comparison View (All 6 Side-by-Side) */
+            <div className="matrix-container">
+              <div className="direction-meta-card">
+                <div className="direction-meta-top">
+                  <span className="direction-meta-title">Side-by-Side Comparison Matrix (All 6 Directions)</span>
+                  <span className="direction-inspiration-tag">Compare in {themeMode === 'dark' ? 'Dark' : 'Light'} Mode</span>
                 </div>
-                <span className="direction-inspiration-tag">{selectedShape.id}</span>
-              </div>
-
-              {/* State Toggles */}
-              <div className="control-group">
-                <span className="control-label">Test State Animation</span>
-                <div className="control-buttons-row">
-                  {STATES.map((st) => (
-                    <button
-                      key={st.id}
-                      className="control-btn"
-                      data-selected={sandboxState === st.id}
-                      onClick={() => setSandboxState(st.id)}
-                    >
-                      {st.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Colorway Switcher */}
-              <div className="control-group">
-                <span className="control-label">
-                  Stretched Dual-Tone Palette: <strong>{selectedColor.name}</strong>
-                </span>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {PUFFY_CLAY_PALETTE.map((pal, idx) => (
-                    <button
-                      key={pal.name}
-                      onClick={() => setSelectedColorIndex(idx)}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 6,
-                        border: selectedColorIndex === idx ? '2px solid var(--accent)' : '1px solid var(--border)',
-                        background: `linear-gradient(135deg, ${pal.light}, ${pal.base} 40%, ${pal.secondary ?? pal.dark} 70%, ${pal.dark})`,
-                        cursor: 'pointer',
-                        padding: 0,
-                        transform: selectedColorIndex === idx ? 'scale(1.15)' : 'scale(1)',
-                        transition: 'transform 0.1s ease',
-                      }}
-                      title={pal.name}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Sizing Scale Strip */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 2 }}>
-                <span className="control-label" style={{ fontSize: 10 }}>Scale:</span>
-                {[
-                  { size: 24, label: '24px (chat)' },
-                  { size: 44, label: '44px (rail)' },
-                  { size: 64, label: '64px' },
-                  { size: 96, label: '96px' },
-                ].map((s) => (
-                  <div key={s.size} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <GemBlob
-                      seed={`scale-${s.size}-${selectedShape.id}`}
-                      shapeIndex={selectedShapeIndex}
-                      colorIndex={selectedColorIndex}
-                      size={s.size}
-                      state={sandboxState}
-                      interactive={false}
-                    />
-                    <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{s.label}</span>
+                <p className="direction-desc">
+                  Review the exact same agent seeds and states rendered simultaneously across all 6 design directions to test silhouette contrast, eye readability, and animation personality.
+                </p>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+                  <div className="control-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <span className="control-label">State:</span>
+                    <div className="control-buttons-row">
+                      {STATES.map((st) => (
+                        <button
+                          key={st.id}
+                          className="control-btn"
+                          data-selected={matrixState === st.id}
+                          onClick={() => setMatrixState(st.id)}
+                        >
+                          {st.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
 
-          {/* TAB 1: 18 Shape Catalog */}
-          {activeTab === 'shapes' && (
-            <div className="agent-grid-section">
-              {/* Category Filter Pills */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span className="control-label">Category:</span>
-                {CATEGORIES.map((cat) => (
-                  <button
-                    key={cat}
-                    className="control-btn"
-                    data-selected={categoryFilter === cat}
-                    onClick={() => setCategoryFilter(cat)}
-                  >
-                    {cat}
-                  </button>
-                ))}
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <input
+                      type="text"
+                      className="custom-seed-input"
+                      placeholder="Type any agent name to test across all 6..."
+                      value={customMatrixSeed}
+                      onChange={(e) => setCustomMatrixSeed(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Shapes Grid */}
-              <div
-                className="showcase-grid"
-                style={{
-                  gridTemplateColumns:
-                    cardSize === 96
-                      ? 'repeat(auto-fill, minmax(180px, 1fr))'
-                      : 'repeat(auto-fill, minmax(130px, 1fr))',
-                }}
-              >
-                {filteredShapes.map(({ shape, index }) => {
-                  const isSelected = selectedShapeIndex === index;
-
-                  return (
-                    <div
-                      key={shape.id}
-                      className="showcase-cell"
-                      onClick={() => setSelectedShapeIndex(index)}
-                      style={{
-                        padding: cardSize === 96 ? '18px 12px 14px' : '12px 8px 10px',
-                        border: isSelected ? '2px solid var(--accent)' : '1px solid var(--border)',
-                        background: isSelected ? 'var(--bg)' : 'var(--bg-elev)',
-                        cursor: 'pointer',
-                        transform: isSelected ? 'scale(1.02)' : 'none',
-                      }}
-                      title={`Click to inspect #${index + 1}: ${shape.name}`}
-                    >
-                      <span
-                        style={{
-                          alignSelf: 'flex-start',
-                          fontSize: 10,
-                          fontWeight: 700,
-                          color: isSelected ? 'var(--accent)' : 'var(--text-dim)',
+              {/* Custom Seed Row */}
+              {customMatrixSeed.trim() && (
+                <div className="matrix-row">
+                  <span className="matrix-row-title">Custom: "{customMatrixSeed}"</span>
+                  <div className="matrix-columns">
+                    {BLOB_DIRECTIONS.map((dir) => (
+                      <div
+                        key={dir.id}
+                        className="matrix-card"
+                        onClick={() => {
+                          setGlobalDirection(dir.id);
+                          setCurrentTab(dir.id);
                         }}
                       >
-                        #{index + 1}
-                      </span>
+                        <GemBlob
+                          seed={customMatrixSeed}
+                          direction={dir.id}
+                          size={64}
+                          state={matrixState}
+                          interactive={true}
+                        />
+                        <span className="matrix-card-name">{dir.title.split(':')[1]?.replace('(Saved)', '').trim()}</span>
+                        <span className="matrix-card-style">{dir.subtitle}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
+              {/* Standard Agents Matrix Rows */}
+              {MATRIX_AGENTS.map((item) => (
+                <div className="matrix-row" key={item.name}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="matrix-row-title">{item.name}</span>
+                    <span className="instance-meta" style={{ fontSize: 10 }}>seed: {item.seed}</span>
+                  </div>
+                  <div className="matrix-columns">
+                    {BLOB_DIRECTIONS.map((dir) => (
+                      <div
+                        key={dir.id}
+                        className="matrix-card"
+                        onClick={() => {
+                          setGlobalDirection(dir.id);
+                          setCurrentTab(dir.id);
+                        }}
+                        title={`Click to set ${dir.title} as active`}
+                      >
+                        <GemBlob
+                          seed={item.seed}
+                          direction={dir.id}
+                          size={64}
+                          state={matrixState}
+                          interactive={true}
+                        />
+                        <span className="matrix-card-name">{dir.title.split(':')[1]?.replace('(Saved)', '').trim()}</span>
+                        <span className="matrix-card-style">
+                          {activeGlobalDirection === dir.id ? '★ Active Style' : 'Click to preview'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : currentDirectionMeta ? (
+            /* Single Direction Deep Dive */
+            <>
+              {/* Meta Card */}
+              <div className="direction-meta-card">
+                <div className="direction-meta-top">
+                  <div>
+                    <span className="direction-meta-title">{currentDirectionMeta.title}</span>
+                    <span style={{ color: 'var(--text-dim)', fontSize: 13, marginLeft: 8 }}>
+                      — {currentDirectionMeta.subtitle}
+                    </span>
+                  </div>
+                  <span className="direction-inspiration-tag">{currentDirectionMeta.inspiration}</span>
+                </div>
+                <p className="direction-desc">{currentDirectionMeta.description}</p>
+                <div className="direction-highlights">
+                  {currentDirectionMeta.highlights.map((h, i) => (
+                    <span key={i} className="direction-highlight-pill">
+                      ✓ {h}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Interactive Hero Sandbox (120px) */}
+              <div className="sandbox-section">
+                <div className="sandbox-hero">
+                  <GemBlob
+                    seed={sandboxSeed}
+                    direction={currentDirectionMeta.id}
+                    size={120}
+                    state={sandboxState}
+                    interactive={true}
+                  />
+                  <div className="sandbox-hint">Move cursor to test gaze tracking</div>
+                  <span className="showcase-cell-name" style={{ fontSize: 14 }}>{sandboxSeed}</span>
+                  <span className="instance-meta" style={{ fontSize: 11 }}>State: <strong>{sandboxState}</strong></span>
+                </div>
+
+                <div className="sandbox-controls">
+                  <div className="control-group">
+                    <span className="control-label">Agent Name / Seed</span>
+                    <input
+                      type="text"
+                      className="custom-seed-input"
+                      value={sandboxSeed}
+                      onChange={(e) => setSandboxSeed(e.target.value)}
+                      placeholder="Type agent name or seed..."
+                    />
+                  </div>
+
+                  <div className="control-group">
+                    <span className="control-label">Test Agent State</span>
+                    <div className="control-buttons-row">
+                      {STATES.map((st) => (
+                        <button
+                          key={st.id}
+                          className="control-btn"
+                          data-selected={sandboxState === st.id}
+                          onClick={() => setSandboxState(st.id)}
+                        >
+                          {st.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <button
+                      className="primary-button"
+                      style={{ width: 'auto', padding: '6px 14px', fontSize: 12 }}
+                      onClick={() => setGlobalDirection(currentDirectionMeta.id)}
+                    >
+                      {activeGlobalDirection === currentDirectionMeta.id
+                        ? '✓ Currently Active in UI'
+                        : `Set as Active UI Style (${currentDirectionMeta.title.split(':')[1]?.trim()})`}
+                    </button>
+                    <button
+                      className="icon-button"
+                      onClick={() =>
+                        setSandboxSeed(SAMPLE_AGENTS[Math.floor(Math.random() * SAMPLE_AGENTS.length)])
+                      }
+                    >
+                      Randomize Agent
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* State Behaviors Showcase (96px High-Res) */}
+              <div className="agent-grid-section">
+                <div className="section-heading">
+                  <span>State Animation Behaviors (96px High-Res in {themeMode} mode)</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                  {STATES.map((st) => (
+                    <div
+                      key={st.id}
+                      className="showcase-cell"
+                      style={{
+                        padding: 16,
+                        border: sandboxState === st.id ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => setSandboxState(st.id)}
+                    >
                       <GemBlob
-                        seed={`shape-catalog-${shape.id}`}
-                        shapeIndex={index}
-                        colorIndex={selectedColorIndex}
-                        size={cardSize}
+                        seed={sandboxSeed}
+                        direction={currentDirectionMeta.id}
+                        size={96}
+                        state={st.id}
+                        interactive={true}
+                      />
+                      <span className="showcase-cell-name" style={{ fontSize: 13, marginTop: 4 }}>
+                        {st.label}
+                      </span>
+                      <span className="instance-meta" style={{ textAlign: 'center', fontSize: 11 }}>
+                        {st.desc}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Shape Library (if Puffy Clay is selected, show curated 8 shapes) */}
+              {currentDirectionMeta.id === 'puffy-clay' && (
+                <div className="agent-grid-section">
+                  <div className="section-heading">
+                    <span>Curated 8-Shape Keeper Library (64px)</span>
+                  </div>
+                  <div className="showcase-grid">
+                    {PUFFY_CLAY_SHAPES.map((shape, idx) => (
+                      <div
+                        key={shape.id}
+                        className="showcase-cell"
+                        onClick={() => setSandboxSeed(`shape-seed-${idx}-${shape.name}`)}
+                        style={{ cursor: 'pointer' }}
+                        title="Click to load into sandbox"
+                      >
+                        <GemBlob
+                          seed={`shape-seed-${idx}-${shape.name}`}
+                          direction="puffy-clay"
+                          shapeIndex={idx}
+                          size={64}
+                          state={sandboxState}
+                          interactive={true}
+                        />
+                        <span className="showcase-cell-name">#{idx + 1}: {shape.name}</span>
+                        <span className="instance-meta" style={{ fontSize: 9.5 }}>{shape.category}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* UI Sizing Breakdown */}
+              <div className="size-strip-section">
+                <span className="control-label">UI Sizing Scale (24px, 44px, 64px, 96px, 128px)</span>
+                <div className="size-strip">
+                  {[
+                    { size: 24, label: '24px (Chat Avatar)' },
+                    { size: 44, label: '44px (Sidebar Rail)' },
+                    { size: 64, label: '64px (Card View)' },
+                    { size: 96, label: '96px (Showcase Large)' },
+                    { size: 128, label: '128px (Hero Avatar)' },
+                  ].map((s) => (
+                    <div key={s.size} className="size-item">
+                      <GemBlob
+                        seed={sandboxSeed}
+                        direction={currentDirectionMeta.id}
+                        size={s.size}
                         state={sandboxState}
                         interactive={true}
                       />
-
-                      <span
-                        className="showcase-cell-name"
-                        style={{
-                          fontSize: cardSize === 96 ? 13 : 11.5,
-                          fontWeight: 700,
-                          color: isSelected ? 'var(--accent)' : 'var(--text)',
-                        }}
-                      >
-                        {shape.name}
-                      </span>
-
-                      <span
-                        className="instance-meta"
-                        style={{
-                          fontSize: 10,
-                          textAlign: 'center',
-                          lineHeight: 1.3,
-                          maxHeight: cardSize === 96 ? 32 : 16,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {shape.description}
-                      </span>
+                      <span className="size-tag">{s.label}</span>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* TAB 2: State Animations & Procedural Active Loop */}
-          {activeTab === 'states' && (
-            <div className="agent-grid-section">
-              <div className="section-heading">
-                <span>State Behaviors & Procedural Active Loop (96px High-Res)</span>
-              </div>
-              <p className="direction-desc" style={{ margin: 0 }}>
-                Click any state below to inspect its behavior. Notice how the Active state procedurally shifts through random actions (hopping, scanning code, 360° backflips, shimmies, and curious lean) so it never looks like a canned loop.
-              </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 14 }}>
-                {STATES.map((st) => (
-                  <div
-                    key={st.id}
-                    className="showcase-cell"
-                    style={{
-                      padding: 18,
-                      border: sandboxState === st.id ? '2px solid var(--accent)' : '1px solid var(--border)',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => setSandboxState(st.id)}
+              {/* Generated Agent Roster Grid (64px) */}
+              <div className="agent-grid-section">
+                <div className="section-heading">
+                  <span>Realistic Agent Roster in {currentDirectionMeta.title.split(':')[1]?.trim()} (64px)</span>
+                  <button
+                    className="icon-button"
+                    style={{ fontSize: 11 }}
+                    onClick={() => setSandboxSeed(SAMPLE_AGENTS[Math.floor(Math.random() * SAMPLE_AGENTS.length)])}
                   >
-                    <GemBlob
-                      seed={`state-demo-${st.id}-${selectedShape.id}`}
-                      shapeIndex={selectedShapeIndex}
-                      colorIndex={selectedColorIndex}
-                      size={96}
-                      state={st.id}
-                      interactive={true}
-                    />
-                    <span className="showcase-cell-name" style={{ fontSize: 14, marginTop: 6 }}>
-                      {st.label}
-                    </span>
-                    <span className="instance-meta" style={{ textAlign: 'center', fontSize: 11, lineHeight: 1.4 }}>
-                      {st.desc}
-                    </span>
-                  </div>
-                ))}
+                    Shuffle Sample
+                  </button>
+                </div>
+                <div className="showcase-grid">
+                  {SAMPLE_AGENTS.map((agentName) => (
+                    <div
+                      key={agentName}
+                      className="showcase-cell"
+                      onClick={() => setSandboxSeed(agentName)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to load into sandbox"
+                    >
+                      <GemBlob
+                        seed={agentName}
+                        direction={currentDirectionMeta.id}
+                        size={64}
+                        state="idle"
+                        interactive={true}
+                      />
+                      <span className="showcase-cell-name">{agentName}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* TAB 3: Live Agent Roster Preview */}
-          {activeTab === 'roster' && (
-            <div className="agent-grid-section">
-              <div className="section-heading">
-                <span>Realistic Session Roster with 18-Shape Diversity (64px)</span>
-                <button
-                  className="icon-button"
-                  style={{ fontSize: 11 }}
-                  onClick={() => setSelectedColorIndex((c) => (c + 1) % PUFFY_CLAY_PALETTE.length)}
-                >
-                  Cycle Palette ({selectedColor.name})
-                </button>
-              </div>
-              <p className="direction-desc" style={{ margin: 0 }}>
-                Every agent seed automatically hashes to a unique body shape, stretched colorway, and eye style.
-              </p>
-
-              <div className="showcase-grid">
-                {SAMPLE_AGENTS.map((agentName, idx) => (
-                  <div
-                    key={agentName}
-                    className="showcase-cell"
-                    onClick={() => setSelectedShapeIndex(idx % PUFFY_CLAY_SHAPES.length)}
-                    style={{ cursor: 'pointer', padding: '14px 10px 12px' }}
-                    title="Click to inspect this shape"
-                  >
-                    <GemBlob
-                      seed={agentName}
-                      size={64}
-                      state={sandboxState}
-                      interactive={true}
-                    />
-                    <span className="showcase-cell-name">{agentName}</span>
-                    <span className="instance-meta" style={{ fontSize: 9.5 }}>
-                      {PUFFY_CLAY_SHAPES[idx % PUFFY_CLAY_SHAPES.length].name}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+            </>
+          ) : null}
         </div>
 
         {/* Footer */}
         <div className="showcase-footer">
           <div className="showcase-active-indicator">
-            Selected Shape: <strong>#{selectedShapeIndex + 1} {selectedShape.name}</strong> ({selectedShape.category})
+            Active UI Style: <strong>{BLOB_DIRECTIONS.find((d) => d.id === activeGlobalDirection)?.title}</strong>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              className="icon-button"
-              onClick={() => setSelectedShapeIndex(Math.floor(Math.random() * PUFFY_CLAY_SHAPES.length))}
-            >
-              🎲 Random Shape
+            <button className="icon-button" onClick={() => setCurrentTab('matrix')}>
+              Matrix View (All 6)
             </button>
             <button className="primary-button" style={{ width: 'auto' }} onClick={onClose}>
               Done Reviewing

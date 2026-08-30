@@ -139,6 +139,10 @@ export default function PuffyClayRenderer({
   // Position mouth with plenty of breathing room below the eyes & blush
   const mouthY = shape.mouthY ?? eyeY + eyeR + 12;
 
+  // De-synchronized breathing rate & phase delay so creatures feel like living individuals
+  const breathDuration = (2.7 + ((seedHash >> 4) % 16) * 0.12).toFixed(2);
+  const breathDelay = -(((seedHash >> 8) % 28) * 0.15).toFixed(2);
+
   // Pure dark pupils with white reflections (NO color inside the eyes)
   const renderPupil = (ref: React.RefObject<SVGGElement>) => {
     if (isError) {
@@ -276,10 +280,21 @@ export default function PuffyClayRenderer({
       )}
 
       {/* Floor Contact Shadow */}
-      <ellipse cx="50" cy="94" rx="38" ry="6" fill={`url(#${floorShadowId})`} className="clay-floor-shadow" />
+      <ellipse
+        cx="50"
+        cy="94"
+        rx="38"
+        ry="6"
+        fill={`url(#${floorShadowId})`}
+        className="clay-floor-shadow"
+        style={state === 'idle' ? { animationDuration: `${breathDuration}s`, animationDelay: `${breathDelay}s` } : undefined}
+      />
 
       {/* Main Animated Clay Character Group */}
-      <g className={`clay-character-body ${isActive ? `anim-${activeAction}` : ''}`}>
+      <g
+        className={`clay-character-body ${isActive ? `anim-${activeAction}` : ''}`}
+        style={state === 'idle' ? { animationDuration: `${breathDuration}s`, animationDelay: `${breathDelay}s` } : undefined}
+      >
         {/* Main 3D Soft Clay Body */}
         <path
           d={shape.path}

@@ -54,7 +54,7 @@
   transform-origin: 50% 85%;
 }
 
-/* Needs-Input State: Radiant Glowing Beacon + Yelling Chattering Mouth + Bouncing Badge */
+/* Needs-Input State */
 .gem-blob-puffy-clay[data-state='needs-input'] {
   animation: clay-needs-input-hop 1.4s ease-in-out infinite;
 }
@@ -74,7 +74,7 @@
   transform-origin: 0px 0px;
 }
 
-/* Error State: Hilarious Dizzy Wobble & Shivering X Eyes */
+/* Error State */
 .gem-blob-puffy-clay[data-state='error'] {
   animation: clay-error-wobble 0.45s ease-in-out infinite alternate;
 }
@@ -84,7 +84,116 @@
   transform-origin: 0 0;
 }
 
-/* Keyframes */
+/* =========================================================================
+   New Inspiration Animations
+   ========================================================================= */
+
+/* Direction 2: Star Candy */
+.blob-star-candy-svg[data-state='idle'] .star-candy-body {
+  animation: star-candy-breathe 3s ease-in-out infinite;
+  transform-origin: 50% 50%;
+}
+
+.gem-blob-star-candy[data-state='active'] {
+  animation: star-candy-sparkle-bounce 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+@keyframes star-candy-breathe {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.05) rotate(3deg); }
+}
+
+@keyframes star-candy-sparkle-bounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  40% { transform: translateY(-7px) rotate(-12deg); }
+  70% { transform: translateY(1px) rotate(6deg); }
+}
+
+/* Direction 3: Faceted Gem */
+.blob-faceted-gem-svg[data-state='idle'] .faceted-gem-body {
+  animation: gem-idle-float 3.2s ease-in-out infinite;
+  transform-origin: 50% 50%;
+}
+
+.gem-blob-faceted-gem[data-state='active'] {
+  animation: gem-active-tumble 1.4s ease-in-out infinite;
+}
+
+@keyframes gem-idle-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes gem-active-tumble {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  35% { transform: translateY(-6px) rotate(-10deg); }
+  70% { transform: translateY(-1px) rotate(10deg); }
+}
+
+/* Direction 4: Retro Block */
+.blob-retro-block-svg[data-state='idle'] .retro-block-body {
+  animation: block-idle-breathe 2.8s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+
+.gem-blob-retro-block[data-state='active'] {
+  animation: block-active-hop 0.55s ease-in-out infinite alternate;
+}
+
+@keyframes block-idle-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.03, 0.97); }
+}
+
+@keyframes block-active-hop {
+  0% { transform: translateY(0) scale(1.04, 0.96); }
+  100% { transform: translateY(-6px) scale(0.96, 1.04); }
+}
+
+/* Direction 5: Line Mascot */
+.blob-line-mascot-svg[data-state='idle'] .line-mascot-body {
+  animation: mascot-idle-sway 3.2s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+
+.gem-blob-line-mascot[data-state='active'] {
+  animation: mascot-active-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+@keyframes mascot-idle-sway {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-2px) rotate(2deg); }
+  66% { transform: translateY(-2px) rotate(-2deg); }
+}
+
+@keyframes mascot-active-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* Direction 6: Micro Critter */
+.blob-micro-critter-svg[data-state='idle'] .micro-critter-body {
+  animation: critter-idle-bob 2.6s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+
+.blob-micro-critter-svg .critter-walking,
+.gem-blob-micro-critter[data-state='active'] {
+  animation: critter-walk-tiptoe 0.35s ease-in-out infinite alternate;
+  transform-origin: 50% 90%;
+}
+
+@keyframes critter-idle-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes critter-walk-tiptoe {
+  0% { transform: translateY(0) rotate(-4deg); }
+  100% { transform: translateY(-4px) rotate(4deg); }
+}
+
+/* General Keyframes */
 @keyframes clay-idle-breathe {
   0%, 100% {
     transform: translateY(0px) scale(1, 1);
@@ -105,7 +214,6 @@
   }
 }
 
-/* Active Procedural Action Keyframes */
 @keyframes active-bounce-hop {
   0%, 100% {
     transform: translateY(0) scale(1, 1);
@@ -191,7 +299,7 @@
 
 @keyframes clay-mouth-chatter {
   0% {
-    transform: scale(1, 0.55);
+    transform: scale(1, 0.6);
   }
   100% {
     transform: scale(1.08, 1.25);
@@ -226,14 +334,14 @@
 }
 
 /* =========================================================================
-   Showcase Demo Review Panel Styles
+   Showcase Demo Review Panel Styles & Light/Dark Theme
    ========================================================================= */
 
 .showcase-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 7, 6, 0.78);
-  backdrop-filter: blur(10px);
+  background: rgba(8, 7, 6, 0.82);
+  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -242,7 +350,7 @@
 }
 
 .showcase-container {
-  width: min(1080px, 95vw);
+  width: min(1100px, 95vw);
   max-height: 92vh;
   display: flex;
   flex-direction: column;
@@ -251,6 +359,18 @@
   border-radius: 14px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
   overflow: hidden;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+/* Light Mode Theme in Showcase */
+.showcase-container[data-theme='light'] {
+  --bg: #f8f9fa;
+  --bg-panel: #ffffff;
+  --bg-elev: #f1f3f5;
+  --text: #1a1a24;
+  --text-dim: #64748b;
+  --border: #e2e8f0;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
 }
 
 .showcase-header {
@@ -547,7 +667,7 @@
 
 .showcase-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 14px;
 }
 
@@ -606,11 +726,11 @@
 
 .matrix-columns {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .matrix-columns {
     grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   }
