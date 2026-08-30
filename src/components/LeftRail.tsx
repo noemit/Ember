@@ -75,12 +75,12 @@ export default function LeftRail({
     });
 
     const result: Group[] = projects
-      .filter((project) => (byProject.get(project.id) ?? []).length > 0)
       .map((project) => ({
         key: project.id,
         label: project.name,
         sessions: byProject.get(project.id) ?? [],
-      }));
+      }))
+      .filter((group) => group.sessions.length > 0);
 
     if (loose.length > 0) result.push({ key: '__other', label: 'Other', sessions: loose });
 
@@ -152,7 +152,20 @@ export default function LeftRail({
       <div className="rail-list">
         {groups.map(renderGroup)}
 
-        {groups.length === 0 ? (
+        {/* Show empty configured projects that don't have sessions yet */}
+        {projects
+          .filter((p) => !groups.some((g) => g.key === p.id))
+          .map((project) => (
+            <div className="project" key={project.id}>
+              <div className="project-header" style={{ opacity: 0.6, cursor: 'default' }}>
+                <span>▸</span>
+                <span className="project-name">{project.name}</span>
+                <span className="instance-meta">0</span>
+              </div>
+            </div>
+          ))}
+
+        {projects.length === 0 && groups.length === 0 ? (
           <div className="instance-meta" style={{ padding: 8 }}>
             No projects or sessions yet.
           </div>

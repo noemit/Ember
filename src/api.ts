@@ -19,10 +19,28 @@ export const listInstances = async (): Promise<Instance[]> =>
   asArray(await window.ember.listInstances()) as Instance[];
 
 export const loadProjects = async (instanceId: string): Promise<Project[]> => {
-  const response = await window.ember.request(instanceId, 'GET', '/api/config/settings');
-  const root = asRecord(response.data);
+  // First try /api/project (OpenCode / OpenChamber project list endpoint)
+  let rawProjects: unknown[] = [];
+  try {
+    const projResponse = await window.ember.request(instanceId, 'GET', '/api/project');
+    if (projResponse.ok) {
+      const root = asRecord(projResponse.data);
+      rawProjects = Array.isArray(projResponse.data)
+        ? projResponse.data
+        : asArray(root.projects ?? root.items);
+    }
+  } catch (err) {
+    // Fallback if endpoint fails
+  }
 
-  return asArray(root.projects).map((entry, index) => {
+  // If /api/project returned empty, fall back to /api/config/settings
+  if (rawProjects.length === 0) {
+    const settingsResponse = await window.ember.request(instanceId, 'GET', '/api/config/settings');
+    const root = asRecord(settingsResponse.data);
+    rawProjects = asArray(root.projects);
+  }
+
+  return rawProjects.map((entry, index) => {
     const item = asRecord(entry);
     const path = typeof item.path === 'string' ? item.path : undefined;
     const id = String(item.id ?? path ?? `project-${index}`);
