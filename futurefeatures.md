@@ -31,6 +31,9 @@ Open questions for when we build it:
   changes.
 - **Private Relay instances.** Their tunnel exists only in OpenChamber's memory, so Ember can't
   attach to them even while connected. Revisit if a local URL ever gets persisted.
-- **Live updates over SSE.** Ball states and messages poll every 3s today. `/api/event` is an SSE
-  endpoint that would make this instant.
-- **Window restore.** Reopen the instances that had windows open last time, with their themes.
+- **Live updates over SSE.** Ball states and the open session's messages poll every 3s, the
+  session list every 10s, across every connected instance. `/api/event` is an SSE endpoint that
+  would make this instant and cut the polling fan-out.
+- ~~**Window restore.**~~ Moot: one window now shows every instance at once.
+- **Remember hidden instances.** The instance pills in the top bar filter the rail, but the filter
+  resets on relaunch. Could live next to `theme` / `blobStyle` in `~/.config/ember/settings.json`.

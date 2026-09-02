@@ -1,82 +1,107 @@
-.gem-blob {
+.blob {
   position: relative;
   display: inline-block;
   flex: none;
+  will-change: transform;
 }
 
-.gem-blob svg {
+.blob svg {
   display: block;
 }
 
-.gem-blob[data-state='active'] {
-  animation: gem-bounce 0.6s ease-in-out infinite;
+.blob .blob-body,
+.blob .blob-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
-.gem-blob[data-state='needs-input'] {
-  animation: gem-pulse 1.6s ease-in-out infinite;
+.blob .blob-eyes circle[r='3.4'],
+.blob .blob-eyes circle[r='4.2'] {
+  transition: transform 90ms linear;
 }
 
-@keyframes gem-bounce {
+/* Idle: a slow, barely-there breathe so the blobs feel alive without being busy. */
+.blob-grok[data-state='idle'] .blob-body {
+  animation: blob-breathe 4.2s ease-in-out infinite;
+  animation-delay: inherit;
+}
+
+.blob[data-state='active'] .blob-body {
+  animation: blob-bob 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.blob[data-state='active'] .blob-eyes {
+  animation: blob-bob 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.blob[data-state='needs-input'] {
+  animation: blob-wiggle 1.4s ease-in-out infinite;
+}
+
+.blob[data-state='error'] {
+  animation: blob-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
+}
+
+@keyframes blob-breathe {
   0%,
   100% {
-    transform: translateY(0);
+    transform: scale(1, 1);
   }
   50% {
-    transform: translateY(-3px);
+    transform: scale(1.03, 0.97);
   }
 }
 
-@keyframes gem-pulse {
+@keyframes blob-bob {
   0%,
   100% {
-    transform: scale(1);
+    transform: translateY(0) scale(1, 1);
   }
-  50% {
-    transform: scale(1.12);
+  40% {
+    transform: translateY(-9%) scale(0.96, 1.05);
+  }
+  70% {
+    transform: translateY(0) scale(1.04, 0.96);
   }
 }
 
-.showcase {
-  width: min(880px, 92vw);
-  max-height: 86vh;
-  overflow: auto;
-  padding: 16px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+@keyframes blob-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(-6deg) scale(1.06);
+  }
+  75% {
+    transform: rotate(6deg) scale(1.06);
+  }
 }
 
-.showcase-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+@keyframes blob-shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-3px);
+  }
+  40%,
+  60% {
+    transform: translateX(3px);
+  }
 }
 
-.showcase-head h2 {
-  margin: 0;
-  font-size: 15px;
-  flex: 1;
-}
-
-.showcase-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 10px;
-}
-
-.showcase-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px;
-  background: var(--bg-elev);
-  border-radius: 8px;
-}
-
-.showcase-seed {
-  font-size: 10px;
-  color: var(--text-dim);
-  text-align: center;
+@media (prefers-reduced-motion: reduce) {
+  .blob,
+  .blob .blob-body,
+  .blob .blob-eyes {
+    animation: none !important;
+  }
 }

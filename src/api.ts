@@ -1,3 +1,4 @@
+import { sessionKey } from './types';
 import type { BallState, ChatMessage, Instance, ModelOption, Project, Session } from './types';
 
 export type ModelList = {
@@ -33,8 +34,9 @@ export const loadProjects = async (instanceId: string): Promise<Project[]> => {
   });
 };
 
-export const loadSessions = async (instanceId: string): Promise<Session[]> => {
+export const loadSessions = async (instanceId: string): Promise<Session[] | null> => {
   const response = await window.ember.request(instanceId, 'GET', '/api/session');
+  if (!response.ok) return null;
 
   return asArray(response.data).map((entry, index) => {
     const item = asRecord(entry);
@@ -48,11 +50,38 @@ export const loadSessions = async (instanceId: string): Promise<Session[]> => {
 
     return {
       id: String(item.id ?? `session-${index}`),
+      instanceId,
       title: typeof item.title === 'string' ? item.title : undefined,
       directory: typeof item.directory === 'string' ? item.directory : undefined,
       updated,
     };
   });
+};
+
+/**
+ * Load sessions from every instance. Returns a map keyed by instance id so a failing
+ * instance leaves its previous sessions untouched instead of erasing them.
+ */
+export const loadAllSessions = async (
+  instanceIds: string[]
+): Promise<Record<string, Session[]>> => {
+  const results = await Promise.all(
+    instanceIds.map(async (instanceId) => [instanceId, await loadSessions(instanceId)] as const)
+  );
+  const map: Record<string, Session[]> = {};
+  results.forEach(([instanceId, sessions]) => {
+    if (sessions) map[instanceId] = sessions;
+  });
+  return map;
+};
+
+export const loadAllProjects = async (
+  instanceIds: string[]
+): Promise<Record<string, Project[]>> => {
+  const results = await Promise.all(
+    instanceIds.map(async (instanceId) => [instanceId, await loadProjects(instanceId)] as const)
+  );
+  return Object.fromEntries(results);
 };
 
 export const createSession = async (
@@ -69,8 +98,10 @@ export const createSession = async (
 
   return {
     id,
+    instanceId,
     title: typeof item.title === 'string' ? item.title : undefined,
     directory,
+    updated: Date.now(),
   };
 };
 
@@ -91,17 +122,34 @@ const statusToState = (raw: unknown): BallState => {
   return 'idle';
 };
 
-export const loadSessionStates = async (instanceId: string): Promise<Record<string, BallState>> => {
+/** Ball states keyed by `sessionKey` so they can be merged across instances. */
+export const loadSessionStates = async (
+  instanceId: string
+): Promise<Record<string, BallState> | null> => {
   const response = await window.ember.request(instanceId, 'GET', '/api/sessions/status');
+  if (!response.ok) return null;
   const sessions = asRecord(asRecord(response.data).sessions);
   const states: Record<string, BallState> = {};
 
   Object.entries(sessions).forEach(([id, value]) => {
     const entry = asRecord(value);
-    states[id] = statusToState(entry.status ?? entry.state);
+    states[sessionKey({ instanceId, sessionId: id })] = statusToState(entry.status ?? entry.state);
   });
 
   return states;
+};
+
+export const loadAllSessionStates = async (
+  instanceIds: string[]
+): Promise<Record<string, Record<string, BallState>>> => {
+  const results = await Promise.all(
+    instanceIds.map(async (instanceId) => [instanceId, await loadSessionStates(instanceId)] as const)
+  );
+  const map: Record<string, Record<string, BallState>> = {};
+  results.forEach(([instanceId, states]) => {
+    if (states) map[instanceId] = states;
+  });
+  return map;
 };
 
 export const loadMessages = async (

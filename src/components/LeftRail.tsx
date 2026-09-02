@@ -1,46 +1,109 @@
 import * as React from 'react';
-import GemBlob from '../blob/GemBlob';
-import type { BallState, Project, Session } from '../types';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
+import { ChevronDown, Plus, Settings, Sparkles } from 'lucide-react';
+import Blob from '../blob/Blob';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { sessionKey } from '../types';
+import type { BallState, BlobStyle, Instance, Project, Session } from '../types';
 
 type Props = {
-  projects: Project[];
+  instances: Instance[];
+  projectsByInstance: Record<string, Project[]>;
   sessions: Session[];
   states: Record<string, BallState>;
   previews: Record<string, string>;
   seeds: Record<string, string>;
-  selectedSessionId: string | null;
-  onSelectSession: (sessionId: string) => void;
-  onNewAgent: () => void;
+  selectedKey: string | null;
+  blobStyle: BlobStyle;
+  loading: boolean;
+  onSelectSession: (session: Session) => void;
+  onNewAgent: (instanceId: string) => void;
   onOpenSettings: () => void;
   onShowcase: () => void;
 };
 
 type Sorter = 'recent' | 'name';
 
-type Group = {
-  key: string;
-  label: string;
-  sessions: Session[];
-};
-
 const normalizeDir = (value: string): string => value.replace(/\/+$/, '');
 
+const relativeTime = (timestamp: number | undefined, now: number): string => {
+  if (!timestamp) return '';
+  const seconds = Math.max(0, Math.round((now - timestamp) / 1000));
+  if (seconds < 45) return 'now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+const projectFor = (session: Session, projects: Project[]): Project | null => {
+  const directory = session.directory ? normalizeDir(session.directory) : '';
+  let best: Project | null = null;
+  let bestLength = -1;
+  projects.forEach((project) => {
+    if (!project.path) return;
+    const base = normalizeDir(project.path);
+    if ((directory === base || directory.startsWith(`${base}/`)) && base.length > bestLength) {
+      bestLength = base.length;
+      best = project;
+    }
+  });
+  return best;
+};
+
+const spring = { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 } as const;
+
 export default function LeftRail({
-  projects,
+  instances,
+  projectsByInstance,
   sessions,
   states,
   previews,
   seeds,
-  selectedSessionId,
+  selectedKey,
+  blobStyle,
+  loading,
   onSelectSession,
   onNewAgent,
   onOpenSettings,
   onShowcase,
 }: Props) {
   const [sorter, setSorter] = React.useState<Sorter>('recent');
-  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
+  const [now, setNow] = React.useState(() => Date.now());
 
-  const sortedSessions = React.useMemo(() => {
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const instanceById = React.useMemo(
+    () => Object.fromEntries(instances.map((instance) => [instance.id, instance])),
+    [instances]
+  );
+  const ready = React.useMemo(() => instances.filter((instance) => instance.attachable), [instances]);
+  const multiInstance = ready.length > 1;
+
+  const sorted = React.useMemo(() => {
     const copy = [...sessions];
     copy.sort((a, b) =>
       sorter === 'name'
@@ -50,120 +113,148 @@ export default function LeftRail({
     return copy;
   }, [sessions, sorter]);
 
-  const groups = React.useMemo(() => {
-    const byProject = new Map<string, Session[]>();
-    const loose: Session[] = [];
+  // Default target for "New agent": whichever instance was active most recently.
+  const defaultInstanceId = sorted.find((session) => instanceById[session.instanceId]?.attachable)
+    ?.instanceId ?? ready[0]?.id ?? null;
 
-    sortedSessions.forEach((session) => {
-      const directory = session.directory ? normalizeDir(session.directory) : '';
-      let bestId: string | null = null;
-      let bestLength = -1;
-
-      projects.forEach((project) => {
-        if (!project.path) return;
-        const base = normalizeDir(project.path);
-        if (directory === base || directory.startsWith(`${base}/`)) {
-          if (base.length > bestLength) {
-            bestLength = base.length;
-            bestId = project.id;
-          }
-        }
-      });
-
-      if (bestId) byProject.set(bestId, [...(byProject.get(bestId) ?? []), session]);
-      else loose.push(session);
-    });
-
-    const result: Group[] = projects
-      .filter((project) => (byProject.get(project.id) ?? []).length > 0)
-      .map((project) => ({
-        key: project.id,
-        label: project.name,
-        sessions: byProject.get(project.id) ?? [],
-      }));
-
-    if (loose.length > 0) result.push({ key: '__other', label: 'Other', sessions: loose });
-
-    result.sort((a, b) =>
-      sorter === 'name'
-        ? a.label.localeCompare(b.label)
-        : (b.sessions[0]?.updated ?? 0) - (a.sessions[0]?.updated ?? 0)
-    );
-
-    return result;
-  }, [sortedSessions, projects, sorter]);
-
-  const renderSession = (session: Session) => (
-    <button
-      className="session"
-      key={session.id}
-      data-selected={session.id === selectedSessionId}
-      onClick={() => onSelectSession(session.id)}
-    >
-      <GemBlob
-        seed={seeds[session.id] ?? session.id}
-        size={32}
-        state={states[session.id] ?? 'idle'}
-      />
-      <span className="session-text">
-        <span className="session-title">{session.title ?? session.id}</span>
-        <span className="session-preview">{previews[session.id] ?? ''}</span>
-      </span>
-    </button>
-  );
-
-  const renderGroup = (group: Group) => {
-    const isCollapsed = collapsed[group.key] ?? false;
+  const renderSession = (session: Session) => {
+    const key = sessionKey(session);
+    const instance = instanceById[session.instanceId];
+    const project = projectFor(session, projectsByInstance[session.instanceId] ?? []);
+    const selected = key === selectedKey;
+    const state = states[key] ?? 'idle';
 
     return (
-      <div className="project" key={group.key}>
-        <button
-          className="project-header"
-          onClick={() => setCollapsed((prev) => ({ ...prev, [group.key]: !isCollapsed }))}
-        >
-          <span>{isCollapsed ? '▸' : '▾'}</span>
-          <span className="project-name">{group.label}</span>
-          <span className="instance-meta">{group.sessions.length}</span>
-        </button>
-        {isCollapsed ? null : <div className="session-list">{group.sessions.map(renderSession)}</div>}
-      </div>
+      <motion.button
+        key={key}
+        type="button"
+        layout="position"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.16 } }}
+        transition={spring}
+        whileTap={{ scale: 0.985 }}
+        data-selected={selected}
+        onClick={() => onSelectSession(session)}
+        className={cn(
+          'group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150',
+          selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+        )}
+      >
+        <div className="mt-0.5">
+          <Blob style={blobStyle} seed={seeds[key] ?? session.id} size={34} state={state} />
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+              {session.title ?? session.id}
+            </span>
+            <span className="flex-none text-[10.5px] tabular-nums text-muted-foreground/80">
+              {relativeTime(session.updated, now)}
+            </span>
+          </div>
+          <span className="truncate text-[11.5px] leading-4">
+            {previews[key] ?? (session.directory ? normalizeDir(session.directory).split('/').pop() : '')}
+          </span>
+          <span className="flex items-center gap-1 truncate text-[10.5px] text-muted-foreground/70">
+            {multiInstance && instance ? (
+              <>
+                <span className="truncate">{instance.label}</span>
+                {project ? <span aria-hidden>·</span> : null}
+              </>
+            ) : null}
+            {project ? <span className="truncate">{project.name}</span> : null}
+          </span>
+        </div>
+      </motion.button>
     );
   };
 
   return (
-    <div className="rail">
-      <div className="rail-top">
-        <button className="primary-button" onClick={onNewAgent}>
-          + New agent
-        </button>
-        <select
-          className="sorter"
-          value={sorter}
-          onChange={(event) => setSorter(event.target.value as Sorter)}
-        >
-          <option value="recent">Sort: recent activity</option>
-          <option value="name">Sort: name</option>
-        </select>
+    <aside className="flex w-[320px] flex-none flex-col border-r bg-card">
+      <div className="flex flex-col gap-2 border-b p-2.5">
+        <div className="flex gap-1.5">
+          <Button
+            className="flex-1 justify-start"
+            size="sm"
+            disabled={!defaultInstanceId}
+            onClick={() => defaultInstanceId && onNewAgent(defaultInstanceId)}
+          >
+            <Plus />
+            New agent
+            {multiInstance && defaultInstanceId ? (
+              <span className="ml-auto truncate text-[11px] opacity-70">
+                {instanceById[defaultInstanceId]?.label}
+              </span>
+            ) : null}
+          </Button>
+
+          {multiInstance ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon-sm" aria-label="Choose instance for the new agent">
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[220px]">
+                <DropdownMenuLabel>New agent on…</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {ready.map((instance) => (
+                  <DropdownMenuItem key={instance.id} onSelect={() => onNewAgent(instance.id)}>
+                    <span className="size-1.5 rounded-full bg-emerald-400" />
+                    {instance.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
+
+        <Select value={sorter} onValueChange={(value) => setSorter(value as Sorter)}>
+          <SelectTrigger size="sm" className="w-full text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="recent">Sort: recent activity</SelectItem>
+            <SelectItem value="name">Sort: name</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      <div className="rail-list">
-        {groups.map(renderGroup)}
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
+        <LayoutGroup>
+          <AnimatePresence initial={false} mode="popLayout">
+            {sorted.map(renderSession)}
+          </AnimatePresence>
+        </LayoutGroup>
 
-        {groups.length === 0 ? (
-          <div className="instance-meta" style={{ padding: 8 }}>
-            No projects or sessions yet.
+        {sorted.length === 0 ? (
+          <div className="px-3 py-8 text-center text-[12px] text-muted-foreground">
+            {loading
+              ? 'Loading sessions…'
+              : ready.length === 0
+                ? 'No connected instances. Open one in OpenChamber, then refresh.'
+                : 'No sessions yet.'}
           </div>
         ) : null}
       </div>
 
-      <div className="rail-bottom">
-        <button className="icon-button" onClick={onShowcase}>
-          Blobs
-        </button>
-        <button className="icon-button" onClick={onOpenSettings}>
+      <div className="flex gap-1.5 border-t p-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className="flex-1" onClick={onShowcase}>
+              <Sparkles />
+              Blobs
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Preview blob styles</TooltipContent>
+        </Tooltip>
+        <Button variant="ghost" size="sm" className="flex-1" onClick={onOpenSettings}>
+          <Settings />
           Settings
-        </button>
+        </Button>
       </div>
-    </div>
+    </aside>
   );
 }

@@ -32,12 +32,16 @@ type Instance = {
   attachable: boolean;
 };
 
+type BlobStyle = 'gem' | 'grok';
+
 type EmberSettings = {
-  instanceThemes: Record<string, string>;
+  theme: string;
+  blobStyle: BlobStyle;
   instanceModels: Record<string, string[]>;
 };
 
 const DEFAULT_THEME_ID = 'ember';
+const DEFAULT_BLOB_STYLE: BlobStyle = 'grok';
 const PROBE_TIMEOUT_MS = 1500;
 
 const openchamberSettingsPath = (): string =>
@@ -67,13 +71,21 @@ const isLocalUrl = (url: string): boolean => /^https?:\/\/(127\.0\.0\.1|localhos
 
 const readEmberSettings = (): EmberSettings => {
   const root = readJson(emberSettingsPath());
-  const themes = root.instanceThemes;
   const models = root.instanceModels;
+  // Older builds stored one theme per instance; fall back to the first of those.
+  const legacyThemes =
+    root.instanceThemes && typeof root.instanceThemes === 'object'
+      ? Object.values(root.instanceThemes as Record<string, string>)
+      : [];
+  const theme = typeof root.theme === 'string' && root.theme ? root.theme : legacyThemes[0];
   return {
-    instanceThemes: themes && typeof themes === 'object' ? (themes as Record<string, string>) : {},
+    theme: theme || DEFAULT_THEME_ID,
+    blobStyle: root.blobStyle === 'gem' || root.blobStyle === 'grok' ? root.blobStyle : DEFAULT_BLOB_STYLE,
     instanceModels: models && typeof models === 'object' ? (models as Record<string, string[]>) : {},
   };
 };
+
+const writeEmberSettings = (settings: EmberSettings): void => writeJson(emberSettingsPath(), settings);
 
 const hostUrl = (host: StoredHost): string => {
   const url = typeof host.url === 'string' ? host.url : '';
@@ -188,69 +200,43 @@ const instanceTarget = (instanceId: string): { url: string; headers: Record<stri
   return { url: rawUrl.replace(/\/+$/, ''), headers };
 };
 
-type BoundWindow = BrowserWindow & { emberInstanceId?: string | null };
-
-const windows = new Map<number, BoundWindow>();
-
-const createWindow = (instanceId: string | null): BrowserWindow => {
+const createWindow = (): BrowserWindow => {
   const win = new BrowserWindow({
     width: 1180,
     height: 760,
+    minWidth: 720,
+    minHeight: 480,
     title: 'Ember',
     backgroundColor: '#16130f',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-  }) as BoundWindow;
+  });
 
-  win.emberInstanceId = instanceId;
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  win.on('closed', () => windows.delete(win.id));
-  windows.set(win.id, win);
   return win;
 };
 
 ipcMain.handle('ember:instances', () => loadInstances());
 
-ipcMain.handle('ember:window-instance', (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender) as BoundWindow | null;
-  return win?.emberInstanceId ?? null;
+ipcMain.handle('ember:settings:get', () => {
+  const { theme, blobStyle } = readEmberSettings();
+  return { theme, blobStyle };
 });
 
-ipcMain.handle('ember:open', (event, args: { instanceId: string; mode: 'replace' | 'new' }) => {
-  const instanceId = String(args?.instanceId || '');
-  if (!instanceId) return null;
-
-  if (args.mode === 'new') {
-    createWindow(instanceId);
-    return null;
+ipcMain.handle(
+  'ember:settings:set',
+  (_event, patch: { theme?: string; blobStyle?: BlobStyle }) => {
+    const settings = readEmberSettings();
+    if (typeof patch?.theme === 'string' && patch.theme) settings.theme = patch.theme;
+    if (patch?.blobStyle === 'gem' || patch?.blobStyle === 'grok') settings.blobStyle = patch.blobStyle;
+    writeEmberSettings(settings);
+    return { theme: settings.theme, blobStyle: settings.blobStyle };
   }
-
-  const win = BrowserWindow.fromWebContents(event.sender) as BoundWindow | null;
-  if (!win) return null;
-  win.emberInstanceId = instanceId;
-  win.webContents.send('ember:instance-changed', instanceId);
-  return null;
-});
-
-ipcMain.handle('ember:theme:get', (_event, args: { instanceId: string }) => {
-  const instanceId = String(args?.instanceId || '');
-  if (!instanceId) return DEFAULT_THEME_ID;
-  return readEmberSettings().instanceThemes[instanceId] || DEFAULT_THEME_ID;
-});
-
-ipcMain.handle('ember:theme:set', (_event, args: { instanceId: string; themeId: string }) => {
-  const instanceId = String(args?.instanceId || '');
-  const themeId = String(args?.themeId || '');
-  if (!instanceId || !themeId) return null;
-
-  const settings = readEmberSettings();
-  settings.instanceThemes[instanceId] = themeId;
-  writeJson(emberSettingsPath(), settings);
-  return null;
-});
+);
 
 ipcMain.handle('ember:models:get', (_event, args: { instanceId: string }) => {
   const instanceId = String(args?.instanceId || '');
@@ -266,7 +252,7 @@ ipcMain.handle('ember:models:set', (_event, args: { instanceId: string; order: s
 
   const settings = readEmberSettings();
   settings.instanceModels[instanceId] = order;
-  writeJson(emberSettingsPath(), settings);
+  writeEmberSettings(settings);
   return null;
 });
 
@@ -309,9 +295,9 @@ ipcMain.handle(
 );
 
 app.whenReady().then(() => {
-  createWindow(null);
+  createWindow();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow(null);
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 

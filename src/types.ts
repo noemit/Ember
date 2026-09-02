@@ -19,12 +19,24 @@ export type Project = {
 
 export type Session = {
   id: string;
+  instanceId: string;
   title?: string;
   directory?: string;
   updated?: number;
 };
 
+export type SessionRef = {
+  instanceId: string;
+  sessionId: string;
+};
+
+/** Stable key for a session across instances (session ids are only unique per instance). */
+export const sessionKey = (ref: SessionRef | Session): string =>
+  `${ref.instanceId}::${'sessionId' in ref ? ref.sessionId : ref.id}`;
+
 export type BallState = 'idle' | 'active' | 'needs-input' | 'error';
+
+export type BlobStyle = 'gem' | 'grok';
 
 export type ChatMessage = {
   id: string;
@@ -38,12 +50,15 @@ export type ModelOption = {
   label: string;
 };
 
+export type EmberSettings = {
+  theme: string;
+  blobStyle: BlobStyle;
+};
+
 export type EmberBridge = {
   listInstances(): Promise<unknown>;
-  windowInstance(): Promise<string | null>;
-  openInstance(instanceId: string, mode: 'replace' | 'new'): Promise<null>;
-  getTheme(instanceId: string): Promise<string>;
-  setTheme(instanceId: string, themeId: string): Promise<null>;
+  getSettings(): Promise<EmberSettings>;
+  setSettings(patch: Partial<EmberSettings>): Promise<EmberSettings>;
   modelsGet(instanceId: string): Promise<string[]>;
   modelsSet(instanceId: string, order: string[]): Promise<null>;
   request(
@@ -52,7 +67,6 @@ export type EmberBridge = {
     path: string,
     body?: unknown
   ): Promise<{ ok: boolean; status: number; data: unknown }>;
-  onInstanceChanged(handler: (instanceId: string) => void): () => void;
 };
 
 declare global {

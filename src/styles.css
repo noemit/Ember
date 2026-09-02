@@ -1,478 +1,107 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
 :root {
-  --bg: #16130f;
-  --bg-panel: #1e1a15;
-  --bg-elev: #262019;
-  --text: #f6efe6;
-  --text-dim: #a89884;
+  --radius: 0.625rem;
+
+  --background: #16130f;
+  --foreground: #f6efe6;
+  --card: #1e1a15;
+  --card-foreground: #f6efe6;
+  --popover: #1e1a15;
+  --popover-foreground: #f6efe6;
+  --primary: #ff7a1a;
+  --primary-foreground: #16130f;
+  --secondary: #262019;
+  --secondary-foreground: #f6efe6;
+  --muted: #262019;
+  --muted-foreground: #a89884;
+  --accent: #262019;
+  --accent-foreground: #f6efe6;
+  --destructive: #ff5c5c;
   --border: #332c23;
-  --accent: #ff7a1a;
-  --accent-text: #16130f;
-  --danger: #ff5c5c;
-  --ball: #ff7a1a;
-  --ball-eyeball: #fff7ec;
-  --ball-pupil: #16130f;
+  --input: #332c23;
+  --ring: #ff7a1a;
+  --sidebar: #1e1a15;
 }
 
-* {
-  box-sizing: border-box;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  overflow: hidden;
-}
-
-button,
-select,
-textarea,
-input {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-}
-
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
-  flex: none;
-}
-
-.brand {
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-}
-
-.instance-button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.instance-menu {
-  position: absolute;
-  top: 42px;
-  left: 12px;
-  min-width: 320px;
-  max-height: 420px;
-  overflow: auto;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  z-index: 40;
-}
-
-.instance-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-}
-
-.instance-row:last-child {
-  border-bottom: none;
-}
-
-.instance-row-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.instance-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.instance-meta {
-  color: var(--text-dim);
-  font-size: 11px;
-}
-
-.icon-button {
-  padding: 4px 7px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  cursor: pointer;
-  flex: none;
-}
-
-.icon-button:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.icon-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.body-row {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.rail {
-  width: 300px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border);
-}
-
-.rail-top {
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.primary-button {
-  width: 100%;
-  padding: 7px 10px;
-  background: var(--accent);
-  color: var(--accent-text);
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.sorter {
-  padding: 4px 6px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-}
-
-.rail-list {
-  flex: 1;
-  overflow: auto;
-  padding: 6px 6px 12px;
-}
-
-.project {
-  margin-bottom: 4px;
-}
-
-.project-header {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 6px;
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  text-align: left;
-  cursor: pointer;
-  color: var(--text);
-  font-weight: 600;
-}
-
-.project-header:hover {
-  background: var(--bg-elev);
-}
-
-.project-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-list {
-  margin: 2px 0 6px 12px;
-}
-
-.session {
-  width: 100%;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-height: 46px;
-  padding: 8px;
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  text-align: left;
-  cursor: pointer;
-  color: var(--text-dim);
-}
-
-.session:hover {
-  background: var(--bg-elev);
-  color: var(--text);
-}
-
-.session[data-selected='true'] {
-  background: var(--bg-elev);
-  color: var(--text);
-}
-
-.session-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.session-title {
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-preview {
-  font-size: 11px;
-  color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rail-bottom {
-  padding: 8px;
-  border-top: 1px solid var(--border);
-}
-
-.rail-bottom .icon-button {
-  width: 100%;
-}
-
-.chat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.messages {
-  flex: 1;
-  overflow: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.message {
-  max-width: 720px;
-  padding: 8px 11px;
-  border-radius: 8px;
-  background: var(--bg-elev);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.message[data-role='user'] {
-  align-self: flex-end;
-  background: var(--accent);
-  color: var(--accent-text);
-}
-
-.composer {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px 12px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-panel);
-}
-
-.composer-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.composer textarea {
-  width: 100%;
-  min-height: 62px;
-  resize: vertical;
-  padding: 8px 10px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.empty-state {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-dim);
-}
-
-.agent-ball {
-  position: relative;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--ball);
-}
-
-.agent-ball .eye {
-  position: absolute;
-  top: 6px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--ball-eyeball);
-  overflow: hidden;
-}
-
-.agent-ball .eye-left {
-  left: 4px;
-}
-
-.agent-ball .eye-right {
-  right: 4px;
-}
-
-.agent-ball .pupil {
-  position: absolute;
-  left: 2px;
-  top: 2px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ball-pupil);
-  transition: transform 0.08s linear;
-}
-
-.agent-ball[data-state='active'] {
-  animation: ball-bounce 0.6s ease-in-out infinite;
-}
-
-.agent-ball[data-state='needs-input'] {
-  animation: ball-pulse 1.6s ease-in-out infinite;
-  opacity: 0.8;
-}
-
-.agent-ball[data-state='error'] {
-  background: var(--danger);
-}
-
-.agent-ball[data-state='error'] .eye {
-  top: 12px;
-  height: 3px;
-  border-radius: 1px;
-}
-
-@keyframes ball-bounce {
-  0%,
-  100% {
-    transform: translateY(0);
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-  50% {
-    transform: translateY(-5px);
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 13px;
+    overflow: hidden;
+    transition:
+      background-color 0.35s var(--ease-spring),
+      color 0.35s var(--ease-spring);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
-@keyframes ball-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.18);
-  }
+/* Native drag region for the frameless-feeling top bar. */
+.drag-region {
+  -webkit-app-region: drag;
 }
 
-.sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 60;
-}
-
-.sheet {
-  width: 420px;
-  max-height: 80%;
-  overflow: auto;
-  padding: 16px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.sheet h2 {
-  margin: 0 0 4px;
-  font-size: 15px;
-}
-
-.sheet-sub {
-  color: var(--text-dim);
-  margin-bottom: 14px;
-}
-
-.theme-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.theme-card {
-  padding: 10px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.theme-card[data-selected='true'] {
-  border-color: var(--accent);
-}
-
-.theme-swatches {
-  display: flex;
-  gap: 3px;
-}
-
-.theme-swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+.drag-region button,
+.drag-region [role='button'],
+.drag-region a {
+  -webkit-app-region: no-drag;
 }
