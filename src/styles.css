@@ -6,25 +6,37 @@
 :root {
   --radius: 0.625rem;
 
-  --background: #16130f;
-  --foreground: #f6efe6;
-  --card: #1e1a15;
-  --card-foreground: #f6efe6;
-  --popover: #1e1a15;
-  --popover-foreground: #f6efe6;
-  --primary: #ff7a1a;
-  --primary-foreground: #16130f;
-  --secondary: #262019;
-  --secondary-foreground: #f6efe6;
-  --muted: #262019;
-  --muted-foreground: #a89884;
-  --accent: #262019;
-  --accent-foreground: #f6efe6;
+  /* Defaults mirror the "stone" theme; applyTheme overrides these at runtime. */
+  --background: #151413;
+  --foreground: #efece7;
+  --card: #1b1a18;
+  --card-foreground: #efece7;
+  --popover: #1b1a18;
+  --popover-foreground: #efece7;
+  --primary: #efece7;
+  --primary-foreground: #151413;
+  --user-bubble: #4b4038;
+  --user-bubble-foreground: #efece7;
+  --warning: #f0b36b;
+  --secondary: #242220;
+  --secondary-foreground: #efece7;
+  --muted: #242220;
+  --muted-foreground: #9b958c;
+  --accent: #242220;
+  --accent-foreground: #efece7;
   --destructive: #ff5c5c;
-  --border: #332c23;
-  --input: #332c23;
+  --border: #2c2a26;
+  --input: #2c2a26;
   --ring: #ff7a1a;
-  --sidebar: #1e1a15;
+  --sidebar: #1b1a18;
+  --highlight: #ff7a1a;
+  --highlight-foreground: #151413;
+  --glyph-0: #5564ce;
+  --glyph-1: #f17fb2;
+  --glyph-2: #2f9e52;
+  --glyph-3: #e96420;
+  --glyph-4: #e8542e;
+  --glyph-5: #f6c522;
 }
 
 @theme inline {
@@ -36,6 +48,9 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-user-bubble: var(--user-bubble);
+  --color-user-bubble-foreground: var(--user-bubble-foreground);
+  --color-warning: var(--warning);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -47,6 +62,8 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -69,6 +86,10 @@
   #root {
     height: 100%;
     margin: 0;
+  }
+
+  #root {
+    height: 100dvh;
   }
 
   body {
@@ -104,4 +125,19 @@
 .drag-region [role='button'],
 .drag-region a {
   -webkit-app-region: no-drag;
+}
+
+.safe-top-bar {
+  height: calc(2.75rem + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+}
+
+.mobile-rail {
+  top: calc(2.75rem + env(safe-area-inset-top));
+  bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-composer {
+  padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
 }

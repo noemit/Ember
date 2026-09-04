@@ -1,13 +1,14 @@
 import * as React from 'react';
-import { deriveTraits, hashString, mulberry32 } from './seed';
+import { deriveTraits, hashString, mulberry32, seedIdentity } from './seed';
 import { GEM_COLORS } from './palette';
 import { buildShape } from './shapes';
 import { usePupilTracking } from './usePupilTracking';
-import type { BallState } from '../types';
+import type { AvatarIdentity, BallState } from '../types';
 import './blob.css';
 
 type Props = {
   seed: string;
+  identity?: AvatarIdentity;
   size?: number;
   state?: BallState;
   interactive?: boolean;
@@ -15,21 +16,25 @@ type Props = {
 
 const EYE_SHAPES = ['round', 'almond', 'tall'] as const;
 
-export default function GemBlob({ seed, size = 30, state = 'idle', interactive = true }: Props) {
+export default function GemBlob({ seed, identity, size = 30, state = 'idle', interactive = true }: Props) {
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const leftPupil = React.useRef<SVGCircleElement>(null);
   const rightPupil = React.useRef<SVGCircleElement>(null);
   const gradientId = `gem-${React.useId().replace(/[:]/g, '')}`;
 
   const { color, shape, eyeShape } = React.useMemo(() => {
-    const seedHash = hashString(seed);
-    const traits = deriveTraits(seed);
+    const resolved = identity ?? seedIdentity(seed);
+    const traits = deriveTraits(resolved.shapeSeed);
+    const colorIndex = resolved.colorIndex ?? deriveTraits(resolved.colorSeed).colorIndex;
     return {
-      color: GEM_COLORS[Math.abs(traits.colorIndex) % GEM_COLORS.length],
-      shape: buildShape(traits.shapeIndex, mulberry32((seedHash ^ 0x9e3779b9) >>> 0)),
+      color: GEM_COLORS[Math.abs(colorIndex) % GEM_COLORS.length],
+      shape: buildShape(
+        traits.shapeIndex,
+        mulberry32((hashString(resolved.shapeSeed) ^ 0x9e3779b9) >>> 0)
+      ),
       eyeShape: EYE_SHAPES[Math.abs(traits.eyeIndex) % EYE_SHAPES.length],
     };
-  }, [seed]);
+  }, [identity, seed]);
   const isError = state === 'error';
 
   usePupilTracking(wrapperRef, [leftPupil, rightPupil], interactive && !isError, 5);
@@ -51,7 +56,7 @@ export default function GemBlob({ seed, size = 30, state = 'idle', interactive =
   );
 
   return (
-    <div className="blob blob-gem" data-state={state} ref={wrapperRef} style={{ width: size, height: size }}>
+    <div className="blob blob-gem" data-state={state} aria-hidden="true" ref={wrapperRef} style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" width={size} height={size} style={{ overflow: 'visible' }}>
         <defs>
           <radialGradient id={gradientId} cx="38%" cy="32%" r="80%">

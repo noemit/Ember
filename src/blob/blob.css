@@ -2,7 +2,6 @@
   position: relative;
   display: inline-block;
   flex: none;
-  will-change: transform;
 }
 
 .blob svg {
@@ -15,15 +14,36 @@
   transform-origin: center;
 }
 
-.blob .blob-eyes circle[r='3.4'],
+.blob .blob-eyes .blob-pupil,
 .blob .blob-eyes circle[r='4.2'] {
   transition: transform 90ms linear;
 }
 
 /* Idle: a slow, barely-there breathe so the blobs feel alive without being busy. */
-.blob-grok[data-state='idle'] .blob-body {
+.blob-grok[data-state='idle'] .blob-body,
+.blob-glyph[data-state='idle'] .blob-body,
+.blob-critter[data-state='idle'] .blob-body {
   animation: blob-breathe 4.2s ease-in-out infinite;
   animation-delay: inherit;
+}
+
+/* Critter status ring: the body keeps its identity, the ring carries the state. */
+.blob-critter .blob-ring {
+  transform-box: view-box;
+  transform-origin: 50px 55px;
+}
+
+.blob-critter[data-state='active'] .blob-ring {
+  animation: blob-spin 1.6s linear infinite;
+}
+
+.blob-critter[data-state='needs-input'] .blob-ring,
+.blob-critter[data-state='needs-input'] .blob-badge {
+  animation: blob-pulse 1.4s ease-in-out infinite;
+}
+
+.blob-critter[data-state='error'] .blob-body {
+  filter: saturate(0.2) brightness(0.9);
 }
 
 .blob[data-state='active'] .blob-body {
@@ -78,6 +98,22 @@
   }
 }
 
+@keyframes blob-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes blob-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @keyframes blob-shake {
   10%,
   90% {
@@ -101,7 +137,9 @@
 @media (prefers-reduced-motion: reduce) {
   .blob,
   .blob .blob-body,
-  .blob .blob-eyes {
+  .blob .blob-eyes,
+  .blob .blob-ring,
+  .blob .blob-badge {
     animation: none !important;
   }
 }

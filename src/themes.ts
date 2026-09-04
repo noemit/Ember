@@ -1,3 +1,12 @@
+/**
+ * Palettes are neutral first: surfaces, text and borders are grays/beiges, and the one
+ * bright colour (`highlight`) is reserved for indicators — activity dots, focus rings,
+ * selection ticks and the wordmark. User bubbles use a softer neighbour of the highlight
+ * so chat remains calm while the accent stays available for interaction states.
+ */
+import { glyphPaletteFor } from './blob/contrast';
+import { critterPaletteFor } from './blob/critter';
+
 export type ThemePalette = {
   bg: string;
   panel: string;
@@ -5,131 +14,120 @@ export type ThemePalette = {
   text: string;
   dim: string;
   border: string;
-  accent: string;
-  accentText: string;
+  highlight: string;
+  highlightText: string;
+  warning: string;
+  userBubble: string;
+  userBubbleText: string;
   danger: string;
 };
+
+export type ThemeGroup = 'neutral';
 
 export type Theme = {
   id: string;
   name: string;
+  group: ThemeGroup;
   dark: boolean;
   palette: ThemePalette;
 };
 
-export const DEFAULT_THEME_ID = 'ember';
+export const DEFAULT_THEME_ID = 'stone';
+
+export const THEME_GROUPS: Array<{ id: ThemeGroup; name: string }> = [
+  { id: 'neutral', name: 'Colors' },
+];
 
 export const THEMES: Theme[] = [
   {
-    id: 'ember',
-    name: 'Ember',
-    dark: true,
-    palette: {
-      bg: '#16130f',
-      panel: '#1e1a15',
-      elev: '#262019',
-      text: '#f6efe6',
-      dim: '#a89884',
-      border: '#332c23',
-      accent: '#ff7a1a',
-      accentText: '#16130f',
-      danger: '#ff5c5c',
-    },
-  },
-  {
-    id: 'midnight',
-    name: 'Midnight',
-    dark: true,
-    palette: {
-      bg: '#0d1117',
-      panel: '#131a24',
-      elev: '#1b2432',
-      text: '#e6edf3',
-      dim: '#8b98a9',
-      border: '#243040',
-      accent: '#4cc2ff',
-      accentText: '#06121c',
-      danger: '#ff6b6b',
-    },
-  },
-  {
-    id: 'matcha',
-    name: 'Matcha',
-    dark: true,
-    palette: {
-      bg: '#141a14',
-      panel: '#1b231b',
-      elev: '#232d23',
-      text: '#eef5ea',
-      dim: '#a3b39d',
-      border: '#2b382b',
-      accent: '#7fd14b',
-      accentText: '#101a0c',
-      danger: '#e8604c',
-    },
-  },
-  {
-    id: 'bubblegum',
-    name: 'Bubblegum',
-    dark: true,
-    palette: {
-      bg: '#1a1220',
-      panel: '#231830',
-      elev: '#2c1f3b',
-      text: '#fdeaf6',
-      dim: '#bb9db3',
-      border: '#3a2a4a',
-      accent: '#ff7ac8',
-      accentText: '#1a1020',
-      danger: '#ff5f7e',
-    },
-  },
-  {
-    id: 'terminal',
-    name: 'Terminal',
-    dark: true,
-    palette: {
-      bg: '#080b08',
-      panel: '#0e130e',
-      elev: '#141b14',
-      text: '#c8ffc8',
-      dim: '#5f8f5f',
-      border: '#1e2a1e',
-      accent: '#39ff6a',
-      accentText: '#04140a',
-      danger: '#ff4d4d',
-    },
-  },
-  {
-    id: 'slate',
-    name: 'Slate',
+    id: 'stone',
+    name: 'Stone',
+    group: 'neutral',
     dark: false,
     palette: {
-      bg: '#f4f6f9',
-      panel: '#e9edf3',
-      elev: '#ffffff',
-      text: '#16202c',
-      dim: '#5b6b7d',
-      border: '#d3dae3',
-      accent: '#3b7ddd',
-      accentText: '#ffffff',
-      danger: '#d64545',
+      bg: '#e2e2df',
+      panel: '#d9d9d5',
+      elev: '#d0d0cb',
+      text: '#232322',
+      dim: '#50504d',
+      border: '#c4c4be',
+      highlight: '#2f6fdc',
+      highlightText: '#ffffff',
+      warning: '#713700',
+      userBubble: '#c1cee0',
+      userBubbleText: '#232322',
+      danger: '#b83a3a',
+    },
+  },
+  {
+    id: 'clay',
+    name: 'Clay',
+    group: 'neutral',
+    dark: true,
+    palette: {
+      bg: '#37322d',
+      panel: '#3f3933',
+      elev: '#4a433c',
+      text: '#f1ebe2',
+      dim: '#c2b7a7',
+      border: '#534b42',
+      highlight: '#f0a35e',
+      highlightText: '#2a241d',
+      warning: '#f0b36b',
+      userBubble: '#604d3d',
+      userBubbleText: '#f1ebe2',
+      danger: '#f07a6a',
+    },
+  },
+  {
+    id: 'graphite',
+    name: 'Graphite',
+    group: 'neutral',
+    dark: true,
+    palette: {
+      bg: '#101214',
+      panel: '#16191d',
+      elev: '#1f2329',
+      text: '#e6e9ed',
+      dim: '#8d96a1',
+      border: '#262c34',
+      highlight: '#4cc2ff',
+      highlightText: '#06121c',
+      warning: '#f0b36b',
+      userBubble: '#30434f',
+      userBubbleText: '#e6e9ed',
+      danger: '#ff6b6b',
     },
   },
 ];
 
 export const themeById = (id: string): Theme =>
-  THEMES.find((theme) => theme.id === id) ?? THEMES[0];
+  THEMES.find((theme) => theme.id === id) ?? THEMES.find((theme) => theme.id === DEFAULT_THEME_ID) ?? THEMES[0];
 
 const toCssVars = (palette: ThemePalette): Record<string, string> => ({
+  // Glyph blobs sit on the rail (panel), selected rows (elev) and the chat header (bg).
+  ...Object.fromEntries(
+    glyphPaletteFor([palette.panel, palette.elev, palette.bg]).map((color, index) => [`--glyph-${index}`, color])
+  ),
+  ...Object.fromEntries(
+    critterPaletteFor([palette.panel, palette.elev, palette.bg]).flatMap(({ fill, accent, ink }, index) => [
+      [`--critter-${index}`, fill],
+      [`--critter-${index}-accent`, accent],
+      [`--critter-${index}-ink`, ink],
+    ])
+  ),
   '--background': palette.bg,
   '--foreground': palette.text,
   '--card': palette.panel,
   '--card-foreground': palette.text,
   '--popover': palette.panel,
   '--popover-foreground': palette.text,
-  '--primary': palette.accent,
-  '--primary-foreground': palette.accentText,
+  // Neutral: buttons read as ink on paper rather than a splash of colour.
+  '--primary': palette.text,
+  '--primary-foreground': palette.bg,
+  '--user-bubble': palette.userBubble,
+  '--user-bubble-foreground': palette.userBubbleText,
+  '--warning': palette.warning,
   '--secondary': palette.elev,
   '--secondary-foreground': palette.text,
   '--muted': palette.elev,
@@ -139,8 +137,10 @@ const toCssVars = (palette: ThemePalette): Record<string, string> => ({
   '--destructive': palette.danger,
   '--border': palette.border,
   '--input': palette.border,
-  '--ring': palette.accent,
+  '--ring': palette.highlight,
   '--sidebar': palette.panel,
+  '--highlight': palette.highlight,
+  '--highlight-foreground': palette.highlightText,
 });
 
 export const applyTheme = (id: string): void => {

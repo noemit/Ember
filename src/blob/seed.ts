@@ -1,3 +1,6 @@
+import { sessionKey } from '../types';
+import type { AvatarIdentity, AvatarOverride, Project, Session } from '../types';
+
 export const hashString = (value: string): number => {
   let hash = 2166136261 >>> 0;
   for (let index = 0; index < value.length; index++) {
@@ -17,17 +20,6 @@ export const mulberry32 = (seed: number): (() => number) => {
   };
 };
 
-export const promptSeedString = (text: string): string => {
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 10)
-    .join(' ');
-  return words || 'ember';
-};
-
 export type Traits = {
   styleIndex: number;
   colorIndex: number;
@@ -44,3 +36,67 @@ export const deriveTraits = (seed: string): Traits => {
     eyeIndex: Math.floor(rng() * 3),
   };
 };
+
+export const normalizeDirectory = (value: string): string => value.replace(/[\\/]+$/, '');
+
+export const projectForSession = (session: Session, projects: Project[]): Project | null => {
+  const directory = session.directory ? normalizeDirectory(session.directory) : '';
+  let best: Project | null = null;
+  let bestLength = -1;
+  projects.forEach((project) => {
+    if (!project.path) return;
+    const base = normalizeDirectory(project.path);
+    if (
+      (directory === base || directory.startsWith(`${base}/`) || directory.startsWith(`${base}\\`)) &&
+      base.length > bestLength
+    ) {
+      best = project;
+      bestLength = base.length;
+    }
+  });
+  return best;
+};
+
+export const sessionAvatarKey = (session: Session): string => `session:${sessionKey(session)}`;
+
+export const projectAvatarKey = (session: Session, project: Project | null): string | undefined => {
+  if (project) return `project:${session.instanceId}::${project.id}`;
+  return session.directory
+    ? `directory:${session.instanceId}::${normalizeDirectory(session.directory)}`
+    : undefined;
+};
+
+export const resolveAvatarIdentity = (
+  session: Session,
+  projects: Project[],
+  scheduledBindings: Record<string, string>,
+  overrides: Record<string, AvatarOverride>
+): AvatarIdentity => {
+  const key = sessionKey(session);
+  const projectKey = projectAvatarKey(session, projectForSession(session, projects));
+  const taskKey = scheduledBindings[key];
+  const override = {
+    ...(projectKey ? overrides[projectKey] : undefined),
+    ...(taskKey ? overrides[taskKey] : undefined),
+    ...overrides[sessionAvatarKey(session)],
+  };
+  return {
+    sessionKey: key,
+    projectKey,
+    taskKey,
+    colorSeed: projectKey ?? key,
+    shapeSeed: taskKey ?? key,
+    motionSeed: key,
+    colorIndex:
+      override.colorIndex ??
+      (projectKey ? hashString(`avatar-color:${projectKey}`) % 6 : undefined),
+    shapeName: override.shapeName,
+  };
+};
+
+export const seedIdentity = (seed: string): AvatarIdentity => ({
+  sessionKey: seed,
+  colorSeed: seed,
+  shapeSeed: seed,
+  motionSeed: seed,
+});
