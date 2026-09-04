@@ -1,0 +1,91 @@
+MIT License with Revenue-Based Commercial Use Rider
+
+Copyright (c) 2026 Noemi Titarenco
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+ADDITIONAL RIDER / RESTRICTION (REVENUE-BASED COMMERCIAL USE)
+
+This rider is part of the conditions of this License. In the event of any
+conflict between this rider and any other portion of this License, this rider
+controls.
+
+1. Definitions
+
+"Creator" means Noemi Titarenco.
+
+"Company" means any corporation, limited liability company, partnership, or
+other for-profit legal entity, together with all of its Affiliates.
+
+"Affiliate" means any entity that directly or indirectly controls, is
+controlled by, or is under common control with another entity. "Control"
+means ownership of more than fifty percent (50%) of the voting securities or
+other ownership interest, or the power to direct management or policies by
+contract or otherwise.
+
+"Gross Revenue" means the aggregate worldwide gross revenue of a Company and
+all of its Affiliates, before deduction of costs or expenses, as reported in
+its most recently completed fiscal year under generally accepted accounting
+principles or another consistently applied accounting standard. If the
+Company has not completed a fiscal year, Gross Revenue means its aggregate
+worldwide gross revenue during the immediately preceding twelve (12) months.
+
+"Restricted Company" means a Company whose Gross Revenue exceeds ten million
+United States dollars (US $10,000,000).
+
+2. Restriction
+
+Notwithstanding any other provision of this License, no rights are granted
+to any Restricted Company, or to any person or entity using the Software on
+behalf of, for the benefit of, or under the direction or control of a
+Restricted Company, unless the Creator has first entered into a separate
+formal written agreement expressly authorizing that use.
+
+Any purported license, sublicense, assignment, transfer, or other permission
+to a Restricted Company is null and void without such an agreement. A
+Company that becomes a Restricted Company after beginning to use the
+Software must cease all use of the Software upon becoming a Restricted
+Company unless and until it enters into such an agreement with the Creator.
+
+For purposes of this rider, "use" includes, without limitation, copying,
+modifying, merging, publishing, distributing, sublicensing, selling,
+transferring, making available, hosting, deploying, executing, benchmarking,
+testing, analyzing, indexing, or incorporating the Software or any derivative
+work of the Software into another product, service, dataset, training corpus,
+evaluation harness, or automated system.
+
+3. Derivative Works and Redistribution
+
+This rider applies to the Software and all derivative works of the Software.
+Any distribution of the Software or a derivative work must include this
+License, including this rider, unmodified. No distributor may grant a
+Restricted Company rights that are withheld by this rider.
+
+4. Termination and Enforcement
+
+Any breach of this rider automatically and immediately terminates the
+permissions granted by this License to the breaching party. Upon termination,
+the breaching party must immediately cease using and distributing the
+Software and all derivative works and destroy all copies under its control.
+
+A breach of this rider may cause irreparable harm for which monetary damages
+are inadequate. The Creator may seek injunctive or other equitable relief, in
+addition to any other remedies available at law. To the maximum extent
+permitted by applicable law, the prevailing party in an action to enforce
+this rider is entitled to recover reasonable attorneys' fees and costs.
+
+The above copyright notice, this permission notice, and this rider shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

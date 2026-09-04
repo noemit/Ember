@@ -67,8 +67,8 @@ const instances = [
 
 const sessions: Record<string, MockSession[]> = {
   local: [
-    { id: 'ses_a1', title: 'Youtube Manager', directory: '/workspace/channels', updated: minutes(2), model: { id: 'gpt-5', providerID: 'openai' }, status: 'busy', messages: [
-      { role: 'user', text: 'Manage YouTube for Noemi Titarenco at your discretion.' },
+    { id: 'ses_a1', title: 'Daily channel brief · scheduled', directory: '/workspace/channels', updated: minutes(2), model: { id: 'gpt-5', providerID: 'openai' }, status: 'busy', messages: [
+      { role: 'user', text: 'Run the scheduled morning channel brief: summarize analytics, comments, and today’s publishing queue.' },
       { role: 'assistant', text: 'On it. Pulled the latest analytics; the LongCat video is trending above baseline.', tools: [
         { tool: 'webfetch', status: 'completed', title: 'https://studio.youtube.com/analytics' },
         { tool: 'read', status: 'completed', title: 'channels/schedule.md' },
@@ -78,7 +78,7 @@ const sessions: Record<string, MockSession[]> = {
         { tool: 'bash', status: 'running', title: 'bun run scripts/pin-comment.ts --video LongCat' },
       ] },
     ] },
-    { id: 'ses_a2', title: 'Habit QA', directory: '/workspace/habit', updated: minutes(14), model: { id: 'claude-opus', providerID: 'anthropic' }, status: 'idle', messages: [
+    { id: 'ses_a2', title: 'Habit onboarding QA', directory: '/workspace/habit', updated: minutes(14), model: { id: 'claude-opus', providerID: 'anthropic' }, status: 'idle', messages: [
       { role: 'user', text: 'QA for Habit.am, the guide flow.' },
       {
         role: 'assistant',
@@ -90,30 +90,42 @@ const sessions: Record<string, MockSession[]> = {
         ],
       },
     ] },
-    { id: 'ses_a3', title: 'Ember redesign', directory: '/workspace/ember', updated: minutes(240), status: 'waiting_input', messages: [
+    { id: 'ses_a3', title: 'Ember mobile polish', directory: '/workspace/ember', updated: minutes(240), status: 'waiting_input', messages: [
       { role: 'user', text: 'Update this app to use shadcn so the animations are smooth.' },
       { role: 'assistant', text: 'Happy to. One decision first.', open: true, tools: [
         { tool: 'question', status: 'running', title: 'Which blob style?' },
       ] },
     ] },
-    { id: 'ses_a4', title: 'Deploy cleanup', directory: '/workspace/habit', updated: minutes(1), model: { id: 'claude-sonnet', providerID: 'anthropic' }, status: 'busy', messages: [
+    { id: 'ses_a4', title: 'Habit preview cleanup', directory: '/workspace/habit', updated: minutes(1), model: { id: 'claude-sonnet', providerID: 'anthropic' }, status: 'busy', messages: [
       { role: 'user', text: 'Remove the stale preview deployments.' },
       { role: 'assistant', text: 'Found 6 stale previews. Removing them.', open: true, tools: [
         { tool: 'bash', status: 'completed', title: 'vercel ls habit --meta stale=true' },
         { tool: 'bash', status: 'pending', title: 'vercel rm habit-preview-* --yes' },
       ] },
     ] },
+    { id: 'ses_a5', title: 'Sponsor pipeline research', directory: '/workspace/channels', updated: minutes(48), model: { id: 'gpt-5', providerID: 'openai' }, status: 'idle', messages: [
+      { role: 'user', text: 'Research developer-tool sponsors that fit the channel and rank the best five.' },
+      { role: 'assistant', text: 'Shortlisted five strong fits and added audience overlap, contact details, and suggested angles to `partners/sponsor-pipeline.md`.' },
+    ] },
+    { id: 'ses_a6', title: 'Ember remote access hardening', directory: '/workspace/ember', updated: minutes(75), model: { id: 'claude-sonnet', providerID: 'anthropic' }, status: 'idle', messages: [
+      { role: 'user', text: 'Review the Tailscale web access path and tighten authentication.' },
+      { role: 'assistant', text: 'Added password hashing, rate-limited login attempts, and short-lived authenticated sessions. The listener remains bound only to the Tailscale interface.' },
+    ] },
+    { id: 'ses_a7', title: 'Daily channel brief · yesterday', directory: '/workspace/channels', updated: minutes(1440), model: { id: 'gpt-5', providerID: 'openai' }, status: 'idle', messages: [
+      { role: 'user', text: 'Run the scheduled morning channel brief.' },
+      { role: 'assistant', text: 'Yesterday’s brief is complete: views were up 18%, subscriber conversion held steady, and two comments were flagged for a reply.' },
+    ] },
   ],
   studio: [
-    { id: 'ses_b1', title: 'Habit distribution', directory: '/workspace/habit', updated: minutes(6), status: 'idle', messages: [
+    { id: 'ses_b1', title: 'Habit partner outreach', directory: '/workspace/habit', updated: minutes(6), status: 'idle', messages: [
       { role: 'user', text: 'Distribution for Habit.am, outreach list.' },
       { role: 'assistant', text: 'Drafted 12 outreach emails and queued them for review.' },
     ] },
-    { id: 'ses_b2', title: 'QA Engineer', directory: '/workspace/agent', updated: minutes(35), status: 'error', messages: [
+    { id: 'ses_b2', title: 'Agent deploy smoke test', directory: '/workspace/agent', updated: minutes(35), status: 'error', messages: [
       { role: 'user', text: 'Click through every new GitHub deploy and report issues.' },
       { role: 'assistant', text: '', error: 'Invalid request Error' },
     ] },
-    { id: 'ses_b3', title: 'Habit Instagram', directory: '/workspace/habit', updated: minutes(1500), status: 'idle', messages: [
+    { id: 'ses_b3', title: 'Habit Instagram carousel', directory: '/workspace/habit', updated: minutes(1500), status: 'idle', messages: [
       { role: 'user', text: 'Posts Instagram carousels for Habit.am.' },
     ] },
     { id: 'ses_b4', title: 'Old landing page', directory: '/workspace/habit', updated: minutes(4000), archived: minutes(3000), status: 'idle', messages: [
@@ -125,20 +137,18 @@ const sessions: Record<string, MockSession[]> = {
 
 const projects: Record<string, unknown[]> = {
   local: [
-    { id: 'p1', path: '/workspace/channels', label: 'channels' },
-    { id: 'p2', path: '/workspace/habit', label: 'habit' },
-    { id: 'p3', path: '/workspace/ember', label: 'ember' },
+    { id: 'p1', path: '/workspace/channels', label: 'Creator Studio' },
+    { id: 'p2', path: '/workspace/habit', label: 'Habit' },
+    { id: 'p3', path: '/workspace/ember', label: 'Ember' },
   ],
   studio: [
-    { id: 'p4', path: '/workspace/habit', label: 'habit' },
-    { id: 'p5', path: '/workspace/agent', label: 'agent' },
+    { id: 'p4', path: '/workspace/habit', label: 'Habit' },
+    { id: 'p5', path: '/workspace/agent', label: 'Agent Platform' },
   ],
 };
 
 const scheduledTasks: Record<string, unknown[]> = {
-  p1: [{ id: 'daily-youtube', name: 'Daily YouTube report', state: { lastSessionId: 'ses_a1' } }],
-  p3: [{ id: 'ember-maintenance', name: 'Ember maintenance', state: { lastSessionId: 'ses_a3' } }],
-  p4: [{ id: 'habit-distribution', name: 'Habit distribution', state: { lastSessionId: 'ses_b1' } }],
+  p1: [{ id: 'daily-channel-brief', name: 'Daily channel brief', state: { lastSessionId: 'ses_a1' } }],
 };
 
 const permissions: Record<string, MockPermission[]> = {
@@ -191,8 +201,23 @@ let settings: EmberSettings = {
   sessionWindowHours: 48,
   instanceDefaults: {},
   pinnedMessages: [],
-  scheduledSessionBindings: {},
-  avatarOverrides: {},
+  scheduledSessionBindings: {
+    'local::ses_a1': 'task:local::p1::daily-channel-brief',
+    'local::ses_a7': 'task:local::p1::daily-channel-brief',
+  },
+  avatarOverrides: {
+    'project:local::p1': { colorIndex: 0 },
+    'project:local::p2': { colorIndex: 2 },
+    'project:local::p3': { colorIndex: 4 },
+    'project:studio::p4': { colorIndex: 1 },
+    'project:studio::p5': { colorIndex: 5 },
+    'task:local::p1::daily-channel-brief': { shapeName: 'dumpling' },
+    'session:local::ses_a5': { shapeName: 'splat' },
+    'session:local::ses_a2': { shapeName: 'jelly' },
+    'session:local::ses_a4': { shapeName: 'puddle' },
+    'session:local::ses_a3': { shapeName: 'bounce' },
+    'session:local::ses_a6': { shapeName: 'lopsided' },
+  },
   remoteAccessEnabled: false,
   remotePasswordConfigured: false,
 };
