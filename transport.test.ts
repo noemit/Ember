@@ -4,6 +4,8 @@ import {
   localInstanceUrl,
   normalizeApiMethod,
   parseAvatarOverrides,
+  parseColorAssignments,
+  parseSessionNotes,
   parseStringRecord,
   resolveApiUrl,
 } from './electron/transport';
@@ -56,10 +58,21 @@ describe('appearance settings validation', () => {
     expect(parseStringRecord(null)).toEqual({});
   });
 
+  test('keeps bounded color assignments', () => {
+    expect(parseColorAssignments({ project: 63, negative: -1, overflow: 64, fractional: 1.5 })).toEqual({ project: 63 });
+    expect(parseColorAssignments({ marker: 11, overflow: 12 }, 12)).toEqual({ marker: 11 });
+  });
+
+  test('keeps bounded session notes and rejects unsafe records', () => {
+    const unsafe = JSON.parse('{"local::session":"next prompt","__proto__":"bad"}');
+    expect(parseSessionNotes(unsafe)).toEqual({ 'local::session': 'next prompt' });
+    expect(parseSessionNotes({ tooLong: 'x'.repeat(20_001), empty: '' })).toEqual({});
+  });
+
   test('accepts only bounded curated appearance values', () => {
     expect(parseAvatarOverrides({
       valid: { colorIndex: 5, shapeName: 'wind-turbine' },
-      badColor: { colorIndex: 6 },
+      badColor: { colorIndex: 64 },
       fractional: { colorIndex: 1.5 },
       badShape: { shapeName: '<svg>' },
       empty: {},

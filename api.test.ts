@@ -10,9 +10,11 @@ import {
   loadSessionPreview,
   loadSessions,
   loadScheduledIdentityData,
+  mergePolledSessions,
   reconcilePolledMessages,
   sendPrompt,
 } from './src/api';
+import { shouldOfferSessionReload } from './src/components/ChatView';
 import { isAssistantTurnEnd } from './src/components/Transcript';
 import type { ChatMessage } from './src/types';
 
@@ -42,6 +44,21 @@ describe('session loading', () => {
   test('omits failed instances so existing state is preserved', async () => {
     setRequest(async () => ({ ok: false, status: 503, data: null }));
     expect(await loadAllSessions(['offline'])).toEqual({});
+  });
+
+  test('preserves a newly created or selected session missing from a stale poll', () => {
+    const created = { id: 'new', instanceId: 'local', directory: '/workspace/project', updated: 200 };
+    const existing = { id: 'old', instanceId: 'local', updated: 100 };
+    const current = { local: [created, existing] };
+    const stalePoll = { local: [existing] };
+
+    expect(mergePolledSessions(current, stalePoll, [created])).toEqual({
+      local: [created, existing],
+    });
+    expect(mergePolledSessions(current, { local: [created, existing] }, [created])).toEqual({
+      local: [created, existing],
+    });
+    expect(mergePolledSessions(current, stalePoll, [])).toEqual(stalePoll);
   });
 
   test('paginates from the last raw record even when subagents are filtered', async () => {
@@ -140,6 +157,18 @@ describe('session loading', () => {
         completed: true,
       }),
     ]);
+  });
+});
+
+describe('session reload visibility', () => {
+  const now = 1_000_000;
+  const staleAssistant = [{ ...assistantMessage('assistant'), createdAt: now - 11 * 60_000 }];
+
+  test('offers reload only for stale active sessions or failed message loads', () => {
+    expect(shouldOfferSessionReload('active', 'ready', undefined, staleAssistant, now)).toBe(true);
+    expect(shouldOfferSessionReload('active', 'ready', now - 60_000, [], now)).toBe(false);
+    expect(shouldOfferSessionReload('idle', 'ready', undefined, staleAssistant, now)).toBe(false);
+    expect(shouldOfferSessionReload('idle', 'error', now, [], now)).toBe(true);
   });
 });
 

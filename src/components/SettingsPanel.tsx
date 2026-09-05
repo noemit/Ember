@@ -2,6 +2,7 @@ import * as React from 'react';
 import { motion } from 'motion/react';
 import { Check, KeyRound, ShieldCheck } from 'lucide-react';
 import Blob from '../blob/Blob';
+import { INSTANCE_MARKER_COLORS } from '../blob/contrast';
 import { THEME_GROUPS, THEMES } from '../themes';
 import { cn } from '@/lib/utils';
 import {
@@ -91,6 +92,42 @@ const InstanceDefaultsSettings = ({
             ))}
           </SelectContent>
         </Select>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <span className="text-xs font-medium">Instance underline</span>
+        <span className="text-[11px] text-muted-foreground">
+          Optional marker shown beneath session names from this instance.
+        </span>
+        <div className="grid grid-cols-7 gap-2">
+          <button
+            type="button"
+            aria-label="No instance underline"
+            aria-pressed={defaults.markerColor === undefined}
+            onClick={() => update({ markerColor: undefined })}
+            className={cn(
+              'flex h-8 items-center justify-center rounded-md border text-[10px] text-muted-foreground transition-colors hover:bg-muted',
+              defaults.markerColor === undefined && 'border-highlight ring-2 ring-highlight/20'
+            )}
+          >
+            None
+          </button>
+          {INSTANCE_MARKER_COLORS.map((_, index) => (
+            <button
+              key={index}
+              type="button"
+              aria-label={`Instance underline color ${index + 1}`}
+              aria-pressed={defaults.markerColor === index}
+              onClick={() => update({ markerColor: index })}
+              className={cn(
+                'flex h-8 items-center justify-center rounded-md border transition-colors hover:bg-muted',
+                defaults.markerColor === index && 'border-highlight ring-2 ring-highlight/20'
+              )}
+            >
+              <span className="h-1 w-5 rounded-full" style={{ backgroundColor: `var(--instance-marker-${index})` }} />
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">

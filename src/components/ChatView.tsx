@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, ChevronDown, Loader2, Paperclip, Reply, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, FilePenLine, Loader2, Paperclip, Pin, RefreshCw, Reply, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -40,6 +40,7 @@ import type {
 const loadModelPicker = () => import('./ModelPicker');
 const ModelPicker = React.lazy(loadModelPicker);
 const Transcript = React.lazy(() => import('./Transcript'));
+const SessionContextPanel = React.lazy(() => import('./SessionContextPanel'));
 
 const ModelPickerFallback = () => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="status">
@@ -58,6 +59,7 @@ const TranscriptFallback = () => (
 type Props = {
   session: Session | null;
   instance: Instance | null;
+  instanceMarkerColor?: number;
   newSessionInstanceId: string | null;
   instances: Instance[];
   projectsByInstance: Record<string, Project[]>;
@@ -76,14 +78,18 @@ type Props = {
   /** `provider/model` keys the instance used most recently, newest first. */
   recentModels: string[];
   sending: boolean;
+  reloading: boolean;
   bypass: boolean;
   pinnedMessageIds: Set<string>;
+  sessionNote: string;
   onTogglePin: (message: ChatMessage) => void;
+  onSessionNoteChange: (note: string) => void;
   onBypassChange: (enabled: boolean) => void;
   onNewSessionInstanceChange: (instanceId: string) => void;
   onCreateSession: (options: NewSessionOptions) => Promise<boolean>;
   onCancelNewSession: () => void;
   onSend: (input: PromptInput) => void;
+  onReload: () => void;
   onAbort: () => void;
   onPermission: (request: PermissionRequest, reply: PermissionReply) => Promise<boolean>;
   onQuestion: (request: QuestionRequest, answers: QuestionAnswers | null) => Promise<boolean>;
@@ -105,6 +111,23 @@ const messageContextText = (message: ChatMessage): string =>
 
 /** Attachments travel inline as data URLs, the same shape OpenChamber sends. */
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const STALE_AGENT_MS = 10 * 60_000;
+
+export const shouldOfferSessionReload = (
+  state: BallState,
+  messagesStatus: MessagesStatus,
+  sessionUpdated: number | undefined,
+  messages: ChatMessage[],
+  now: number
+): boolean => {
+  if (messagesStatus === 'error') return true;
+  if (state !== 'active') return false;
+  const assistantUpdates = messages
+    .filter((message) => message.role === 'assistant')
+    .map((message) => message.completedAt ?? message.createdAt ?? 0);
+  const lastUpdate = assistantUpdates.length ? Math.max(...assistantUpdates) : sessionUpdated ?? 0;
+  return lastUpdate > 0 && now - lastUpdate >= STALE_AGENT_MS;
+};
 
 const readAttachment = (file: File): Promise<FileAttachment> =>
   new Promise((resolve, reject) => {
@@ -124,6 +147,7 @@ const NewSessionSetup = ({
   instances,
   projects,
   models,
+  recentModels,
   defaults,
   onInstanceChange,
   onCreate,
@@ -133,6 +157,7 @@ const NewSessionSetup = ({
   instances: Instance[];
   projects: Project[];
   models: ModelOption[];
+  recentModels: string[];
   defaults: InstanceDefaults;
   onInstanceChange: (instanceId: string) => void;
   onCreate: (options: NewSessionOptions) => Promise<boolean>;
@@ -145,8 +170,11 @@ const NewSessionSetup = ({
   );
   const [bypass, setBypass] = React.useState(defaults.bypass === true);
   const [creating, setCreating] = React.useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = React.useState(false);
+  const [modelPickerActivated, setModelPickerActivated] = React.useState(false);
   const folderRef = React.useRef<HTMLInputElement>(null);
   const projectValue = projects.some((project) => project.path === directory) ? directory : '__custom';
+  const selectedModelOption = models.find((entry) => modelKey(entry) === selectedModel);
 
   const create = async () => {
     if (!directory.trim() || creating) return;
@@ -240,19 +268,36 @@ const NewSessionSetup = ({
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium">Model</span>
-            <Select value={selectedModel} onValueChange={setSelectedModel}>
-              <SelectTrigger aria-label="New agent model">
-                <SelectValue placeholder="Instance default" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[300px]">
-                <SelectItem value={DEFAULT_MODEL}>Instance default</SelectItem>
-                {models.map((model) => (
-                  <SelectItem key={modelKey(model)} value={modelKey(model)}>
-                    {model.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-between px-3 font-normal"
+              onClick={() => {
+                setModelPickerActivated(true);
+                setModelPickerOpen(true);
+              }}
+              aria-label="Choose new agent model"
+            >
+              <span className="truncate">
+                {selectedModelOption
+                  ? `${selectedModelOption.details.providerName} / ${selectedModelOption.details.name}`
+                  : 'Instance default'}
+              </span>
+              <ChevronDown className="size-4 text-muted-foreground" />
+            </Button>
+            {modelPickerActivated ? (
+              <React.Suspense fallback={<ModelPickerFallback />}>
+                <ModelPicker
+                  open={modelPickerOpen}
+                  models={models}
+                  recentModels={recentModels}
+                  value={selectedModel}
+                  collapseProviders
+                  onSelect={setSelectedModel}
+                  onOpenChange={setModelPickerOpen}
+                />
+              </React.Suspense>
+            ) : null}
           </div>
         </div>
 
@@ -290,6 +335,7 @@ const NewSessionSetup = ({
 export default function ChatView({
   session,
   instance,
+  instanceMarkerColor,
   newSessionInstanceId,
   instances,
   projectsByInstance,
@@ -307,14 +353,18 @@ export default function ChatView({
   defaultModelId,
   recentModels,
   sending,
+  reloading,
   bypass,
   pinnedMessageIds,
+  sessionNote,
   onTogglePin,
+  onSessionNoteChange,
   onBypassChange,
   onNewSessionInstanceChange,
   onCreateSession,
   onCancelNewSession,
   onSend,
+  onReload,
   onAbort,
   onPermission,
   onQuestion,
@@ -327,12 +377,25 @@ export default function ChatView({
   const [attachments, setAttachments] = React.useState<FileAttachment[]>([]);
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [replyContext, setReplyContext] = React.useState<ChatMessage | null>(null);
+  const [contextOpen, setContextOpen] = React.useState(false);
+  const [contextSection, setContextSection] = React.useState<'notes' | 'pins'>('notes');
+  const [contextRequest, setContextRequest] = React.useState(0);
+  const [focusMessageId, setFocusMessageId] = React.useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = React.useState(0);
+  const [now, setNow] = React.useState(() => Date.now());
   const fileRef = React.useRef<HTMLInputElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const createdModelRef = React.useRef<string | null>(null);
 
   const last = messages[messages.length - 1];
   const busy = sending || state === 'active' || (last?.role === 'assistant' && !last.completed);
+  const pinnedMessages = React.useMemo(
+    () => messages.filter((message) => pinnedMessageIds.has(message.id)),
+    [messages, pinnedMessageIds]
+  );
+  const offerReload = Boolean(
+    session && !sending && shouldOfferSessionReload(state, messagesStatus, session.updated, messages, now)
+  );
 
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
@@ -345,12 +408,21 @@ export default function ChatView({
   };
 
   React.useEffect(() => {
+    if (!session) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [session?.id]);
+
+  React.useEffect(() => {
     setModelId(createdModelRef.current ?? defaultModelId ?? DEFAULT_MODEL);
     createdModelRef.current = null;
   }, [defaultModelId, session?.instanceId]);
 
   React.useEffect(() => {
     setReplyContext(null);
+    setContextOpen(false);
+    setFocusMessageId(null);
     if (session) textareaRef.current?.focus();
   }, [session?.id]);
 
@@ -388,8 +460,33 @@ export default function ChatView({
     setReplyContext(null);
   };
 
+  const openContext = (section: 'notes' | 'pins') => {
+    setContextSection(section);
+    setContextRequest((request) => request + 1);
+    setContextOpen(true);
+  };
+
+  const replyToMessage = (message: ChatMessage) => {
+    setReplyContext(message);
+    if (!window.matchMedia('(min-width: 1280px)').matches) setContextOpen(false);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const insertNote = (note: string) => {
+    setText((current) => current.trim() ? `${current}\n\n${note.trim()}` : note.trim());
+    if (!window.matchMedia('(min-width: 1280px)').matches) setContextOpen(false);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const jumpToMessage = (messageId: string) => {
+    setFocusMessageId(messageId);
+    setFocusRequest((request) => request + 1);
+    if (!window.matchMedia('(min-width: 1280px)').matches) setContextOpen(false);
+  };
+
   return (
-    <main className="flex min-w-0 flex-1 flex-col">
+    <main className="relative flex min-w-0 flex-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col">
       <AnimatePresence mode="wait">
         {session ? (
           <motion.div
@@ -409,9 +506,40 @@ export default function ChatView({
                 state={state}
                 interactive={false}
               />
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+              <span
+                className="min-w-0 flex-1 truncate text-[13px] font-medium"
+                style={instanceMarkerColor === undefined ? undefined : {
+                  textDecoration: 'underline',
+                  textDecorationColor: `var(--instance-marker-${instanceMarkerColor})`,
+                  textDecorationThickness: '2px',
+                  textUnderlineOffset: '3px',
+                }}
+              >
                 {session.title ?? session.id}
               </span>
+              {offerReload || reloading ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  disabled={reloading}
+                  onClick={onReload}
+                  title="Reload this session from its instance"
+                >
+                  <RefreshCw className={cn(reloading && 'animate-spin')} />
+                  <span className="hidden sm:inline">{reloading ? 'Reloading…' : 'Refresh'}</span>
+                </Button>
+              ) : null}
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openContext('notes')}>
+                <FilePenLine />
+                <span className="hidden sm:inline">Notes</span>
+              </Button>
+              {pinnedMessages.length ? (
+                <Button variant="secondary" size="sm" className="h-7 rounded-full px-2.5 text-xs" onClick={() => openContext('pins')}>
+                  <Pin />
+                  {pinnedMessages.length} {pinnedMessages.length === 1 ? 'pin' : 'pins'}
+                </Button>
+              ) : null}
               {instance ? (
                 <Badge variant="secondary" className="hidden font-normal text-muted-foreground sm:inline-flex">
                   {instance.label}
@@ -429,11 +557,10 @@ export default function ChatView({
                 sending={sending}
                 accentColor={blobColor(blobStyle, identity)}
                 pinnedMessageIds={pinnedMessageIds}
+                focusMessageId={focusMessageId}
+                focusRequest={focusRequest}
                 onTogglePin={onTogglePin}
-                onReply={(message) => {
-                  setReplyContext(message);
-                  window.requestAnimationFrame(() => textareaRef.current?.focus());
-                }}
+                onReply={replyToMessage}
                 onPermission={onPermission}
                 onQuestion={onQuestion}
               />
@@ -454,6 +581,7 @@ export default function ChatView({
                 instances={instances.filter((candidate) => candidate.attachable)}
                 projects={setupProjects}
                 models={setupModels}
+                recentModels={recentModels}
                 defaults={setupDefaults}
                 onInstanceChange={onNewSessionInstanceChange}
                 onCreate={createSessionFromSetup}
@@ -665,6 +793,25 @@ export default function ChatView({
           </motion.div>
           </div>
         </div>
+      ) : null}
+      </div>
+      {session ? (
+        <React.Suspense fallback={null}>
+          <SessionContextPanel
+            open={contextOpen}
+            sessionTitle={session.title ?? session.id}
+            note={sessionNote}
+            pinnedMessages={pinnedMessages}
+            focusSection={contextSection}
+            focusRequest={contextRequest}
+            onClose={() => setContextOpen(false)}
+            onNoteChange={onSessionNoteChange}
+            onInsertNote={insertNote}
+            onJump={jumpToMessage}
+            onReply={replyToMessage}
+            onUnpin={onTogglePin}
+          />
+        </React.Suspense>
       ) : null}
     </main>
   );

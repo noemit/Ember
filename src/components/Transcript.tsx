@@ -48,6 +48,8 @@ type Props = {
   /** CSS colour of the session's blob, so the activity line reads as "this agent is thinking". */
   accentColor: string;
   pinnedMessageIds: Set<string>;
+  focusMessageId: string | null;
+  focusRequest: number;
   onTogglePin: (message: ChatMessage) => void;
   onReply: (message: ChatMessage) => void;
   onPermission: (request: PermissionRequest, reply: PermissionReply) => Promise<boolean>;
@@ -557,6 +559,8 @@ export default function Transcript({
   sending,
   accentColor,
   pinnedMessageIds,
+  focusMessageId,
+  focusRequest,
   onTogglePin,
   onReply,
   onPermission,
@@ -564,13 +568,27 @@ export default function Transcript({
 }: Props) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const contentRef = React.useRef<HTMLDivElement>(null);
+  const messageRefs = React.useRef(new Map<string, HTMLDivElement>());
   const followRef = React.useRef(true);
   const [following, setFollowing] = React.useState(true);
+  const [highlightedMessageId, setHighlightedMessageId] = React.useState<string | null>(null);
 
   const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
+
+  React.useEffect(() => {
+    if (!focusMessageId || focusRequest === 0) return;
+    const message = messageRefs.current.get(focusMessageId);
+    if (!message) return;
+    followRef.current = false;
+    setFollowing(false);
+    setHighlightedMessageId(focusMessageId);
+    message.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timer = window.setTimeout(() => setHighlightedMessageId(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [focusMessageId, focusRequest]);
 
   // Stay pinned while the user is at the bottom; growth from streaming text, tool rows
   // or enter animations all land here via the ResizeObserver rather than per-update effects.
@@ -690,8 +708,15 @@ export default function Transcript({
             {messages.map((message, index) => (
               <motion.div
                 key={message.id}
+                ref={(node) => {
+                  if (node) messageRefs.current.set(message.id, node);
+                  else messageRefs.current.delete(message.id);
+                }}
                 layout="position"
-                className="group/message relative flex w-full flex-col gap-1.5 px-5 sm:px-7"
+                className={cn(
+                  'group/message relative flex w-full flex-col gap-1.5 rounded-xl px-5 transition-[background-color,box-shadow] sm:px-7',
+                  highlightedMessageId === message.id && 'bg-highlight/10 ring-2 ring-highlight/30'
+                )}
               >
                 {toBlocks(message.parts).map((block) => renderBlock(message, block))}
                 {message.error ? <MessageError error={message.error} /> : null}

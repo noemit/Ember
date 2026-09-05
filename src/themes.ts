@@ -4,7 +4,7 @@
  * selection ticks and the wordmark. User bubbles use a softer neighbour of the highlight
  * so chat remains calm while the accent stays available for interaction states.
  */
-import { glyphPaletteFor } from './blob/contrast';
+import { glyphPaletteFor, instanceMarkerPaletteFor } from './blob/contrast';
 import { critterPaletteFor } from './blob/critter';
 
 export type ThemePalette = {
@@ -108,6 +108,9 @@ const toCssVars = (palette: ThemePalette): Record<string, string> => ({
   // Glyph blobs sit on the rail (panel), selected rows (elev) and the chat header (bg).
   ...Object.fromEntries(
     glyphPaletteFor([palette.panel, palette.elev, palette.bg]).map((color, index) => [`--glyph-${index}`, color])
+  ),
+  ...Object.fromEntries(
+    instanceMarkerPaletteFor([palette.panel, palette.elev, palette.bg]).map((color, index) => [`--instance-marker-${index}`, color])
   ),
   ...Object.fromEntries(
     critterPaletteFor([palette.panel, palette.elev, palette.bg]).flatMap(({ fill, accent, ink }, index) => [

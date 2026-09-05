@@ -8,6 +8,7 @@ type InstanceDefaults = {
   agent?: 'build' | 'plan';
   model?: { providerID: string; modelID: string };
   bypass?: boolean;
+  markerColor?: number;
 };
 type AvatarOverride = { colorIndex?: number; shapeName?: string };
 type EmberSettings = {
@@ -16,8 +17,10 @@ type EmberSettings = {
   sessionWindowHours: number;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
+  sessionNotes: Record<string, string>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, AvatarOverride>;
+  projectColorAssignments: Record<string, number>;
   remoteAccessEnabled: boolean;
   remotePasswordConfigured: boolean;
 };

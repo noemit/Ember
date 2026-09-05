@@ -28,10 +28,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   picks shape, and the session key picks tilt/motion. OpenChamber task bindings come from each
   project's scheduled-task endpoint and observed `lastSessionId` mappings are retained in Ember
   settings. Session/task/project overrides store only curated colour indexes and shape names.
-  `glyphs.ts` is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}`
-  = colour, `{id}` = per-instance id prefix, `#fff` accents → `var(--background)`). Glyph
-  colours come from `--glyph-0..5`, which `applyTheme` sets after `blob/contrast.ts` nudges each
-  palette colour's lightness to ≥3:1 against the theme's panel/elev/bg. `CritterBlob` (little
+  Project colours use a persisted 64-entry allocation queue, exhausting every colour before
+  cycling; optional per-instance underlines use a separate 12-colour marker palette. `glyphs.ts`
+  is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}` = colour, `{id}` =
+  per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours come from
+  `--glyph-0..63`, which `applyTheme` sets after `blob/contrast.ts` nudges each palette colour's
+  lightness to ≥3:1 against the theme's panel/elev/bg. `CritterBlob` (little
   flat monsters) composes independent slots from `critter.ts` — body × crown × side × tail × feet
   × eyes × mouth × marking × colour pair. Slot priority follows what survives at 30px: silhouette
   (aspect ratio / taper / bumps), then eye count, then top contour, then big accent fields.
@@ -51,7 +53,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   wants the blob's dominant colour (the transcript's activity dot uses it).
 - `src/components/Transcript.tsx` — message list: text bubbles, expandable tool rows (input/
   output/diff), collapsed reasoning, file parts, permission + question cards, live activity line,
-  and pin-to-bottom scrolling (ResizeObserver + `scrollend`).
+  pin-to-bottom scrolling (ResizeObserver + `scrollend`), and message jump/highlight support.
+- `src/components/SessionContextPanel.tsx` — responsive notes/pins rail. Notes are keyed by session,
+  debounced into Ember settings, and can be inserted into the composer; pin actions jump, reply, or
+  unpin without changing OpenChamber data.
 - `src/components/Markdown.tsx` — assistant prose via `react-markdown` + `remark-gfm` (no raw
   HTML). A small rehype plugin reuses `Linkify.tsx`'s tokenizer to link bare local paths; all
   anchors route through `window.ember.openExternal`.

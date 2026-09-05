@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { blobColor } from './src/blob/color';
-import { contrastRatio, glyphPaletteFor } from './src/blob/contrast';
+import { contrastRatio, GLYPH_COLORS, glyphPaletteFor, instanceMarkerPaletteFor } from './src/blob/contrast';
 import { deriveCritter } from './src/blob/CritterBlob';
-import { hashString, mulberry32, resolveAvatarIdentity } from './src/blob/seed';
+import { allocateProjectColors, hashString, mulberry32, resolveAvatarIdentity } from './src/blob/seed';
 import { GROK_COLORS } from './src/blob/grok';
 import { THEMES } from './src/themes';
 import type { Project, Session } from './src/types';
@@ -38,15 +38,23 @@ describe('theme accessibility', () => {
 });
 
 describe('blob colours', () => {
-  test('keeps every curated glyph color distinguishable on every avatar surface', () => {
+  test('keeps avatar and instance marker colors distinguishable on every surface', () => {
     for (const theme of THEMES) {
       const surfaces = [theme.palette.panel, theme.palette.elev, theme.palette.bg];
-      for (const color of glyphPaletteFor(surfaces)) {
+      for (const color of [...glyphPaletteFor(surfaces), ...instanceMarkerPaletteFor(surfaces)]) {
         for (const surface of surfaces) {
           expect(contrastRatio(color, surface)).toBeGreaterThanOrEqual(3);
         }
       }
     }
+  });
+
+  test('allocates every project color before cycling and preserves existing assignments', () => {
+    const keys = Array.from({ length: 65 }, (_, index) => `project:local::${String(index).padStart(2, '0')}`);
+    const assignments = allocateProjectColors(keys, { [keys[10]]: 42 });
+    expect(new Set(keys.slice(0, 64).map((key) => assignments[key])).size).toBe(64);
+    expect(assignments[keys[10]]).toBe(42);
+    expect(Object.values(assignments).every((index) => index >= 0 && index < 64)).toBe(true);
   });
 
   test('preserves legacy colors when no grouped identity is supplied', () => {
@@ -57,7 +65,7 @@ describe('blob colours', () => {
       );
       const glyphRng = mulberry32(hashString(`glyph:${seed}`));
       glyphRng();
-      expect(blobColor('glyph', seed)).toBe(`var(--glyph-${Math.floor(glyphRng() * 6)})`);
+      expect(blobColor('glyph', seed)).toBe(`var(--glyph-${Math.floor(glyphRng() * GLYPH_COLORS.length)})`);
     }
   });
 
@@ -73,7 +81,7 @@ describe('blob colours', () => {
     expect(blobColor('glyph', firstIdentity)).toBe(blobColor('glyph', secondIdentity));
     expect(blobColor('grok', firstIdentity)).toBe(blobColor('grok', secondIdentity));
     expect(blobColor('grok', firstIdentity)).toBe(blobColor('glyph', firstIdentity));
-    expect(blobColor('grok', firstIdentity)).toMatch(/^var\(--glyph-[0-5]\)$/);
+    expect(blobColor('grok', firstIdentity)).toMatch(/^var\(--glyph-(?:[0-9]|[1-5][0-9]|6[0-3])\)$/);
   });
 
   test('uses scheduled tasks for shape and sessions for motion', () => {

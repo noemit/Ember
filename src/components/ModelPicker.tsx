@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Check, Search, Sparkles, X } from 'lucide-react';
+import { Check, ChevronRight, Search, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -14,6 +14,7 @@ type Props = {
   recentModels: string[];
   /** Selected key, or DEFAULT_MODEL to let the instance decide. */
   value: string;
+  collapseProviders?: boolean;
   onSelect: (key: string) => void;
   onOpenChange: (open: boolean) => void;
 };
@@ -122,15 +123,25 @@ const Details = ({ model }: { model: ModelOption }) => {
   );
 };
 
-export default function ModelPicker({ open, models, recentModels, value, onSelect, onOpenChange }: Props) {
+export default function ModelPicker({
+  open,
+  models,
+  recentModels,
+  value,
+  collapseProviders = false,
+  onSelect,
+  onOpenChange,
+}: Props) {
   const [query, setQuery] = React.useState('');
   const [hovered, setHovered] = React.useState<string | null>(null);
+  const [expandedProviders, setExpandedProviders] = React.useState<Set<string>>(() => new Set());
   const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (open) {
       setQuery('');
       setHovered(null);
+      setExpandedProviders(new Set());
       // Radix moves focus after mount; wait a tick so ours wins.
       window.setTimeout(() => searchRef.current?.focus(), 30);
     }
@@ -228,27 +239,49 @@ export default function ModelPicker({ open, models, recentModels, value, onSelec
                 </button>
               ) : null}
 
-              {groups.map((group) => (
-                <div key={group.id} className="mb-2">
-                  <div className="sticky top-0 z-10 bg-popover px-2.5 pt-1.5 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {group.title}
-                    <span className="ml-1.5 tabular-nums opacity-70">{group.models.length}</span>
+              {groups.map((group) => {
+                const collapsible = collapseProviders && group.id !== 'recent' && !query.trim();
+                const expanded = !collapsible || expandedProviders.has(group.id);
+                return (
+                  <div key={group.id} className="mb-2">
+                    {collapsible ? (
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedProviders((current) => {
+                          const next = new Set(current);
+                          if (next.has(group.id)) next.delete(group.id);
+                          else next.add(group.id);
+                          return next;
+                        })}
+                        className="sticky top-0 z-10 flex w-full items-center bg-popover px-2.5 pt-1.5 pb-1 text-left text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                      >
+                        <ChevronRight className={cn('mr-1 size-3 transition-transform', expanded && 'rotate-90')} />
+                        {group.title}
+                        <span className="ml-auto tabular-nums opacity-70">{group.models.length}</span>
+                      </button>
+                    ) : (
+                      <div className="sticky top-0 z-10 bg-popover px-2.5 pt-1.5 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {group.title}
+                        <span className="ml-1.5 tabular-nums opacity-70">{group.models.length}</span>
+                      </div>
+                    )}
+                    {expanded ? group.models.map((model) => {
+                      const key = modelRefKey(model);
+                      return (
+                        <Row
+                          key={`${group.id}:${key}`}
+                          model={model}
+                          selected={key === value}
+                          active={key === activeKey}
+                          onHover={() => setHovered(key)}
+                          onPick={() => pick(key)}
+                        />
+                      );
+                    }) : null}
                   </div>
-                  {group.models.map((model) => {
-                    const key = modelRefKey(model);
-                    return (
-                      <Row
-                        key={`${group.id}:${key}`}
-                        model={model}
-                        selected={key === value}
-                        active={key === activeKey}
-                        onHover={() => setHovered(key)}
-                        onPick={() => pick(key)}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
+                );
+              })}
 
               {groups.length === 0 ? (
                 <div className="px-3 py-10 text-center text-[12px] text-muted-foreground">

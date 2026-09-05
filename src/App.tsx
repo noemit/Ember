@@ -6,7 +6,9 @@ import ChatView from './components/ChatView';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { applyTheme, DEFAULT_THEME_ID } from './themes';
 import {
+  allocateProjectColors,
   projectForSession,
+  projectIdentityKey,
   resolveAvatarIdentity,
   seedIdentity,
   sessionAvatarKey,
@@ -23,10 +25,14 @@ import {
   loadAllSessions,
   loadAllSessionStates,
   loadMessages,
+  loadPermissions,
+  loadQuestions,
+  loadSessionStates,
   loadModels,
   loadSessionPreview,
   loadSessions,
   loadScheduledIdentityData,
+  mergePolledSessions,
   previewOf,
   reconcilePolledMessages,
   rejectQuestion,
@@ -73,6 +79,7 @@ const SCHEDULE_POLL_MS = 30_000;
 const PREVIEW_COUNT = 24;
 const PREVIEW_CONCURRENCY = 4;
 const RECENT_MODEL_COUNT = 5;
+const CREATED_SESSION_GRACE_MS = 2 * 60_000;
 
 /** Models the instance ran most recently, newest first, taken from its sessions' last-used model. */
 const recentModelKeys = (sessions: Session[]): string[] => {
@@ -93,8 +100,10 @@ const DEFAULT_SETTINGS: EmberSettings = {
   sessionWindowHours: 48,
   instanceDefaults: {},
   pinnedMessages: [],
+  sessionNotes: {},
   scheduledSessionBindings: {},
   avatarOverrides: {},
+  projectColorAssignments: {},
   remoteAccessEnabled: false,
   remotePasswordConfigured: false,
 };
@@ -114,6 +123,11 @@ const sameMessages = (a: ChatMessage[], b: ChatMessage[]): boolean =>
   a.length === b.length && a.every((m, i) => messageSignature(m) === messageSignature(b[i]));
 
 const sameStringRecord = (a: Record<string, string>, b: Record<string, string>): boolean => {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+};
+
+const sameNumberRecord = (a: Record<string, number>, b: Record<string, number>): boolean => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 };
@@ -150,6 +164,7 @@ export default function App() {
   const [settings, setSettings] = React.useState<EmberSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = React.useState(true);
   const [sendingKeys, setSendingKeys] = React.useState<Set<string>>(() => new Set());
+  const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
   const [bypassOverrides, setBypassOverrides] = React.useState<Record<string, boolean>>({});
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -157,6 +172,7 @@ export default function App() {
   const [avatarPickerSession, setAvatarPickerSession] = React.useState<Session | null>(null);
   const [settingsView, setSettingsView] = React.useState<'general' | 'instances'>('general');
   const [showArchived, setShowArchived] = React.useState(false);
+  const [showScheduled, setShowScheduled] = React.useState(false);
   const [mobileRailOpen, setMobileRailOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -172,6 +188,7 @@ export default function App() {
   // directory (for routing) without re-running the effect on every session list refresh.
   const selectedSessionRef = React.useRef<Session | null>(null);
   const selectedKeyRef = React.useRef<string | null>(null);
+  const pendingCreatedSessions = React.useRef(new Map<string, { session: Session; expiresAt: number }>());
   const pendingOptimisticIds = React.useRef(new Set<string>());
   const bypassReplyIds = React.useRef(new Set<string>());
   const settingsRevision = React.useRef(0);
@@ -191,14 +208,16 @@ export default function App() {
   const sessions = React.useMemo(() => {
     const cutoff = sessionWindowHours > 0 ? Date.now() - sessionWindowHours * 3_600_000 : 0;
     return Object.entries(sessionsByInstance)
-      .filter(([instanceId]) => readyIds.includes(instanceId) && !hidden.has(instanceId))
+      .filter(([instanceId]) => readyIds.includes(instanceId) && (showScheduled || !hidden.has(instanceId)))
       .flatMap(([, list]) => list)
-      .filter(
-        (session) =>
+      .filter((session) => {
+        if (showScheduled) return Boolean(settings.scheduledSessionBindings[sessionKey(session)]);
+        return (
           Boolean(session.archived) === showArchived &&
           (showArchived || !cutoff || (session.updated ?? 0) >= cutoff)
-      );
-  }, [sessionsByInstance, readyIds, hidden, showArchived, sessionWindowHours]);
+        );
+      });
+  }, [sessionsByInstance, readyIds, hidden, showArchived, showScheduled, sessionWindowHours, settings.scheduledSessionBindings]);
 
   const permissions = React.useMemo(
     () => Object.values(permissionsByInstance).flat(),
@@ -230,6 +249,12 @@ export default function App() {
   const selectedInstance = selected
     ? instances.find((instance) => instance.id === selected.instanceId) ?? null
     : null;
+  const allocatedProjectColors = React.useMemo(() => {
+    const keys = Object.entries(projectsByInstance).flatMap(([instanceId, projects]) =>
+      projects.map((project) => projectIdentityKey(instanceId, project.id))
+    );
+    return allocateProjectColors(keys, settings.projectColorAssignments);
+  }, [projectsByInstance, settings.projectColorAssignments]);
   const avatarIdentities = React.useMemo(
     () =>
       Object.fromEntries(
@@ -240,12 +265,13 @@ export default function App() {
               session,
               projectsByInstance[instanceId] ?? [],
               settings.scheduledSessionBindings,
-              settings.avatarOverrides
+              settings.avatarOverrides,
+              allocatedProjectColors
             ),
           ])
         )
       ),
-    [sessionsByInstance, projectsByInstance, settings.scheduledSessionBindings, settings.avatarOverrides]
+    [sessionsByInstance, projectsByInstance, settings.scheduledSessionBindings, settings.avatarOverrides, allocatedProjectColors]
   );
   const selectedIdentity = selectedKey
     ? avatarIdentities[selectedKey] ?? seedIdentity(selectedKey)
@@ -257,7 +283,8 @@ export default function App() {
         avatarPickerSession,
         projectsByInstance[avatarPickerSession.instanceId] ?? [],
         settings.scheduledSessionBindings,
-        settings.avatarOverrides
+        settings.avatarOverrides,
+        allocatedProjectColors
       )
     : seedIdentity('');
   const avatarPickerProject = avatarPickerSession
@@ -395,7 +422,18 @@ export default function App() {
         }
         const next = await loadAllSessions(readyIds, directoryHints);
         if (cancelled) return;
-        setSessionsByInstance((prev) => ({ ...prev, ...next }));
+        const now = Date.now();
+        pendingCreatedSessions.current.forEach((pending, key) => {
+          if (
+            pending.expiresAt <= now ||
+            next[pending.session.instanceId]?.some((session) => session.id === pending.session.id)
+          ) pendingCreatedSessions.current.delete(key);
+        });
+        const preserved = [
+          ...(selectedSessionRef.current ? [selectedSessionRef.current] : []),
+          ...[...pendingCreatedSessions.current.values()].map((pending) => pending.session),
+        ];
+        setSessionsByInstance((prev) => mergePolledSessions(prev, next, preserved));
         setLoading(false);
       } catch (err) {
         console.error('Failed to load sessions', err);
@@ -566,6 +604,14 @@ export default function App() {
         setActionError('Could not create a new agent.');
         return false;
       }
+      const now = Date.now();
+      pendingCreatedSessions.current.forEach((pending, key) => {
+        if (pending.expiresAt <= now) pendingCreatedSessions.current.delete(key);
+      });
+      pendingCreatedSessions.current.set(sessionKey(created), {
+        session: created,
+        expiresAt: now + CREATED_SESSION_GRACE_MS,
+      });
       setSessionsByInstance((prev) => ({
         ...prev,
         [options.instanceId]: [created, ...(prev[options.instanceId] ?? [])],
@@ -683,6 +729,57 @@ export default function App() {
         return next;
       });
     }
+  };
+
+  const handleReloadSession = async (session: Session) => {
+    const key = sessionKey(session);
+    if (reloadingKeys.has(key)) return;
+    setActionError(null);
+    setReloadingKeys((current) => new Set(current).add(key));
+    const hints = session.directory ? { [session.instanceId]: [session.directory] } : {};
+    const results = await Promise.allSettled([
+      loadAllSessions([session.instanceId], hints),
+      loadMessages(session.instanceId, session.id, session.directory),
+      loadSessionStates(session.instanceId),
+      loadPermissions(session.instanceId),
+      loadQuestions(session.instanceId, session.directory),
+    ] as const);
+    const [sessionResult, messageResult, stateResult, permissionResult, questionResult] = results;
+
+    if (sessionResult.status === 'fulfilled' && sessionResult.value[session.instanceId]) {
+      setSessionsByInstance((current) =>
+        mergePolledSessions(current, sessionResult.value, [session])
+      );
+    }
+    if (messageResult.status === 'fulfilled') {
+      if (selectedKeyRef.current === key) {
+        setMessages((current) =>
+          reconcilePolledMessages(current, messageResult.value, pendingOptimisticIds.current)
+        );
+        setMessagesStatus('ready');
+      }
+      const preview = previewOf(messageResult.value);
+      setPreviews((current) => ({ ...current, [key]: preview }));
+    } else if (selectedKeyRef.current === key) {
+      setMessagesStatus('error');
+    }
+    if (stateResult.status === 'fulfilled' && stateResult.value) {
+      setStatesByInstance((current) => ({ ...current, [session.instanceId]: stateResult.value! }));
+    }
+    if (permissionResult.status === 'fulfilled' && permissionResult.value) {
+      setPermissionsByInstance((current) => ({ ...current, [session.instanceId]: permissionResult.value! }));
+    }
+    if (questionResult.status === 'fulfilled' && questionResult.value) {
+      setQuestionsByInstance((current) => ({ ...current, [session.instanceId]: questionResult.value! }));
+    }
+    if (results.some((result) => result.status === 'rejected')) {
+      setActionError('Some session data could not be refreshed. Ember will keep retrying.');
+    }
+    setReloadingKeys((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
   };
 
   // Archive/restore on the source OpenChamber instance, then mirror locally so the
@@ -848,6 +945,16 @@ export default function App() {
   };
 
   React.useEffect(() => {
+    if (
+      Object.keys(projectsByInstance).length > 0 &&
+      !sameNumberRecord(allocatedProjectColors, settings.projectColorAssignments)
+    ) {
+      handleSettings({ projectColorAssignments: allocatedProjectColors });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectsByInstance, allocatedProjectColors, settings.projectColorAssignments]);
+
+  React.useEffect(() => {
     if (readyIds.length === 0 || Object.keys(projectsByInstance).length === 0) return;
     let cancelled = false;
     let timer: number | undefined;
@@ -901,11 +1008,20 @@ export default function App() {
     });
   };
 
+  const handleSessionNote = (note: string) => {
+    if (!selectedKey) return;
+    const sessionNotes = { ...settings.sessionNotes };
+    if (note) sessionNotes[selectedKey] = note.slice(0, 20_000);
+    else delete sessionNotes[selectedKey];
+    handleSettings({ sessionNotes });
+  };
+
   const selectedModels = selected ? modelsByInstance[selected.instanceId] : undefined;
-  const selectedInstanceSessions = selected ? sessionsByInstance[selected.instanceId] : undefined;
+  const modelInstanceId = selected?.instanceId ?? newSessionInstanceId;
+  const modelInstanceSessions = modelInstanceId ? sessionsByInstance[modelInstanceId] : undefined;
   const recentModels = React.useMemo(
-    () => recentModelKeys(selectedInstanceSessions ?? []),
-    [selectedInstanceSessions]
+    () => recentModelKeys(modelInstanceSessions ?? []),
+    [modelInstanceSessions]
   );
   const forSelected = <T extends { instanceId: string; sessionId: string }>(list: T[]): T[] =>
     selected
@@ -949,6 +1065,7 @@ export default function App() {
             <LeftRail
               instances={instances}
               projectsByInstance={projectsByInstance}
+              instanceDefaults={settings.instanceDefaults}
               sessions={sessions}
               states={states}
               previews={previews}
@@ -958,17 +1075,27 @@ export default function App() {
               blobStyle={settings.blobStyle}
               loading={loading}
               mobileOpen={mobileRailOpen}
+              reloadingKeys={reloadingKeys}
               windowLabel={
                 SESSION_WINDOWS.find((option) => option.hours === sessionWindowHours && option.hours > 0)
                   ?.label ?? null
               }
               showArchived={showArchived}
-              onShowArchived={setShowArchived}
+              showScheduled={showScheduled}
+              onShowArchived={(value) => {
+                setShowArchived(value);
+                if (value) setShowScheduled(false);
+              }}
+              onShowScheduled={(value) => {
+                setShowScheduled(value);
+                if (value) setShowArchived(false);
+              }}
               onSelectSession={(session) => {
                 setNewSessionInstanceId(null);
                 setSelected({ instanceId: session.instanceId, sessionId: session.id });
                 setMobileRailOpen(false);
               }}
+              onReload={(session) => void handleReloadSession(session)}
               onArchive={(session, archived) => void handleArchive(session, archived)}
               onCustomizeAppearance={setAvatarPickerSession}
               onNewAgent={(instanceId) => {
@@ -986,6 +1113,7 @@ export default function App() {
             <ChatView
               session={selectedSession}
               instance={selectedInstance}
+              instanceMarkerColor={selected?.instanceId ? settings.instanceDefaults[selected.instanceId]?.markerColor : undefined}
               newSessionInstanceId={newSessionInstanceId}
               instances={instances}
               projectsByInstance={projectsByInstance}
@@ -1003,9 +1131,12 @@ export default function App() {
               defaultModelId={selectedModels?.defaultModelId ?? null}
               recentModels={recentModels}
               sending={sending}
+              reloading={selectedKey ? reloadingKeys.has(selectedKey) : false}
               bypass={bypass}
               pinnedMessageIds={pinnedMessageIds}
+              sessionNote={selectedKey ? settings.sessionNotes[selectedKey] ?? '' : ''}
               onTogglePin={handleTogglePin}
+              onSessionNoteChange={handleSessionNote}
               onBypassChange={(enabled) => {
                 if (selectedKey) {
                   setBypassOverrides((prev) => ({ ...prev, [selectedKey]: enabled }));
@@ -1015,6 +1146,9 @@ export default function App() {
               onCreateSession={handleCreateSession}
               onCancelNewSession={() => setNewSessionInstanceId(null)}
               onSend={(input) => void handleSend(input)}
+              onReload={() => {
+                if (selectedSession) void handleReloadSession(selectedSession);
+              }}
               onAbort={() => void handleAbort()}
               onPermission={handlePermission}
               onQuestion={handleQuestion}

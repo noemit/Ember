@@ -219,6 +219,21 @@ export const loadAllSessions = async (
   );
 };
 
+export const mergePolledSessions = (
+  current: Record<string, Session[]>,
+  polled: Record<string, Session[]>,
+  preserved: Session[]
+): Record<string, Session[]> => {
+  const merged = { ...current, ...polled };
+  preserved.forEach((session) => {
+    const list = merged[session.instanceId] ?? [];
+    if (!list.some((entry) => entry.id === session.id)) {
+      merged[session.instanceId] = [session, ...list];
+    }
+  });
+  return merged;
+};
+
 export const loadAllProjects = async (
   instanceIds: string[]
 ): Promise<Record<string, Project[]>> => {

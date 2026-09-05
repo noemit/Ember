@@ -9,6 +9,8 @@ import {
   localInstanceUrl,
   normalizeApiMethod,
   parseAvatarOverrides,
+  parseColorAssignments,
+  parseSessionNotes,
   parseStringRecord,
   resolveApiUrl,
   type StoredAvatarOverride,
@@ -56,6 +58,7 @@ type InstanceDefaults = {
   agent?: 'build' | 'plan';
   model?: { providerID: string; modelID: string };
   bypass?: boolean;
+  markerColor?: number;
 };
 
 type EmberSettings = {
@@ -65,8 +68,10 @@ type EmberSettings = {
   sessionWindowHours: number;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
+  sessionNotes: Record<string, string>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, StoredAvatarOverride>;
+  projectColorAssignments: Record<string, number>;
   remoteAccessEnabled: boolean;
   remotePasswordConfigured: boolean;
 };
@@ -94,6 +99,9 @@ const parseInstanceDefaults = (value: unknown): Record<string, InstanceDefaults>
       agent: entry.agent === 'build' || entry.agent === 'plan' ? entry.agent : undefined,
       model: providerID && modelID ? { providerID, modelID } : undefined,
       bypass: typeof entry.bypass === 'boolean' ? entry.bypass : undefined,
+      markerColor: Number.isInteger(entry.markerColor) && Number(entry.markerColor) >= 0 && Number(entry.markerColor) < 12
+        ? Number(entry.markerColor)
+        : undefined,
     };
   });
   return defaults;
@@ -152,8 +160,10 @@ const readEmberSettings = (): EmberSettings => {
     pinnedMessages: Array.isArray(root.pinnedMessages)
       ? root.pinnedMessages.filter((entry): entry is string => typeof entry === 'string').slice(0, 2000)
       : [],
+    sessionNotes: parseSessionNotes(root.sessionNotes),
     scheduledSessionBindings: parseStringRecord(root.scheduledSessionBindings),
     avatarOverrides: parseAvatarOverrides(root.avatarOverrides),
+    projectColorAssignments: parseColorAssignments(root.projectColorAssignments),
     remoteAccessEnabled: root.remoteAccessEnabled === true,
     remotePasswordConfigured: typeof root.remotePasswordHash === 'string' && root.remotePasswordHash.length > 0,
   };
@@ -401,7 +411,9 @@ const updateSettings = (patch: unknown): EmberSettings => {
     : {};
   const root = readJson(emberSettingsPath());
   const settings = readEmberSettings();
-  let remotePasswordHash = typeof root.remotePasswordHash === 'string' ? root.remotePasswordHash : undefined;
+  const previousRemoteAccessEnabled = settings.remoteAccessEnabled;
+  const previousRemotePasswordHash = typeof root.remotePasswordHash === 'string' ? root.remotePasswordHash : undefined;
+  let remotePasswordHash = previousRemotePasswordHash;
   if (typeof value.theme === 'string' && value.theme) settings.theme = value.theme;
   if (isBlobStyle(value.blobStyle)) settings.blobStyle = value.blobStyle;
   if (isWindowHours(value.sessionWindowHours)) settings.sessionWindowHours = value.sessionWindowHours;
@@ -411,8 +423,10 @@ const updateSettings = (patch: unknown): EmberSettings => {
       .filter((entry): entry is string => typeof entry === 'string')
       .slice(0, 2000);
   }
+  if (value.sessionNotes !== undefined) settings.sessionNotes = parseSessionNotes(value.sessionNotes);
   if (value.scheduledSessionBindings !== undefined) settings.scheduledSessionBindings = parseStringRecord(value.scheduledSessionBindings);
   if (value.avatarOverrides !== undefined) settings.avatarOverrides = parseAvatarOverrides(value.avatarOverrides);
+  if (value.projectColorAssignments !== undefined) settings.projectColorAssignments = parseColorAssignments(value.projectColorAssignments);
   if (value.remotePassword !== undefined) {
     if (value.remotePassword === null || value.remotePassword === '') {
       remotePasswordHash = undefined;
@@ -434,7 +448,10 @@ const updateSettings = (patch: unknown): EmberSettings => {
   settings.remotePasswordConfigured = Boolean(remotePasswordHash);
   if (!remotePasswordHash) settings.remoteAccessEnabled = false;
   writeJson(emberSettingsPath(), { ...settings, ...(remotePasswordHash ? { remotePasswordHash } : {}) });
-  refreshRemoteServer();
+  if (
+    settings.remoteAccessEnabled !== previousRemoteAccessEnabled ||
+    remotePasswordHash !== previousRemotePasswordHash
+  ) refreshRemoteServer();
   return settings;
 };
 

@@ -5,9 +5,11 @@ import {
   ArchiveRestore,
   ArrowDownUp,
   ChevronDown,
+  Clock3,
   ListFilter,
   Palette,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   X,
@@ -38,11 +40,12 @@ import { Input } from '@/components/ui/input';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { modelRefKey, sessionKey } from '../types';
-import type { AvatarIdentity, BallState, BlobStyle, Instance, Project, Session } from '../types';
+import type { AvatarIdentity, BallState, BlobStyle, Instance, InstanceDefaults, Project, Session } from '../types';
 
 type Props = {
   instances: Instance[];
   projectsByInstance: Record<string, Project[]>;
+  instanceDefaults: Record<string, InstanceDefaults>;
   sessions: Session[];
   states: Record<string, BallState>;
   previews: Record<string, string>;
@@ -51,13 +54,17 @@ type Props = {
   blobStyle: BlobStyle;
   loading: boolean;
   mobileOpen: boolean;
+  reloadingKeys: Set<string>;
   /** The currently open session, if any. Pinned to the rail when filters hide it. */
   selectedSession: Session | null;
   /** Human label for the recency window ("Last 2 days"), or null when everything is shown. */
   windowLabel: string | null;
   showArchived: boolean;
+  showScheduled: boolean;
   onShowArchived: (value: boolean) => void;
+  onShowScheduled: (value: boolean) => void;
   onSelectSession: (session: Session) => void;
+  onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
   onCustomizeAppearance: (session: Session) => void;
   onNewAgent: (instanceId: string) => void;
@@ -102,6 +109,7 @@ const folderOf = (session: Session, projects: Project[]): string | undefined =>
 export default function LeftRail({
   instances,
   projectsByInstance,
+  instanceDefaults,
   sessions,
   states,
   previews,
@@ -110,11 +118,15 @@ export default function LeftRail({
   blobStyle,
   loading,
   mobileOpen,
+  reloadingKeys,
   selectedSession,
   windowLabel,
   showArchived,
+  showScheduled,
   onShowArchived,
+  onShowScheduled,
   onSelectSession,
+  onReload,
   onArchive,
   onCustomizeAppearance,
   onNewAgent,
@@ -251,6 +263,8 @@ export default function LeftRail({
     const project = projectForSession(session, projectsByInstance[session.instanceId] ?? []);
     const selected = key === selectedKey;
     const state = states[key] ?? 'idle';
+    const reloading = reloadingKeys.has(key);
+    const markerColor = instanceDefaults[session.instanceId]?.markerColor;
 
     return (
       <motion.div
@@ -290,7 +304,15 @@ export default function LeftRail({
 
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <div className="flex items-baseline gap-2">
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                  <span
+                    className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground"
+                    style={markerColor === undefined ? undefined : {
+                      textDecoration: 'underline',
+                      textDecorationColor: `var(--instance-marker-${markerColor})`,
+                      textDecorationThickness: '2px',
+                      textUnderlineOffset: '3px',
+                    }}
+                  >
                     {session.title ?? session.id}
                   </span>
                   <span className="flex-none text-[10.5px] tabular-nums text-muted-foreground transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
@@ -319,6 +341,10 @@ export default function LeftRail({
             </motion.button>
           </ContextMenuTrigger>
           <ContextMenuContent>
+            <ContextMenuItem disabled={reloading} onSelect={() => onReload(session)}>
+              <RefreshCw className={cn(reloading && 'animate-spin')} />
+              {reloading ? 'Reloading…' : 'Reload session'}
+            </ContextMenuItem>
             <ContextMenuItem onSelect={() => onCustomizeAppearance(session)}>
               <Palette />
               Customize appearance…
@@ -399,7 +425,7 @@ export default function LeftRail({
             <Input
               type="search"
               value={query}
-              placeholder={showArchived ? 'Search archived…' : 'Search sessions…'}
+              placeholder={showScheduled ? 'Search scheduled…' : showArchived ? 'Search archived…' : 'Search sessions…'}
               aria-label="Search sessions"
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
@@ -437,6 +463,22 @@ export default function LeftRail({
               </Toggle>
             </TooltipTrigger>
             <TooltipContent>{showArchived ? 'Back to active sessions' : 'Show archived sessions'}</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Toggle
+                size="sm"
+                variant="outline"
+                pressed={showScheduled}
+                onPressedChange={onShowScheduled}
+                aria-label="Show scheduled sessions"
+                className="w-8 justify-center px-0"
+              >
+                <Clock3 className="size-4" />
+              </Toggle>
+            </TooltipTrigger>
+            <TooltipContent>{showScheduled ? 'Back to active sessions' : 'Show scheduled sessions'}</TooltipContent>
           </Tooltip>
 
           <DropdownMenu>
@@ -511,17 +553,23 @@ export default function LeftRail({
                 : ready.length === 0
                   ? 'No connected instances. Open one in OpenChamber, then refresh.'
                   : needle
-                    ? `No ${showArchived ? 'archived ' : ''}sessions match “${query.trim()}”.`
+                    ? `No ${showScheduled ? 'scheduled ' : showArchived ? 'archived ' : ''}sessions match “${query.trim()}”.`
                     : filter !== ALL_FILTER
                       ? 'No sessions match this filter.'
-                      : showArchived
-                        ? 'No archived sessions.'
+                      : showScheduled
+                        ? 'No scheduled sessions have been observed yet.'
+                        : showArchived
+                          ? 'No archived sessions.'
                         : windowLabel
                           ? `No sessions active in the ${windowLabel.toLowerCase()}. Widen the window in Settings.`
                           : 'No sessions yet.'}
             </span>
-            {showArchived && !needle && filter === ALL_FILTER && ready.length > 0 ? (
-              <Button size="xs" variant="outline" onClick={() => onShowArchived(false)}>
+            {(showArchived || showScheduled) && !needle && filter === ALL_FILTER && ready.length > 0 ? (
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => showScheduled ? onShowScheduled(false) : onShowArchived(false)}
+              >
                 Show active sessions
               </Button>
             ) : null}

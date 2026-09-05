@@ -1,4 +1,5 @@
 import { sessionKey } from '../types';
+import { AVATAR_COLOR_COUNT } from './contrast';
 import type { AvatarIdentity, AvatarOverride, Project, Session } from '../types';
 
 export const hashString = (value: string): number => {
@@ -58,9 +59,30 @@ export const projectForSession = (session: Session, projects: Project[]): Projec
 };
 
 export const sessionAvatarKey = (session: Session): string => `session:${sessionKey(session)}`;
+export const projectIdentityKey = (instanceId: string, projectId: string): string =>
+  `project:${instanceId}::${projectId}`;
+
+export const allocateProjectColors = (
+  projectKeys: string[],
+  current: Record<string, number>
+): Record<string, number> => {
+  const assignments = { ...current };
+  const counts = Array.from({ length: AVATAR_COLOR_COUNT }, () => 0);
+  Object.values(assignments).forEach((index) => {
+    if (Number.isInteger(index) && index >= 0 && index < AVATAR_COLOR_COUNT) counts[index] += 1;
+  });
+  [...new Set(projectKeys)].sort().forEach((key) => {
+    if (Number.isInteger(assignments[key])) return;
+    const minimum = Math.min(...counts);
+    const index = counts.findIndex((count) => count === minimum);
+    assignments[key] = index;
+    counts[index] += 1;
+  });
+  return assignments;
+};
 
 export const projectAvatarKey = (session: Session, project: Project | null): string | undefined => {
-  if (project) return `project:${session.instanceId}::${project.id}`;
+  if (project) return projectIdentityKey(session.instanceId, project.id);
   return session.directory
     ? `directory:${session.instanceId}::${normalizeDirectory(session.directory)}`
     : undefined;
@@ -70,7 +92,8 @@ export const resolveAvatarIdentity = (
   session: Session,
   projects: Project[],
   scheduledBindings: Record<string, string>,
-  overrides: Record<string, AvatarOverride>
+  overrides: Record<string, AvatarOverride>,
+  projectColors: Record<string, number> = {}
 ): AvatarIdentity => {
   const key = sessionKey(session);
   const projectKey = projectAvatarKey(session, projectForSession(session, projects));
@@ -89,7 +112,7 @@ export const resolveAvatarIdentity = (
     motionSeed: key,
     colorIndex:
       override.colorIndex ??
-      (projectKey ? hashString(`avatar-color:${projectKey}`) % 6 : undefined),
+      (projectKey ? projectColors[projectKey] ?? hashString(`avatar-color:${projectKey}`) % AVATAR_COLOR_COUNT : undefined),
     shapeName: override.shapeName,
   };
 };

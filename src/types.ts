@@ -29,6 +29,7 @@ export type InstanceDefaults = {
   agent?: AgentMode;
   model?: ModelRef;
   bypass?: boolean;
+  markerColor?: number;
 };
 
 export type NewSessionOptions = {
@@ -202,8 +203,10 @@ export type EmberSettings = {
   sessionWindowHours: number;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
+  sessionNotes: Record<string, string>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, AvatarOverride>;
+  projectColorAssignments: Record<string, number>;
   remoteAccessEnabled: boolean;
   remotePasswordConfigured: boolean;
 };

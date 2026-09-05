@@ -1,6 +1,3 @@
-/** The script's palette minus dark/white, which vanish on one theme or the other. */
-export const GLYPH_COLORS = ['#3D4EC7', '#F17FB2', '#2F9E52', '#E96420', '#E8542E', '#F6C522'];
-
 /** WCAG 1.4.11 minimum for graphics; glyphs are the only thing identifying a session at a glance. */
 const MIN_CONTRAST = 3;
 const STEP = 0.03;
@@ -64,10 +61,22 @@ const hslToRgb = ([h, s, l]: Hsl): Rgb => {
   return [hue(p, q, h + 1 / 3) * 255, hue(p, q, h) * 255, hue(p, q, h - 1 / 3) * 255];
 };
 
+export const AVATAR_COLOR_COUNT = 64;
+export const INSTANCE_MARKER_COLORS = [
+  '#3D4EC7', '#A13DB8', '#D13F78', '#C84A3A', '#C66A24', '#9A7A12',
+  '#4F8A2F', '#20866F', '#247F9E', '#3474C8', '#6757C2', '#8C4A9E',
+];
+export const GLYPH_COLORS = Array.from({ length: AVATAR_COLOR_COUNT }, (_, index) => {
+  const hue = ((index * 137.508) % 360) / 360;
+  const saturation = 0.58 + (index % 4) * 0.06;
+  const lightness = 0.42 + (Math.floor(index / 4) % 4) * 0.055;
+  return rgbToHex(hslToRgb([hue, saturation, lightness]));
+});
+
 /**
  * Nudge a colour's lightness — away from the surfaces it sits on — until it clears
  * MIN_CONTRAST against every one of them. Hue and saturation are kept so the palette
- * still reads as the same six colours on every theme.
+ * still reads as the same palette on every theme.
  */
 export const ensureContrast = (hex: string, surfaces: string[]): string => {
   const meets = (candidate: string) => surfaces.every((surface) => contrastRatio(candidate, surface) >= MIN_CONTRAST);
@@ -91,3 +100,6 @@ export const ensureContrast = (hex: string, surfaces: string[]): string => {
 /** Theme-adjusted glyph palette, index-aligned with GLYPH_COLORS. */
 export const glyphPaletteFor = (surfaces: string[]): string[] =>
   GLYPH_COLORS.map((color) => ensureContrast(color, surfaces));
+
+export const instanceMarkerPaletteFor = (surfaces: string[]): string[] =>
+  INSTANCE_MARKER_COLORS.map((color) => ensureContrast(color, surfaces));

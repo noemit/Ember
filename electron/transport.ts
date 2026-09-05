@@ -93,6 +93,40 @@ export const parseStringRecord = (value: unknown, limit = 2000): Record<string, 
   );
 };
 
+export const parseColorAssignments = (value: unknown, colorCount = 64): Record<string, number> => {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(
+        (entry): entry is [string, number] =>
+          !UNSAFE_RECORD_KEYS.has(entry[0]) &&
+          entry[0].length > 0 &&
+          entry[0].length <= 500 &&
+          Number.isInteger(entry[1]) &&
+          Number(entry[1]) >= 0 &&
+          Number(entry[1]) < colorCount
+      )
+      .slice(0, 4000)
+  );
+};
+
+export const parseSessionNotes = (value: unknown): Record<string, string> => {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(
+        (entry): entry is [string, string] =>
+          !UNSAFE_RECORD_KEYS.has(entry[0]) &&
+          entry[0].length > 0 &&
+          entry[0].length <= 500 &&
+          typeof entry[1] === 'string' &&
+          entry[1].length > 0 &&
+          entry[1].length <= 20_000
+      )
+      .slice(0, 2000)
+  );
+};
+
 export const parseAvatarOverrides = (value: unknown): Record<string, StoredAvatarOverride> => {
   if (!value || typeof value !== 'object') return {};
   return Object.fromEntries(
@@ -108,7 +142,7 @@ export const parseAvatarOverrides = (value: unknown): Record<string, StoredAvata
       .slice(0, 2000)
       .map(([key, raw]) => {
         const entry = raw as Record<string, unknown>;
-        const colorIndex = Number.isInteger(entry.colorIndex) && Number(entry.colorIndex) >= 0 && Number(entry.colorIndex) < 6
+        const colorIndex = Number.isInteger(entry.colorIndex) && Number(entry.colorIndex) >= 0 && Number(entry.colorIndex) < 64
           ? Number(entry.colorIndex)
           : undefined;
         const shapeName = typeof entry.shapeName === 'string' && /^[a-z0-9-]{1,80}$/i.test(entry.shapeName)
