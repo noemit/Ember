@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ChevronDown, Menu, RefreshCw, Settings } from 'lucide-react';
+import { ChevronDown, Menu, RefreshCw, Search, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ type Props = {
   refreshing: boolean;
   onToggle: (instanceId: string) => void;
   onToggleNavigation: () => void;
+  onOpenCommandPalette: () => void;
   onRefresh: () => void;
   onOpenSettings: () => void;
 };
@@ -50,6 +51,7 @@ export default function InstanceBar({
   refreshing,
   onToggle,
   onToggleNavigation,
+  onOpenCommandPalette,
   onRefresh,
   onOpenSettings,
 }: Props) {
@@ -71,6 +73,17 @@ export default function InstanceBar({
         <Menu className="size-4" />
       </button>
       <span className="mr-1 text-[13px] font-semibold tracking-wide text-highlight">Ember</span>
+      <button
+        type="button"
+        onClick={onOpenCommandPalette}
+        className="no-drag flex h-7 items-center gap-1.5 rounded-full border bg-muted/50 px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        aria-label="Open command palette"
+        title="Open command palette"
+      >
+        <Search className="size-3.5" />
+        <span className="hidden sm:inline">Search</span>
+        <kbd className="hidden rounded bg-background px-1 text-[10px] sm:inline">⌘K</kbd>
+      </button>
 
       <div className="flex-1" />
 

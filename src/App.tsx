@@ -58,12 +58,14 @@ import type {
   QuestionAnswers,
   QuestionRequest,
   Session,
+  SessionNote,
   SessionRef,
   NewSessionOptions,
 } from './types';
 
 const SettingsPanel = React.lazy(() => import('./components/SettingsPanel'));
 const AvatarPicker = React.lazy(() => import('./components/AvatarPicker'));
+const CommandPalette = React.lazy(() => import('./components/CommandPalette'));
 
 const DialogFallback = ({ label }: { label: string }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="status">
@@ -174,6 +176,7 @@ export default function App() {
   const [showArchived, setShowArchived] = React.useState(false);
   const [showScheduled, setShowScheduled] = React.useState(false);
   const [mobileRailOpen, setMobileRailOpen] = React.useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!mobileRailOpen) return;
@@ -183,6 +186,16 @@ export default function App() {
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [mobileRailOpen]);
+
+  React.useEffect(() => {
+    const openOnShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
+      event.preventDefault();
+      setCommandPaletteOpen(true);
+    };
+    window.addEventListener('keydown', openOnShortcut);
+    return () => window.removeEventListener('keydown', openOnShortcut);
+  }, []);
 
   // Keep a live ref to the selected session so pollers can read its
   // directory (for routing) without re-running the effect on every session list refresh.
@@ -218,6 +231,14 @@ export default function App() {
         );
       });
   }, [sessionsByInstance, readyIds, hidden, showArchived, showScheduled, sessionWindowHours, settings.scheduledSessionBindings]);
+
+  const allSessions = React.useMemo(
+    () =>
+      Object.entries(sessionsByInstance)
+        .filter(([instanceId]) => readyIds.includes(instanceId))
+        .flatMap(([, list]) => list),
+    [readyIds, sessionsByInstance]
+  );
 
   const permissions = React.useMemo(
     () => Object.values(permissionsByInstance).flat(),
@@ -463,7 +484,7 @@ export default function App() {
         }
         const [nextStates, nextPermissions, nextQuestions] = await Promise.all([
           loadAllSessionStates(readyIds),
-          loadAllPermissions(readyIds),
+          loadAllPermissions(readyIds, directoryHints),
           loadAllQuestions(readyIds, directoryHints),
         ]);
         if (cancelled) return;
@@ -644,11 +665,11 @@ export default function App() {
     }
   };
 
-  const handleSend = async (input: PromptInput) => {
-    if (!selected) return;
+  const handleSend = async (input: PromptInput): Promise<boolean> => {
+    if (!selected) return false;
     setActionError(null);
     const { instanceId, sessionId } = selected;
-    const { model, text, attachments = [] } = input;
+    const { model, text, attachments = [], variant } = input;
     const key = sessionKey(selected);
     const directory = selectedSession?.directory;
 
@@ -670,7 +691,7 @@ export default function App() {
       role: 'user',
       text: text.trim(),
       parts,
-      model: model ? { providerID: model.providerID, modelID: model.modelID } : undefined,
+      model: model ? { providerID: model.providerID, modelID: model.modelID, variant } : undefined,
       createdAt,
       completed: true,
     };
@@ -688,7 +709,7 @@ export default function App() {
       if (!sent.ok) {
         removeOptimistic();
         setActionError(responseError(sent.data, 'Message could not be sent.'));
-        return;
+        return false;
       }
       accepted = true;
       const updated = Date.now();
@@ -700,7 +721,7 @@ export default function App() {
             ? {
                 ...session,
                 updated,
-                model: model ? { providerID: model.providerID, modelID: model.modelID } : session.model,
+                model: model ? { providerID: model.providerID, modelID: model.modelID, variant } : session.model,
               }
             : session
         ),
@@ -710,6 +731,7 @@ export default function App() {
       if (selectedKeyRef.current === key) setMessages(next);
       setPreviews((prev) => ({ ...prev, [key]: preview }));
       setPreviewVersions((prev) => ({ ...prev, [key]: updated }));
+      return true;
     } catch (err) {
       console.error('Send failed', err);
       if (!accepted) removeOptimistic();
@@ -720,6 +742,7 @@ export default function App() {
             ? err.message
             : 'Message could not be sent.'
       );
+      return accepted;
     } finally {
       pendingOptimisticIds.current.delete(optimisticId);
       setSendingKeys((prev) => {
@@ -817,7 +840,7 @@ export default function App() {
   ): Promise<boolean> => {
     setActionError(null);
     try {
-      const directory = (sessionsByInstance[request.instanceId] ?? []).find(
+      const directory = request.directory ?? (sessionsByInstance[request.instanceId] ?? []).find(
         (session) => session.id === request.sessionId
       )?.directory;
       const ok = await replyPermission(request, reply, directory);
@@ -868,7 +891,7 @@ export default function App() {
   ): Promise<boolean> => {
     setActionError(null);
     try {
-      const directory = sessionDirectory(request.instanceId, request.sessionId);
+      const directory = request.directory ?? sessionDirectory(request.instanceId, request.sessionId);
       const ok = answers
         ? await replyQuestion(request, answers, directory)
         : await rejectQuestion(request, directory);
@@ -1008,10 +1031,14 @@ export default function App() {
     });
   };
 
-  const handleSessionNote = (note: string) => {
+  const handleSessionNotes = (notes: SessionNote[]) => {
     if (!selectedKey) return;
     const sessionNotes = { ...settings.sessionNotes };
-    if (note) sessionNotes[selectedKey] = note.slice(0, 20_000);
+    const clean = notes
+      .map((note) => ({ id: note.id, text: note.text.slice(0, 20_000) }))
+      .filter((note) => note.text.trim())
+      .slice(-100);
+    if (clean.length) sessionNotes[selectedKey] = clean;
     else delete sessionNotes[selectedKey];
     handleSettings({ sessionNotes });
   };
@@ -1043,10 +1070,11 @@ export default function App() {
             instances={instances}
             hidden={hidden}
             refreshing={refreshing}
-            onToggle={toggleInstance}
-            onToggleNavigation={() => setMobileRailOpen((open) => !open)}
-            onRefresh={() => void refreshInstances()}
-            onOpenSettings={() => {
+              onToggle={toggleInstance}
+              onToggleNavigation={() => setMobileRailOpen((open) => !open)}
+              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+              onRefresh={() => void refreshInstances()}
+              onOpenSettings={() => {
               setSettingsView('instances');
               setSettingsActivated(true);
               setSettingsOpen(true);
@@ -1134,9 +1162,9 @@ export default function App() {
               reloading={selectedKey ? reloadingKeys.has(selectedKey) : false}
               bypass={bypass}
               pinnedMessageIds={pinnedMessageIds}
-              sessionNote={selectedKey ? settings.sessionNotes[selectedKey] ?? '' : ''}
+              sessionNotes={selectedKey ? settings.sessionNotes[selectedKey] ?? [] : []}
               onTogglePin={handleTogglePin}
-              onSessionNoteChange={handleSessionNote}
+              onSessionNotesChange={handleSessionNotes}
               onBypassChange={(enabled) => {
                 if (selectedKey) {
                   setBypassOverrides((prev) => ({ ...prev, [selectedKey]: enabled }));
@@ -1145,7 +1173,7 @@ export default function App() {
               onNewSessionInstanceChange={setNewSessionInstanceId}
               onCreateSession={handleCreateSession}
               onCancelNewSession={() => setNewSessionInstanceId(null)}
-              onSend={(input) => void handleSend(input)}
+              onSend={handleSend}
               onReload={() => {
                 if (selectedSession) void handleReloadSession(selectedSession);
               }}
@@ -1154,6 +1182,26 @@ export default function App() {
               onQuestion={handleQuestion}
             />
           </div>
+
+          <React.Suspense fallback={null}>
+            <CommandPalette
+              open={commandPaletteOpen}
+              sessions={allSessions}
+              states={states}
+              instances={instances}
+              sessionNotes={settings.sessionNotes}
+              onOpenChange={setCommandPaletteOpen}
+              onSelectSession={(session) => {
+                setNewSessionInstanceId(null);
+                setSelected({ instanceId: session.instanceId, sessionId: session.id });
+                setMobileRailOpen(false);
+              }}
+              onNewAgent={(instanceId) => {
+                beginNewAgent(instanceId);
+                setMobileRailOpen(false);
+              }}
+            />
+          </React.Suspense>
 
           {settingsActivated ? (
             <React.Suspense fallback={<DialogFallback label="Loading settings…" />}>

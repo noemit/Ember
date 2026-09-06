@@ -18,8 +18,13 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   Ember settings in `~/.config/ember/settings.json`) and the preload bridge. Opt-in remote access
   serves the app on the detected Tailscale IPv4 address at port `57821`; it requires a locally
   hashed password and uses an HttpOnly session cookie.
-- `src/App.tsx` — owns all state: instances, per-instance sessions/states/models, selection.
-  Sessions are keyed by `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances.
+- `src/App.tsx` — owns all state: instances, per-instance sessions/states/models, selection, and the
+  command-palette data. Sessions are keyed by `sessionKey()` (`instanceId::sessionId`) because ids
+  repeat across instances.
+- `src/components/ChatView.tsx` — owns the transcript shell and composer. Text, model, reasoning
+  variant, agent mode, attachments, and reply context are kept per session; the one-line textarea
+  grows to a capped height and failed sends restore the draft.
+- `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.
 - `src/blob/` — session avatars. `Blob.tsx` switches between `GrokBlob` (flat), `GemBlob`
@@ -54,9 +59,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/components/Transcript.tsx` — message list: text bubbles, expandable tool rows (input/
   output/diff), collapsed reasoning, file parts, permission + question cards, live activity line,
   pin-to-bottom scrolling (ResizeObserver + `scrollend`), and message jump/highlight support.
-- `src/components/SessionContextPanel.tsx` — responsive notes/pins rail. Notes are keyed by session,
-  debounced into Ember settings, and can be inserted into the composer; pin actions jump, reply, or
-  unpin without changing OpenChamber data.
+- `src/components/SessionContextPanel.tsx` — persistent notes/pins side panel. Notes are keyed by
+  session, stored in Ember settings as up to 100 selectable text entries, and selected notes append
+  to the composer without replacing its draft; pin actions jump, reply, or unpin without changing
+  OpenChamber data.
 - `src/components/Markdown.tsx` — assistant prose via `react-markdown` + `remark-gfm` (no raw
   HTML). A small rehype plugin reuses `Linkify.tsx`'s tokenizer to link bare local paths; all
   anchors route through `window.ember.openExternal`.
@@ -78,12 +84,13 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   carry `archived: 0`.
 - "Recent" models in the composer are derived from the instance's own sessions (`session.model`
   from the list endpoint, newest `time.updated` first) — nothing is stored on the Ember side.
-- Permissions: `GET /api/permission` lists pending requests for all sessions on an instance;
-  reply with `POST /api/permission/:id/reply?directory=…` `{ reply: once|always|reject }`
+- Permissions: `GET /api/permission` lists pending requests; Ember merges the global response with
+  directory-scoped responses for the selected session because OpenCode scopes pending requests by
+  project. Reply with `POST /api/permission/:id/reply?directory=…` `{ reply: once|always|reject }`
   (falls back to the legacy `/api/session/:sid/permissions/:id` on 404). Questions (the agent's
   `question` tool) work the same way: `GET /api/question`, `POST /api/question/:id/reply`
   `{ answers: string[][] }` (one array per question; option labels or a single custom string),
   `POST /api/question/:id/reject`. Sessions with a pending request of either kind are forced to
   the `needs-input` ball state — `/api/sessions/status` itself only reports idle/busy/retry.
 - Prompt body: `{ parts: [{type:'file', mime, filename, url:<data URL>}..., {type:'text', text}],
-  model?, agent? }`. Stop is `POST /api/session/:id/abort`.
+  model?, agent?, variant? }`. Stop is `POST /api/session/:id/abort`.

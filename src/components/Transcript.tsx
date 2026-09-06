@@ -62,6 +62,13 @@ const FOLLOW_THRESHOLD = 48;
 
 const spring = { type: 'spring', stiffness: 420, damping: 32 } as const;
 
+const formatElapsed = (ms: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${seconds}s`;
+};
+
 /** Consecutive text (or reasoning) parts collapse into one block; files and tools stay separate. */
 type Block =
   | { type: 'text'; id: string; text: string }
@@ -572,11 +579,22 @@ export default function Transcript({
   const followRef = React.useRef(true);
   const [following, setFollowing] = React.useState(true);
   const [highlightedMessageId, setHighlightedMessageId] = React.useState<string | null>(null);
+  const previousPendingCountRef = React.useRef(0);
 
   const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
+
+  const pendingCount = permissions.length + questions.length;
+  React.useEffect(() => {
+    if (pendingCount > previousPendingCountRef.current) {
+      followRef.current = true;
+      setFollowing(true);
+      window.requestAnimationFrame(() => scrollToBottom('smooth'));
+    }
+    previousPendingCountRef.current = pendingCount;
+  }, [pendingCount, scrollToBottom]);
 
   React.useEffect(() => {
     if (!focusMessageId || focusRequest === 0) return;
@@ -636,14 +654,31 @@ export default function Transcript({
     : undefined;
   const blocked = permissions.length > 0 || questions.length > 0;
   const turnPending = busy || blocked;
+  const [activityNow, setActivityNow] = React.useState(() => Date.now());
+  const activeSince = last?.createdAt ?? last?.completedAt;
+
+  React.useEffect(() => {
+    if (!turnPending) return;
+    setActivityNow(Date.now());
+    const timer = window.setInterval(() => setActivityNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [turnPending, last?.id]);
+
   // The running tool row above already shows the command; this line just says what phase we're in.
-  const activity = blocked || !busy
-    ? null
-    : sending && last?.role === 'user'
-      ? 'Sending…'
-      : runningTool?.type === 'tool'
-        ? `Running ${runningTool.call.tool}`
-        : 'Thinking';
+  const activityLabel = blocked
+    ? permissions.length
+      ? 'Waiting for approval'
+      : 'Waiting for an answer'
+    : !busy
+      ? null
+      : sending && last?.role === 'user'
+        ? 'Sending'
+        : runningTool?.type === 'tool'
+          ? `Running ${runningTool.call.tool}`
+          : 'Thinking';
+  const activity = activityLabel
+    ? `${activityLabel}${activeSince ? ` · ${formatElapsed(activityNow - activeSince)}` : ''}`
+    : null;
 
   const renderBlock = (message: ChatMessage, block: Block) => {
     const mine = message.role === 'user';

@@ -5,19 +5,21 @@ type ApiResponse = { ok: boolean; status: number; data: unknown };
 type BlobStyle = 'gem' | 'grok' | 'glyph' | 'critter';
 type InstanceDefaults = {
   directory?: string;
-  agent?: 'build' | 'plan';
-  model?: { providerID: string; modelID: string };
+  agent?: string;
+  model?: { providerID: string; modelID: string; variant?: string };
+  variant?: string;
   bypass?: boolean;
   markerColor?: number;
 };
 type AvatarOverride = { colorIndex?: number; shapeName?: string };
+type SessionNote = { id: string; text: string };
 type EmberSettings = {
   theme: string;
   blobStyle: BlobStyle;
   sessionWindowHours: number;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
-  sessionNotes: Record<string, string>;
+  sessionNotes: Record<string, SessionNote[]>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, AvatarOverride>;
   projectColorAssignments: Record<string, number>;

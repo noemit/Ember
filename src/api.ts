@@ -95,6 +95,8 @@ const toSession = (instanceId: string, entry: unknown, index: number): Session =
   const model = asRecord(item.model);
   const modelID = typeof model.id === 'string' ? model.id : typeof model.modelID === 'string' ? model.modelID : '';
   const providerID = typeof model.providerID === 'string' ? model.providerID : '';
+  const variant = typeof model.variant === 'string' && model.variant ? model.variant : undefined;
+  const agent = typeof item.agent === 'string' && item.agent ? item.agent : undefined;
 
   return {
     id: String(item.id ?? `session-${index}`),
@@ -103,7 +105,8 @@ const toSession = (instanceId: string, entry: unknown, index: number): Session =
     directory: typeof item.directory === 'string' ? item.directory : undefined,
     updated,
     archived: typeof time.archived === 'number' && time.archived > 0 ? time.archived : undefined,
-    model: modelID && providerID ? { providerID, modelID } : undefined,
+    model: modelID && providerID ? { providerID, modelID, variant } : undefined,
+    agent,
     parentId: typeof item.parentID === 'string' && item.parentID ? item.parentID : undefined,
   };
 };
@@ -119,7 +122,7 @@ const toSession = (instanceId: string, entry: unknown, index: number): Session =
 const payloadArray = (value: unknown): unknown[] => {
   if (Array.isArray(value)) return value;
   const root = asRecord(value);
-  return asArray((root.data ?? root.sessions ?? root.messages) as unknown);
+  return asArray((root.data ?? root.sessions ?? root.messages ?? root.permissions) as unknown);
 };
 
 export const loadSessions = async (
@@ -295,8 +298,8 @@ export const createSession = async (
   directory?: string
 ): Promise<Session | null> => {
   const query = directoryQuery(directory);
-  const body: Record<string, unknown> = directory ? { directory } : {};
-  const response = await window.ember.request(instanceId, 'POST', `/api/session${query}`, body);
+  // Current OpenCode accepts directory only as a query parameter; extra body keys are rejected.
+  const response = await window.ember.request(instanceId, 'POST', `/api/session${query}`, {});
   if (!response.ok) return null;
 
   const root = asRecord(response.data);
@@ -323,7 +326,8 @@ const statusToState = (raw: unknown): BallState => {
     value.includes('busy') ||
     value.includes('active') ||
     value.includes('run') ||
-    value.includes('work')
+    value.includes('work') ||
+    value.includes('retry')
   ) {
     return 'active';
   }
@@ -508,16 +512,21 @@ const toolTitleFromInput = (input: Record<string, unknown>): string | undefined 
   return undefined;
 };
 
-/** Pending permission requests across every session on an instance. */
-export const loadPermissions = async (instanceId: string): Promise<PermissionRequest[] | null> => {
-  const response = await window.ember.request(instanceId, 'GET', '/api/permission');
+/** Pending permission requests across sessions in an instance or directory scope. */
+export const loadPermissions = async (
+  instanceId: string,
+  directory?: string
+): Promise<PermissionRequest[] | null> => {
+  const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+  const response = await window.ember.request(instanceId, 'GET', `/api/permission${query}`);
   if (!response.ok) return null;
-  return asArray(response.data).map((entry) => {
+  return payloadArray(response.data).map((entry) => {
     const item = asRecord(entry);
     return {
       id: String(item.id ?? ''),
       instanceId,
       sessionId: String(item.sessionID ?? item.sessionId ?? ''),
+      directory: optionalString(item.directory) ?? directory,
       permission: String(item.permission ?? item.type ?? 'tool'),
       patterns: asArray(item.patterns).map(String),
       metadata: asRecord(item.metadata),
@@ -526,16 +535,29 @@ export const loadPermissions = async (instanceId: string): Promise<PermissionReq
 };
 
 export const loadAllPermissions = async (
-  instanceIds: string[]
+  instanceIds: string[],
+  directoryHints: Record<string, string[]> = {}
 ): Promise<Record<string, PermissionRequest[]>> => {
   const results = await Promise.all(
-    instanceIds.map(async (instanceId) => [instanceId, await loadPermissions(instanceId)] as const)
+    instanceIds.map(async (instanceId) => {
+      const directories = [...new Set(directoryHints[instanceId] ?? [])];
+      const lists = await Promise.all([
+        loadPermissions(instanceId),
+        ...directories.map((directory) => loadPermissions(instanceId, directory)),
+      ]);
+      const successful = lists.filter((list): list is PermissionRequest[] => list !== null);
+      if (successful.length === 0) return null;
+      const byId = new Map<string, PermissionRequest>();
+      successful.flat().forEach((request) => {
+        const existing = byId.get(request.id);
+        if (!existing || (!existing.directory && request.directory)) byId.set(request.id, request);
+      });
+      return [instanceId, [...byId.values()]] as const;
+    })
   );
-  const map: Record<string, PermissionRequest[]> = {};
-  results.forEach(([instanceId, list]) => {
-    if (list) map[instanceId] = list;
-  });
-  return map;
+  return Object.fromEntries(
+    results.filter((entry): entry is readonly [string, PermissionRequest[]] => entry !== null)
+  );
 };
 
 /**
@@ -548,7 +570,8 @@ export const replyPermission = async (
   reply: PermissionReply,
   directory?: string
 ): Promise<boolean> => {
-  const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+  const scopedDirectory = directory ?? request.directory;
+  const query = scopedDirectory ? `?directory=${encodeURIComponent(scopedDirectory)}` : '';
   const response = await window.ember.request(
     request.instanceId,
     'POST',
@@ -587,6 +610,7 @@ export const loadQuestions = async (
         id: String(item.id ?? ''),
         instanceId,
         sessionId: String(item.sessionID ?? item.sessionId ?? ''),
+        directory: optionalString(item.directory) ?? directory,
         questions: asArray(item.questions).map((raw) => {
           const question = asRecord(raw);
           return {
@@ -618,13 +642,12 @@ export const loadAllQuestions = async (
       ]);
       const successful = lists.filter((list): list is QuestionRequest[] => list !== null);
       if (successful.length === 0) return null;
-      const seen = new Set<string>();
-      const merged = successful.flat().filter((request) => {
-        if (seen.has(request.id)) return false;
-        seen.add(request.id);
-        return true;
+      const byId = new Map<string, QuestionRequest>();
+      successful.flat().forEach((request) => {
+        const existing = byId.get(request.id);
+        if (!existing || (!existing.directory && request.directory)) byId.set(request.id, request);
       });
-      return [instanceId, merged] as const;
+      return [instanceId, [...byId.values()]] as const;
     })
   );
   return Object.fromEntries(
@@ -637,20 +660,22 @@ export const replyQuestion = async (
   answers: QuestionAnswers,
   directory?: string
 ): Promise<boolean> => {
+  const scopedDirectory = directory ?? request.directory;
   const response = await window.ember.request(
     request.instanceId,
     'POST',
-    `/api/question/${encodeURIComponent(request.id)}/reply${directoryQuery(directory)}`,
+    `/api/question/${encodeURIComponent(request.id)}/reply${directoryQuery(scopedDirectory)}`,
     { answers }
   );
   return response.ok;
 };
 
 export const rejectQuestion = async (request: QuestionRequest, directory?: string): Promise<boolean> => {
+  const scopedDirectory = directory ?? request.directory;
   const response = await window.ember.request(
     request.instanceId,
     'POST',
-    `/api/question/${encodeURIComponent(request.id)}/reject${directoryQuery(directory)}`
+    `/api/question/${encodeURIComponent(request.id)}/reject${directoryQuery(scopedDirectory)}`
   );
   return response.ok;
 };
@@ -732,12 +757,21 @@ export const loadModels = async (instanceId: string): Promise<ModelList> => {
 
   models.sort((a, b) => a.label.localeCompare(b.label));
 
-  // `default` is a map of provider → model for the whole catalogue, not the instance's
-  // pick; only an explicit pair tells us what OpenCode will actually use.
+  // Prefer the explicitly named pair; provider→model maps are common in current responses.
   const defaults = asRecord(root.default);
   const pairProvider = typeof defaults.providerID === 'string' ? defaults.providerID : '';
   const pairModel = typeof defaults.modelID === 'string' ? defaults.modelID : '';
-  const defaultModelId = pairProvider && pairModel ? `${pairProvider}/${pairModel}` : null;
+  let defaultModelId: string | null = null;
+  if (pairProvider && pairModel) {
+    defaultModelId = `${pairProvider}/${pairModel}`;
+  } else {
+    const defaultPair = Object.entries(defaults).find(
+      ([provider, modelID]) =>
+        typeof modelID === 'string' &&
+        models.some((model) => model.providerID === provider && model.modelID === modelID)
+    );
+    defaultModelId = defaultPair ? `${defaultPair[0]}/${defaultPair[1]}` : null;
+  }
 
   return { models, defaultModelId };
 };
@@ -795,6 +829,8 @@ export type PromptInput = {
   text: string;
   model?: ModelOption;
   mode?: string;
+  /** Reasoning-effort variant advertised by the selected model. */
+  variant?: string;
   attachments?: FileAttachment[];
   replyContext?: string;
 };
@@ -802,7 +838,7 @@ export type PromptInput = {
 export const sendPrompt = async (
   instanceId: string,
   sessionId: string,
-  { text, model, mode, attachments = [], replyContext }: PromptInput,
+  { text, model, mode, variant, attachments = [], replyContext }: PromptInput,
   directory?: string,
   messageId?: string
 ): Promise<{ ok: boolean; status: number; data: unknown }> => {
@@ -823,6 +859,7 @@ export const sendPrompt = async (
   const body: Record<string, unknown> = { parts };
   if (model) body.model = { providerID: model.providerID, modelID: model.modelID };
   if (mode) body.agent = mode;
+  if (variant) body.variant = variant;
   if (messageId) body.messageID = messageId;
 
   return window.ember.request(

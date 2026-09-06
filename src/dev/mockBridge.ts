@@ -43,7 +43,7 @@ type MockSession = {
   directory: string;
   updated: number;
   archived?: number;
-  model?: { id: string; providerID: string };
+  model?: { id: string; providerID: string; variant?: string };
   status: string;
   messages: MockMessage[];
 };
@@ -208,7 +208,11 @@ let settings: EmberSettings = {
     'local::ses_a2::ses_a2-1',
   ],
   sessionNotes: {
-    'local::ses_a2': 'Next prompts:\n- Verify the fix on a narrow viewport\n- Add a regression test for the completed checklist state\n\nDecision: keep the progress indicator visible after onboarding.',
+    'local::ses_a2': [
+      { id: 'verify-narrow', text: 'Verify the fix on a narrow viewport.' },
+      { id: 'regression-test', text: 'Add a regression test for the completed checklist state.' },
+      { id: 'progress-decision', text: 'Decision: keep the progress indicator visible after onboarding.' },
+    ],
   },
   scheduledSessionBindings: {
     'local::ses_a1': 'task:local::p1::daily-channel-brief',
@@ -394,13 +398,14 @@ const bridge: EmberBridge = {
         const time = m.role === 'assistant' && !m.open ? { created, completed: created + 2400 } : { created };
         const model = session?.model ?? { id: 'claude-sonnet', providerID: 'anthropic' };
         const info = m.role === 'user'
-          ? { id, role: m.role, time, model: { providerID: model.providerID, modelID: model.id } }
+          ? { id, role: m.role, time, model: { providerID: model.providerID, modelID: model.id, variant: model.variant } }
           : {
               id,
               role: m.role,
               time,
               providerID: model.providerID,
               modelID: model.id,
+              model: model.variant ? { providerID: model.providerID, modelID: model.id, variant: model.variant } : undefined,
               error: m.error ? { name: 'APIError', data: { message: m.error, statusCode: 400 } } : undefined,
             };
         return { info, parts: toParts(m, id) };
@@ -419,6 +424,7 @@ const bridge: EmberBridge = {
           metadata?: { emberReplyContext?: boolean };
         }>;
         model?: { providerID: string; modelID: string };
+        variant?: string;
       };
       const parts = prompt?.parts ?? [];
       const text = parts
@@ -429,7 +435,7 @@ const bridge: EmberBridge = {
       if (session) {
         session.messages.push({ role: 'user', text, files });
         if (prompt.model) {
-          session.model = { id: prompt.model.modelID, providerID: prompt.model.providerID };
+          session.model = { id: prompt.model.modelID, providerID: prompt.model.providerID, variant: prompt.variant };
         }
         session.updated = Date.now();
         session.status = 'busy';

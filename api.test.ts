@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import {
   createClientMessageId,
+  createSession,
   errorMessageOf,
+  loadAllPermissions,
   loadAllQuestions,
   loadAllSessions,
   loadMessages,
+  loadModels,
   loadProjects,
   loadQuestions,
   loadSessionPreview,
@@ -12,6 +15,8 @@ import {
   loadScheduledIdentityData,
   mergePolledSessions,
   reconcilePolledMessages,
+  replyPermission,
+  replyQuestion,
   sendPrompt,
 } from './src/api';
 import { shouldOfferSessionReload } from './src/components/ChatView';
@@ -193,6 +198,106 @@ describe('project loading', () => {
   });
 });
 
+describe('permission loading', () => {
+  test('merges global and directory-scoped pending requests without duplicates', async () => {
+    const paths: string[] = [];
+    const request = {
+      id: 'per_1',
+      sessionID: 'ses_1',
+      permission: 'bash',
+      patterns: ['bun test'],
+      metadata: {},
+    };
+    setRequest(async (_instanceId, _method, path) => {
+      paths.push(path);
+      return {
+        ok: true,
+        status: 200,
+        data: path === '/api/permission' ? [request] : { data: [request] },
+      };
+    });
+
+    const result = await loadAllPermissions(['local'], { local: ['/workspace/ember'] });
+    expect(result.local).toEqual([
+      expect.objectContaining({
+        id: 'per_1',
+        sessionId: 'ses_1',
+        directory: '/workspace/ember',
+      }),
+    ]);
+    expect(paths).toEqual(['/api/permission', '/api/permission?directory=%2Fworkspace%2Fember']);
+  });
+
+  test('routes replies through the directory that produced the request', async () => {
+    let requestPath = '';
+    let requestBody: unknown;
+    setRequest(async (_instanceId, _method, path, body) => {
+      requestPath = path;
+      requestBody = body;
+      return { ok: true, status: 200, data: true };
+    });
+
+    expect(await replyPermission({
+      id: 'per_1',
+      instanceId: 'local',
+      sessionId: 'ses_1',
+      directory: '/workspace/ember',
+      permission: 'bash',
+      patterns: [],
+      metadata: {},
+    }, 'once')).toBe(true);
+    expect(requestPath).toBe('/api/permission/per_1/reply?directory=%2Fworkspace%2Fember');
+    expect(requestBody).toEqual({ reply: 'once' });
+  });
+});
+
+describe('session creation and model metadata', () => {
+  test('creates sessions with directory only in the query string', async () => {
+    let requestPath = '';
+    let requestBody: unknown;
+    setRequest(async (_instanceId, _method, path, body) => {
+      requestPath = path;
+      requestBody = body;
+      return {
+        ok: true,
+        status: 200,
+        data: { id: 'ses_new', directory: '/workspace/ember', time: { updated: 100 } },
+      };
+    });
+
+    expect((await createSession('local', '/workspace/ember'))?.id).toBe('ses_new');
+    expect(requestPath).toBe('/api/session?directory=%2Fworkspace%2Fember');
+    expect(requestBody).toEqual({});
+  });
+
+  test('resolves provider-map defaults and reasoning variants', async () => {
+    setRequest(async () => ({
+      ok: true,
+      status: 200,
+      data: {
+        all: [{
+          id: 'anthropic',
+          name: 'Anthropic',
+          models: {
+            'claude-sonnet': {
+              id: 'claude-sonnet',
+              name: 'Claude Sonnet',
+              capabilities: { reasoning: true, toolcall: true, attachment: true, input: { text: true } },
+              variants: { low: {}, high: {} },
+            },
+          },
+        }],
+        connected: ['anthropic'],
+        default: { anthropic: 'claude-sonnet' },
+      },
+    }));
+
+    const list = await loadModels('local');
+    expect(list.defaultModelId).toBe('anthropic/claude-sonnet');
+    expect(list.models[0].details.variants).toEqual(['low', 'high']);
+  });
+});
+
 describe('scheduled task identity', () => {
   test('binds the latest scheduled session to its stable project task key', async () => {
     setRequest(async (_instanceId, _method, path) =>
@@ -280,8 +385,38 @@ describe('question loading', () => {
     const result = await loadAllQuestions(['local'], {
       local: ['/workspace/ember', '/workspace/ember'],
     });
-    expect(result.local.map((request) => request.id)).toEqual(['que_1']);
+    expect(result.local).toEqual([
+      expect.objectContaining({
+        id: 'que_1',
+        sessionId: 'ses_1',
+        directory: '/workspace/ember',
+      }),
+    ]);
     expect(paths).toEqual(['/api/question', '/api/question?directory=%2Fworkspace%2Fember']);
+  });
+
+  test('routes question replies through the directory that produced the request', async () => {
+    let requestPath = '';
+    let requestBody: unknown;
+    setRequest(async (_instanceId, _method, path, body) => {
+      requestPath = path;
+      requestBody = body;
+      return { ok: true, status: 200, data: true };
+    });
+
+    expect(await replyQuestion({
+      id: 'que_1',
+      instanceId: 'local',
+      sessionId: 'ses_1',
+      directory: '/workspace/ember',
+      questions: [{
+        header: 'Theme',
+        question: 'Which theme?',
+        options: [],
+      }],
+    }, [['Dark']])).toBe(true);
+    expect(requestPath).toBe('/api/question/que_1/reply?directory=%2Fworkspace%2Fember');
+    expect(requestBody).toEqual({ answers: [['Dark']] });
   });
 });
 
@@ -325,8 +460,8 @@ describe('message submission', () => {
     const messageId = createClientMessageId(1_750_000_000_000);
 
     expect(messageId).toMatch(/^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
-    await sendPrompt('local', 'session', { text: 'Hello' }, undefined, messageId);
-    expect(requestBody).toMatchObject({ messageID: messageId });
+    await sendPrompt('local', 'session', { text: 'Hello', variant: 'high' }, undefined, messageId);
+    expect(requestBody).toMatchObject({ messageID: messageId, variant: 'high' });
   });
 
   test('replaces an optimistic message when the poll returns its server copy', () => {

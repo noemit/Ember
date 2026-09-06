@@ -154,7 +154,7 @@ const InstanceDefaultsSettings = ({
           <span className="text-xs font-medium">Default agent</span>
           <Select
             value={defaults.agent ?? 'build'}
-            onValueChange={(value) => update({ agent: value === 'plan' ? 'plan' : 'build' })}
+            onValueChange={(value) => update({ agent: value })}
           >
             <SelectTrigger aria-label="Default agent">
               <SelectValue />
@@ -162,6 +162,9 @@ const InstanceDefaultsSettings = ({
             <SelectContent>
               <SelectItem value="build">Build</SelectItem>
               <SelectItem value="plan">Plan</SelectItem>
+              {defaults.agent && defaults.agent !== 'build' && defaults.agent !== 'plan' ? (
+                <SelectItem value={defaults.agent}>{defaults.agent}</SelectItem>
+              ) : null}
             </SelectContent>
           </Select>
         </div>

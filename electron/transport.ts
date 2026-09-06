@@ -110,21 +110,39 @@ export const parseColorAssignments = (value: unknown, colorCount = 64): Record<s
   );
 };
 
-export const parseSessionNotes = (value: unknown): Record<string, string> => {
+export type StoredSessionNote = {
+  id: string;
+  text: string;
+};
+
+const toStoredSessionNote = (value: unknown, fallbackId: string): StoredSessionNote | null => {
+  if (typeof value === 'string') {
+    return value.trim() && value.length <= 20_000 ? { id: fallbackId, text: value } : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const entry = value as Record<string, unknown>;
+  const text = typeof entry.text === 'string' ? entry.text : '';
+  if (!text.trim() || text.length > 20_000) return null;
+  const id = typeof entry.id === 'string' && /^[a-z0-9_-]{1,120}$/i.test(entry.id)
+    ? entry.id
+    : fallbackId;
+  return { id, text };
+};
+
+export const parseSessionNotes = (value: unknown): Record<string, StoredSessionNote[]> => {
   if (!value || typeof value !== 'object') return {};
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(
-        (entry): entry is [string, string] =>
-          !UNSAFE_RECORD_KEYS.has(entry[0]) &&
-          entry[0].length > 0 &&
-          entry[0].length <= 500 &&
-          typeof entry[1] === 'string' &&
-          entry[1].length > 0 &&
-          entry[1].length <= 20_000
-      )
-      .slice(0, 2000)
-  );
+  const notes: Record<string, StoredSessionNote[]> = {};
+  Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !UNSAFE_RECORD_KEYS.has(key) && key.length > 0 && key.length <= 500)
+    .slice(0, 2000)
+    .forEach(([key, raw]) => {
+      const parsed = (Array.isArray(raw) ? raw : [raw])
+        .slice(0, 100)
+        .map((entry, index) => toStoredSessionNote(entry, index === 0 ? 'legacy' : `legacy-${index}`))
+        .filter((entry): entry is StoredSessionNote => Boolean(entry));
+      if (parsed.length) notes[key] = parsed;
+    });
+  return notes;
 };
 
 export const parseAvatarOverrides = (value: unknown): Record<string, StoredAvatarOverride> => {

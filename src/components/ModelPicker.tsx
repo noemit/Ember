@@ -14,6 +14,8 @@ type Props = {
   recentModels: string[];
   /** Selected key, or DEFAULT_MODEL to let the instance decide. */
   value: string;
+  /** Default key OpenCode resolves when value is DEFAULT_MODEL. */
+  defaultModelId?: string | null;
   collapseProviders?: boolean;
   onSelect: (key: string) => void;
   onOpenChange: (open: boolean) => void;
@@ -34,12 +36,14 @@ const Row = React.memo(function Row({
   model,
   selected,
   active,
+  isDefault,
   onHover,
   onPick,
 }: {
   model: ModelOption;
   selected: boolean;
   active: boolean;
+  isDefault: boolean;
   onHover: () => void;
   onPick: () => void;
 }) {
@@ -55,7 +59,10 @@ const Row = React.memo(function Row({
         active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
       )}
     >
-      <span className="min-w-0 flex-1 truncate">{model.details.name}</span>
+      <span className="min-w-0 flex-1 truncate">
+        {model.details.name}
+        {isDefault ? ' (Default)' : ''}
+      </span>
       {model.details.status && model.details.status !== 'active' ? (
         <span className="flex-none rounded bg-muted px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
           {model.details.status}
@@ -128,6 +135,7 @@ export default function ModelPicker({
   models,
   recentModels,
   value,
+  defaultModelId = null,
   collapseProviders = false,
   onSelect,
   onOpenChange,
@@ -148,6 +156,10 @@ export default function ModelPicker({
   }, [open]);
 
   const byKey = React.useMemo(() => new Map(models.map((model) => [modelRefKey(model), model])), [models]);
+  const defaultModel = defaultModelId ? byKey.get(defaultModelId) ?? null : null;
+  const defaultLabel = defaultModel
+    ? `${defaultModel.details.providerName} / ${defaultModel.details.name} (Default)`
+    : 'Server default';
 
   const groups = React.useMemo<Group[]>(() => {
     const needle = query.trim().toLowerCase();
@@ -234,7 +246,7 @@ export default function ModelPicker({
                   )}
                 >
                   <Sparkles className="size-3.5 flex-none" />
-                  <span className="flex-1">Default model</span>
+                  <span className="flex-1 truncate">{defaultLabel}</span>
                   {value === DEFAULT_MODEL ? <Check className="size-3.5 flex-none text-highlight" /> : null}
                 </button>
               ) : null}
@@ -274,6 +286,7 @@ export default function ModelPicker({
                           model={model}
                           selected={key === value}
                           active={key === activeKey}
+                          isDefault={key === defaultModelId}
                           onHover={() => setHovered(key)}
                           onPick={() => pick(key)}
                         />
@@ -301,9 +314,11 @@ export default function ModelPicker({
             ) : (
               <div className="flex h-full flex-col justify-center gap-2 text-center text-muted-foreground">
                 <Sparkles className="mx-auto size-5" />
-                <p className="text-[13px] font-medium text-foreground">Default model</p>
+                <p className="text-[13px] font-medium text-foreground">{defaultLabel}</p>
                 <p className="text-[12px]">
-                  The instance picks its configured default. Hover a model on the left to see what it offers.
+                  {defaultModel
+                    ? 'OpenCode will use this configured model unless you choose another.'
+                    : 'The instance picks its configured default. Hover a model on the left to see what it offers.'}
                 </p>
               </div>
             )}

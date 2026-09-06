@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, ChevronDown, FilePenLine, Loader2, Paperclip, Pin, RefreshCw, Reply, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, FilePenLine, Loader2, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Toggle } from '@/components/ui/toggle';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -35,6 +36,7 @@ import type {
   QuestionAnswers,
   QuestionRequest,
   Session,
+  SessionNote,
 } from '../types';
 
 const loadModelPicker = () => import('./ModelPicker');
@@ -49,6 +51,100 @@ const ModelPickerFallback = () => (
     </span>
   </div>
 );
+
+type ProjectPickerProps = {
+  projects: Project[];
+  value: string;
+  onSelect: (directory: string) => void;
+};
+
+const ProjectPicker = ({ projects, value, onSelect }: ProjectPickerProps) => {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState('');
+  const selectableProjects = React.useMemo(
+    () => projects.filter((project): project is Project & { path: string } => Boolean(project.path)),
+    [projects]
+  );
+  const selected = selectableProjects.find((project) => project.path === value) ?? null;
+  const filtered = React.useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return selectableProjects;
+    return selectableProjects.filter((project) =>
+      [project.name, project.path].some((part) => part.toLowerCase().includes(needle))
+    );
+  }, [selectableProjects, query]);
+
+  React.useEffect(() => {
+    if (open) setQuery('');
+  }, [open]);
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full justify-between px-3 font-normal"
+        onClick={() => setOpen(true)}
+        aria-label="New agent project"
+      >
+        <span className="truncate">{selected?.name ?? 'Custom folder'}</span>
+        <ChevronDown className="size-4 text-muted-foreground" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-[460px] p-0" showCloseButton={false}>
+          <DialogTitle className="sr-only">Choose a project</DialogTitle>
+          <div className="border-b p-2.5">
+            <Input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Type a project name or folder…"
+              aria-label="Filter projects"
+              className="h-9 text-xs shadow-none"
+            />
+          </div>
+          <div className="max-h-[320px] overflow-y-auto p-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                onSelect('');
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12.5px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <span className="flex-1">Custom folder</span>
+              {!selected ? <Check className="size-3.5 text-highlight" /> : null}
+            </button>
+            {filtered.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                onClick={() => {
+                  onSelect(project.path);
+                  setOpen(false);
+                }}
+                className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-[12.5px] hover:bg-muted"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{project.name}</span>
+                  {project.path ? (
+                    <span className="block truncate text-[11px] text-muted-foreground">{project.path}</span>
+                  ) : null}
+                </span>
+                {project.path === value ? <Check className="mt-0.5 size-3.5 text-highlight" /> : null}
+              </button>
+            ))}
+            {filtered.length === 0 ? (
+              <p className="px-3 py-8 text-center text-xs text-muted-foreground">
+                No projects match “{query.trim()}”.
+              </p>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
 
 const TranscriptFallback = () => (
   <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground" role="status">
@@ -81,14 +177,14 @@ type Props = {
   reloading: boolean;
   bypass: boolean;
   pinnedMessageIds: Set<string>;
-  sessionNote: string;
+  sessionNotes: SessionNote[];
   onTogglePin: (message: ChatMessage) => void;
-  onSessionNoteChange: (note: string) => void;
+  onSessionNotesChange: (notes: SessionNote[]) => void;
   onBypassChange: (enabled: boolean) => void;
   onNewSessionInstanceChange: (instanceId: string) => void;
   onCreateSession: (options: NewSessionOptions) => Promise<boolean>;
   onCancelNewSession: () => void;
-  onSend: (input: PromptInput) => void;
+  onSend: (input: PromptInput) => Promise<boolean>;
   onReload: () => void;
   onAbort: () => void;
   onPermission: (request: PermissionRequest, reply: PermissionReply) => Promise<boolean>;
@@ -112,6 +208,31 @@ const messageContextText = (message: ChatMessage): string =>
 /** Attachments travel inline as data URLs, the same shape OpenChamber sends. */
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const STALE_AGENT_MS = 10 * 60_000;
+
+const MAX_COMPOSER_DRAFTS = 50;
+
+type ComposerState = {
+  text: string;
+  modelId: string;
+  variant: string;
+  mode: AgentMode;
+  attachments: FileAttachment[];
+  replyContext: ChatMessage | null;
+};
+
+const saveComposerDraft = (
+  drafts: Map<string, ComposerState>,
+  key: string,
+  state: ComposerState
+) => {
+  drafts.delete(key);
+  drafts.set(key, state);
+  while (drafts.size > MAX_COMPOSER_DRAFTS) {
+    const oldest = drafts.keys().next().value;
+    if (!oldest) break;
+    drafts.delete(oldest);
+  }
+};
 
 export const shouldOfferSessionReload = (
   state: BallState,
@@ -148,6 +269,7 @@ const NewSessionSetup = ({
   projects,
   models,
   recentModels,
+  defaultModelId,
   defaults,
   onInstanceChange,
   onCreate,
@@ -158,6 +280,7 @@ const NewSessionSetup = ({
   projects: Project[];
   models: ModelOption[];
   recentModels: string[];
+  defaultModelId: string | null;
   defaults: InstanceDefaults;
   onInstanceChange: (instanceId: string) => void;
   onCreate: (options: NewSessionOptions) => Promise<boolean>;
@@ -168,13 +291,15 @@ const NewSessionSetup = ({
   const [selectedModel, setSelectedModel] = React.useState(
     defaults.model ? modelRefKey(defaults.model) : DEFAULT_MODEL
   );
+  const [selectedVariant, setSelectedVariant] = React.useState(defaults.variant ?? defaults.model?.variant ?? '');
   const [bypass, setBypass] = React.useState(defaults.bypass === true);
   const [creating, setCreating] = React.useState(false);
   const [modelPickerOpen, setModelPickerOpen] = React.useState(false);
   const [modelPickerActivated, setModelPickerActivated] = React.useState(false);
   const folderRef = React.useRef<HTMLInputElement>(null);
-  const projectValue = projects.some((project) => project.path === directory) ? directory : '__custom';
   const selectedModelOption = models.find((entry) => modelKey(entry) === selectedModel);
+  const defaultModelOption = defaultModelId ? models.find((entry) => modelKey(entry) === defaultModelId) : undefined;
+  const selectedVariantOptions = selectedModelOption?.details.variants ?? [];
 
   const create = async () => {
     if (!directory.trim() || creating) return;
@@ -185,6 +310,10 @@ const NewSessionSetup = ({
       directory: directory.trim(),
       agent,
       model: model ? { providerID: model.providerID, modelID: model.modelID } : undefined,
+      variant:
+        model && selectedVariant && model.details.variants.includes(selectedVariant)
+          ? selectedVariant
+          : undefined,
       bypass,
     });
     if (!created) setCreating(false);
@@ -218,27 +347,14 @@ const NewSessionSetup = ({
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium">Project</span>
-            <Select
-              value={projectValue}
-              onValueChange={(value) => {
-                if (value === '__custom') {
-                  setDirectory('');
-                  window.requestAnimationFrame(() => folderRef.current?.focus());
-                } else setDirectory(value);
+            <ProjectPicker
+              projects={projects}
+              value={directory}
+              onSelect={(nextDirectory) => {
+                setDirectory(nextDirectory);
+                if (!nextDirectory) window.requestAnimationFrame(() => folderRef.current?.focus());
               }}
-            >
-              <SelectTrigger className="w-full" aria-label="New agent project">
-                <SelectValue placeholder="Choose a project" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__custom">Custom folder</SelectItem>
-                {projects.filter((project) => project.path).map((project) => (
-                  <SelectItem key={project.path} value={project.path!}>
-                    {project.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
         </div>
 
@@ -256,13 +372,16 @@ const NewSessionSetup = ({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium">Agent</span>
-            <Select value={agent} onValueChange={(value) => setAgent(value === 'plan' ? 'plan' : 'build')}>
+            <Select value={agent} onValueChange={setAgent}>
               <SelectTrigger aria-label="New agent type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="build">Build</SelectItem>
                 <SelectItem value="plan">Plan</SelectItem>
+                {agent !== 'build' && agent !== 'plan' ? (
+                  <SelectItem value={agent}>{agent}</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
           </div>
@@ -280,8 +399,10 @@ const NewSessionSetup = ({
             >
               <span className="truncate">
                 {selectedModelOption
-                  ? `${selectedModelOption.details.providerName} / ${selectedModelOption.details.name}`
-                  : 'Instance default'}
+                  ? `${selectedModelOption.details.providerName} / ${selectedModelOption.details.name}${selectedModel === defaultModelId ? ' (Default)' : ''}`
+                  : defaultModelOption
+                    ? `${defaultModelOption.details.providerName} / ${defaultModelOption.details.name} (Default)`
+                    : 'Server default'}
               </span>
               <ChevronDown className="size-4 text-muted-foreground" />
             </Button>
@@ -292,11 +413,36 @@ const NewSessionSetup = ({
                   models={models}
                   recentModels={recentModels}
                   value={selectedModel}
+                  defaultModelId={defaultModelId}
                   collapseProviders
-                  onSelect={setSelectedModel}
+                  onSelect={(next) => {
+                    setSelectedModel(next);
+                    const nextModel = models.find((entry) => modelKey(entry) === next);
+                    if (selectedVariant && !nextModel?.details.variants.includes(selectedVariant)) {
+                      setSelectedVariant('');
+                    }
+                  }}
                   onOpenChange={setModelPickerOpen}
                 />
               </React.Suspense>
+            ) : null}
+            {selectedVariantOptions.length ? (
+              <Select
+                value={selectedVariant || '__default'}
+                onValueChange={(value) => setSelectedVariant(value === '__default' ? '' : value)}
+              >
+                <SelectTrigger aria-label="New agent reasoning level" className="capitalize">
+                  <SelectValue placeholder="Reasoning" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default">Reasoning: default</SelectItem>
+                  {selectedVariantOptions.map((option) => (
+                    <SelectItem key={option} value={option} className="capitalize">
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : null}
           </div>
         </div>
@@ -356,9 +502,9 @@ export default function ChatView({
   reloading,
   bypass,
   pinnedMessageIds,
-  sessionNote,
+  sessionNotes,
   onTogglePin,
-  onSessionNoteChange,
+  onSessionNotesChange,
   onBypassChange,
   onNewSessionInstanceChange,
   onCreateSession,
@@ -372,6 +518,7 @@ export default function ChatView({
   const [text, setText] = React.useState('');
   const [mode, setMode] = React.useState<AgentMode>('build');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
+  const [variant, setVariant] = React.useState('');
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [pickerActivated, setPickerActivated] = React.useState(false);
   const [attachments, setAttachments] = React.useState<FileAttachment[]>([]);
@@ -385,7 +532,10 @@ export default function ChatView({
   const [now, setNow] = React.useState(() => Date.now());
   const fileRef = React.useRef<HTMLInputElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-  const createdModelRef = React.useRef<string | null>(null);
+  const createdModelRef = React.useRef<{ key: string; variant?: string } | null>(null);
+  const composerDraftsRef = React.useRef(new Map<string, ComposerState>());
+  const previousComposerKeyRef = React.useRef<string | null>(null);
+  const composerKey = session ? `${session.instanceId}::${session.id}` : null;
 
   const last = messages[messages.length - 1];
   const busy = sending || state === 'active' || (last?.role === 'assistant' && !last.completed);
@@ -412,24 +562,76 @@ export default function ChatView({
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
-  }, [session?.id]);
+  }, [composerKey]);
 
   React.useEffect(() => {
-    setModelId(createdModelRef.current ?? defaultModelId ?? DEFAULT_MODEL);
+    const previousKey = previousComposerKeyRef.current;
+    if (previousKey && previousKey !== composerKey) {
+      if (text.trim() || attachments.length || replyContext) {
+        saveComposerDraft(composerDraftsRef.current, previousKey, {
+          text,
+          modelId,
+          variant,
+          mode,
+          attachments,
+          replyContext,
+        });
+      } else {
+        composerDraftsRef.current.delete(previousKey);
+      }
+    }
+    previousComposerKeyRef.current = composerKey;
+
+    const saved = composerKey ? composerDraftsRef.current.get(composerKey) : undefined;
+    const created = createdModelRef.current;
+    const sessionModelKey = session?.model ? modelRefKey(session.model) : undefined;
+    const next: ComposerState = saved ?? {
+      text: '',
+      modelId: created?.key ?? sessionModelKey ?? defaultModelId ?? DEFAULT_MODEL,
+      variant: created?.variant ?? session?.model?.variant ?? '',
+      mode: session?.agent ?? 'build',
+      attachments: [],
+      replyContext: null,
+    };
+
+    setText(next.text);
+    setModelId(next.modelId);
+    setVariant(next.variant);
+    setMode(next.mode);
+    setAttachments(next.attachments);
+    setAttachmentError(null);
+    setReplyContext(next.replyContext);
     createdModelRef.current = null;
-  }, [defaultModelId, session?.instanceId]);
+  }, [composerKey]);
 
   React.useEffect(() => {
-    setReplyContext(null);
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  }, [text, composerKey]);
+
+  React.useEffect(() => {
     setContextOpen(false);
     setFocusMessageId(null);
-    if (session) textareaRef.current?.focus();
-  }, [session?.id]);
+    if (!session) return;
+    const frame = window.requestAnimationFrame(() => textareaRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [composerKey]);
 
   const model = models.find((entry) => modelKey(entry) === modelId);
+  const defaultModel = defaultModelId ? models.find((entry) => modelKey(entry) === defaultModelId) : undefined;
+  const variantModel = model ?? (modelId === DEFAULT_MODEL ? defaultModel : undefined);
+  const modelButtonLabel = model
+    ? `${model.details.providerName} / ${model.details.name}${modelId === defaultModelId ? ' (Default)' : ''}`
+    : defaultModel
+      ? `${defaultModel.details.providerName} / ${defaultModel.details.name} (Default)`
+      : 'Server default';
+  const variantOptions = variantModel?.details.variants ?? [];
   const setupInstance = instances.find((candidate) => candidate.id === newSessionInstanceId) ?? null;
   const setupProjects = newSessionInstanceId ? projectsByInstance[newSessionInstanceId] ?? [] : [];
   const setupModels = newSessionInstanceId ? modelsByInstance[newSessionInstanceId]?.models ?? [] : [];
+  const setupDefaultModelId = newSessionInstanceId ? modelsByInstance[newSessionInstanceId]?.defaultModelId ?? null : null;
   const setupDefaults = newSessionInstanceId ? instanceDefaults[newSessionInstanceId] ?? {} : {};
 
   const createSessionFromSetup = async (options: NewSessionOptions): Promise<boolean> => {
@@ -437,8 +639,9 @@ export default function ChatView({
     if (created) {
       setMode(options.agent);
       const nextModel = options.model ? modelRefKey(options.model) : DEFAULT_MODEL;
-      createdModelRef.current = nextModel;
+      createdModelRef.current = { key: nextModel, variant: options.variant };
       setModelId(nextModel);
+      setVariant(options.variant ?? '');
     }
     return created;
   };
@@ -447,13 +650,40 @@ export default function ChatView({
 
   const submit = () => {
     if (!canSend) return;
+    const submitted: ComposerState = { text: text.trim(), modelId, variant, mode, attachments, replyContext };
+    const submittedKey = composerKey;
     onSend({
-      text: text.trim(),
+      text: submitted.text,
       model,
-      mode,
-      attachments,
-      replyContext: replyContext ? messageContextText(replyContext) : undefined,
+      mode: submitted.mode,
+      variant: submitted.variant || undefined,
+      attachments: submitted.attachments,
+      replyContext: submitted.replyContext ? messageContextText(submitted.replyContext) : undefined,
+    }).then((sent) => {
+      if (sent) return;
+      if (submittedKey && previousComposerKeyRef.current !== submittedKey) {
+        saveComposerDraft(composerDraftsRef.current, submittedKey, submitted);
+        return;
+      }
+      if (submittedKey && composerDraftsRef.current.has(submittedKey)) {
+        const currentDraft = composerDraftsRef.current.get(submittedKey);
+        if (currentDraft) {
+          saveComposerDraft(composerDraftsRef.current, submittedKey, {
+            ...currentDraft,
+            attachments: currentDraft.attachments.length ? currentDraft.attachments : submitted.attachments,
+            replyContext: currentDraft.replyContext ?? submitted.replyContext,
+          });
+        }
+        return;
+      }
+      setText(submitted.text);
+      setModelId(submitted.modelId);
+      setVariant(submitted.variant);
+      setMode(submitted.mode);
+      setAttachments(submitted.attachments);
+      setReplyContext(submitted.replyContext);
     });
+    if (composerKey) composerDraftsRef.current.delete(composerKey);
     setText('');
     setAttachments([]);
     setAttachmentError(null);
@@ -468,26 +698,36 @@ export default function ChatView({
 
   const replyToMessage = (message: ChatMessage) => {
     setReplyContext(message);
-    if (!window.matchMedia('(min-width: 1280px)').matches) setContextOpen(false);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
-  const insertNote = (note: string) => {
-    setText((current) => current.trim() ? `${current}\n\n${note.trim()}` : note.trim());
-    if (!window.matchMedia('(min-width: 1280px)').matches) setContextOpen(false);
+  const insertNotes = (noteText: string) => {
+    setText((current) => {
+      const next = current.trim() ? `${current}\n\n${noteText.trim()}` : noteText.trim();
+      if (composerKey) {
+        saveComposerDraft(composerDraftsRef.current, composerKey, {
+          text: next,
+          modelId,
+          variant,
+          mode,
+          attachments,
+          replyContext,
+        });
+      }
+      return next;
+    });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const jumpToMessage = (messageId: string) => {
     setFocusMessageId(messageId);
     setFocusRequest((request) => request + 1);
-    if (!window.matchMedia('(min-width: 1280px)').matches) setContextOpen(false);
   };
 
   return (
     <main className="relative flex min-w-0 flex-1 overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col">
-      <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait">
         {session ? (
           <motion.div
             key={`${session.instanceId}:${session.id}`}
@@ -529,6 +769,18 @@ export default function ChatView({
                   <RefreshCw className={cn(reloading && 'animate-spin')} />
                   <span className="hidden sm:inline">{reloading ? 'Reloading…' : 'Refresh'}</span>
                 </Button>
+              ) : null}
+              {permissions.length ? (
+                <Badge variant="secondary" className="border-warning/40 bg-warning/10 font-normal text-warning">
+                  <ShieldAlert />
+                  {permissions.length === 1 ? 'Approval needed' : `${permissions.length} approvals`}
+                </Badge>
+              ) : null}
+              {questions.length ? (
+                <Badge variant="secondary" className="border-highlight/40 bg-highlight/10 font-normal text-highlight">
+                  <MessageCircleQuestion />
+                  {questions.length === 1 ? 'Question needed' : `${questions.length} questions`}
+                </Badge>
               ) : null}
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openContext('notes')}>
                 <FilePenLine />
@@ -582,6 +834,7 @@ export default function ChatView({
                 projects={setupProjects}
                 models={setupModels}
                 recentModels={recentModels}
+                defaultModelId={setupDefaultModelId}
                 defaults={setupDefaults}
                 onInstanceChange={onNewSessionInstanceChange}
                 onCreate={createSessionFromSetup}
@@ -604,8 +857,8 @@ export default function ChatView({
       {session ? (
         <div className="safe-composer flex-none border-t bg-card p-2.5 sm:p-3">
           <div className="mx-auto flex max-w-[760px] flex-col gap-2">
-          <motion.div
-            layout
+            <motion.div
+              layout
             className={cn(
               'flex flex-col rounded-xl border bg-background transition-[box-shadow,border-color] duration-200 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30',
               !session && 'opacity-60'
@@ -633,18 +886,34 @@ export default function ChatView({
             <textarea
               ref={textareaRef}
               value={text}
-              rows={3}
+              rows={1}
               placeholder={session ? 'Message the agent…' : 'Select a session first'}
               aria-label="Message the agent"
               disabled={!session}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                setText(event.target.value);
+                if (composerKey) {
+                  if (event.target.value.trim() || attachments.length || replyContext) {
+                    saveComposerDraft(composerDraftsRef.current, composerKey, {
+                      text: event.target.value,
+                      modelId,
+                      variant,
+                      mode,
+                      attachments,
+                      replyContext,
+                    });
+                  } else {
+                    composerDraftsRef.current.delete(composerKey);
+                  }
+                }
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   submit();
                 }
               }}
-              className="w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed sm:px-3.5 sm:pt-3 sm:text-[13px]"
+              className="max-h-40 min-h-9 w-full resize-none overflow-y-auto bg-transparent px-3 pt-2 pb-1 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed sm:px-3.5 sm:text-[13px]"
             />
 
             <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 sm:gap-1.5">
@@ -661,9 +930,7 @@ export default function ChatView({
                 aria-label="Choose model"
                 className="h-7 max-w-[132px] flex-none px-2 text-xs font-normal sm:max-w-[280px]"
               >
-                <span className="truncate">
-                  {model ? `${model.details.providerName} / ${model.details.name}` : 'Default model'}
-                </span>
+                <span className="truncate">{modelButtonLabel}</span>
                 <ChevronDown className="size-3.5 text-muted-foreground" />
               </Button>
               {pickerActivated ? (
@@ -673,15 +940,48 @@ export default function ChatView({
                     models={models}
                     recentModels={recentModels}
                     value={modelId}
-                    onSelect={setModelId}
+                    defaultModelId={defaultModelId}
+                    collapseProviders
+                    onSelect={(next) => {
+                      setModelId(next);
+                      const nextModel = models.find((entry) => modelKey(entry) === next);
+                      const nextVariants =
+                        nextModel?.details.variants ??
+                        (next === DEFAULT_MODEL ? defaultModel?.details.variants ?? [] : []);
+                      if (variant && !nextVariants.includes(variant)) setVariant('');
+                    }}
                     onOpenChange={setPickerOpen}
                   />
                 </React.Suspense>
               ) : null}
 
+              {variantOptions.length ? (
+                <Select
+                  value={variant || '__default'}
+                  onValueChange={(value) => setVariant(value === '__default' ? '' : value)}
+                  disabled={!session}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="Reasoning level"
+                    className="h-7 border-none bg-transparent px-2 text-xs capitalize shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted"
+                  >
+                    <SelectValue placeholder="Reasoning" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__default">Reasoning: default</SelectItem>
+                    {variantOptions.map((option) => (
+                      <SelectItem key={option} value={option} className="capitalize">
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+
               <Select
                 value={mode}
-                onValueChange={(value) => setMode(value === 'plan' ? 'plan' : 'build')}
+                onValueChange={setMode}
                 disabled={!session}
               >
                 <SelectTrigger size="sm" className="h-7 border-none bg-transparent px-2 text-xs shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted">
@@ -690,6 +990,9 @@ export default function ChatView({
                 <SelectContent>
                   <SelectItem value="build">Build</SelectItem>
                   <SelectItem value="plan">Plan</SelectItem>
+                  {mode !== 'build' && mode !== 'plan' ? (
+                    <SelectItem value={mode}>{mode}</SelectItem>
+                  ) : null}
                 </SelectContent>
               </Select>
 
@@ -790,7 +1093,7 @@ export default function ChatView({
                 <ArrowUp className={cn(sending && 'animate-pulse')} />
               </Button>
             </div>
-          </motion.div>
+            </motion.div>
           </div>
         </div>
       ) : null}
@@ -799,14 +1102,15 @@ export default function ChatView({
         <React.Suspense fallback={null}>
           <SessionContextPanel
             open={contextOpen}
+            sessionKey={composerKey ?? ''}
             sessionTitle={session.title ?? session.id}
-            note={sessionNote}
+            notes={sessionNotes}
             pinnedMessages={pinnedMessages}
             focusSection={contextSection}
             focusRequest={contextRequest}
             onClose={() => setContextOpen(false)}
-            onNoteChange={onSessionNoteChange}
-            onInsertNote={insertNote}
+            onNotesChange={onSessionNotesChange}
+            onInsertNotes={insertNotes}
             onJump={jumpToMessage}
             onReply={replyToMessage}
             onUnpin={onTogglePin}

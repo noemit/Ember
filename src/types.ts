@@ -20,14 +20,19 @@ export type Project = {
 export type ModelRef = {
   providerID: string;
   modelID: string;
+  /** Reasoning-effort variant selected for the next turn. */
+  variant?: string;
 };
 
-export type AgentMode = 'build' | 'plan';
+/** OpenCode agent ids are configurable; build/plan are the usual built-ins. */
+export type AgentMode = string;
 
 export type InstanceDefaults = {
   directory?: string;
   agent?: AgentMode;
   model?: ModelRef;
+  /** Reasoning-effort variant for the default model, e.g. 'high'. */
+  variant?: string;
   bypass?: boolean;
   markerColor?: number;
 };
@@ -37,6 +42,7 @@ export type NewSessionOptions = {
   directory: string;
   agent: AgentMode;
   model?: ModelRef;
+  variant?: string;
   bypass: boolean;
 };
 
@@ -51,6 +57,8 @@ export type Session = {
   updated?: number;
   /** Model the session last ran with, as reported by the instance. */
   model?: ModelRef;
+  /** Agent the session last ran with, as reported by the instance. */
+  agent?: string;
   /** Epoch ms when the session was archived on its OpenChamber instance; unset/0 means active. */
   archived?: number;
   /** Set on subagent sessions spawned by another session (OpenCode's `parentID`). */
@@ -139,6 +147,8 @@ export type PermissionRequest = {
   id: string;
   instanceId: string;
   sessionId: string;
+  /** Directory scope that returned this request, used to route the reply. */
+  directory?: string;
   /** Tool or capability being requested, e.g. `bash`, `edit`, `webfetch`. */
   permission: string;
   patterns: string[];
@@ -164,6 +174,8 @@ export type QuestionRequest = {
   id: string;
   instanceId: string;
   sessionId: string;
+  /** Directory scope that returned this request, used to route the reply. */
+  directory?: string;
   questions: QuestionInfo[];
 };
 
@@ -196,6 +208,11 @@ export type ModelOption = ModelRef & {
   details: ModelDetails;
 };
 
+export type SessionNote = {
+  id: string;
+  text: string;
+};
+
 export type EmberSettings = {
   theme: string;
   blobStyle: BlobStyle;
@@ -203,7 +220,7 @@ export type EmberSettings = {
   sessionWindowHours: number;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
-  sessionNotes: Record<string, string>;
+  sessionNotes: Record<string, SessionNote[]>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, AvatarOverride>;
   projectColorAssignments: Record<string, number>;

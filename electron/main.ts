@@ -14,6 +14,7 @@ import {
   parseStringRecord,
   resolveApiUrl,
   type StoredAvatarOverride,
+  type StoredSessionNote,
 } from './transport';
 import { startRemoteServer } from './remoteServer';
 import { hashRemotePassword, verifyRemotePassword } from './remoteAuth';
@@ -55,8 +56,9 @@ const isBlobStyle = (value: unknown): value is BlobStyle =>
 
 type InstanceDefaults = {
   directory?: string;
-  agent?: 'build' | 'plan';
-  model?: { providerID: string; modelID: string };
+  agent?: string;
+  model?: { providerID: string; modelID: string; variant?: string };
+  variant?: string;
   bypass?: boolean;
   markerColor?: number;
 };
@@ -68,7 +70,7 @@ type EmberSettings = {
   sessionWindowHours: number;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
-  sessionNotes: Record<string, string>;
+  sessionNotes: Record<string, StoredSessionNote[]>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, StoredAvatarOverride>;
   projectColorAssignments: Record<string, number>;
@@ -94,10 +96,16 @@ const parseInstanceDefaults = (value: unknown): Record<string, InstanceDefaults>
       : {};
     const providerID = typeof model.providerID === 'string' ? model.providerID : '';
     const modelID = typeof model.modelID === 'string' ? model.modelID : '';
+    const modelVariant = typeof model.variant === 'string' && model.variant.length <= 80 ? model.variant : undefined;
+    const agent = typeof entry.agent === 'string' && entry.agent.length > 0 && entry.agent.length <= 120
+      ? entry.agent
+      : undefined;
+    const variant = typeof entry.variant === 'string' && entry.variant.length <= 80 ? entry.variant : undefined;
     defaults[instanceId] = {
       directory: typeof entry.directory === 'string' && entry.directory ? entry.directory : undefined,
-      agent: entry.agent === 'build' || entry.agent === 'plan' ? entry.agent : undefined,
-      model: providerID && modelID ? { providerID, modelID } : undefined,
+      agent,
+      model: providerID && modelID ? { providerID, modelID, variant: modelVariant } : undefined,
+      variant,
       bypass: typeof entry.bypass === 'boolean' ? entry.bypass : undefined,
       markerColor: Number.isInteger(entry.markerColor) && Number(entry.markerColor) >= 0 && Number(entry.markerColor) < 12
         ? Number(entry.markerColor)
