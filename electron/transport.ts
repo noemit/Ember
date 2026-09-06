@@ -206,3 +206,39 @@ export const parseAvatarOverrides = (value: unknown): Record<string, StoredAvata
       .filter(([, entry]) => entry.colorIndex !== undefined || entry.shapeName !== undefined)
   );
 };
+
+/*
+ * Settings contract shared by the main process and the preload bridge. The renderer has its
+ * own copy in src/types.ts on purpose: main parses persisted JSON into these trusted shapes,
+ * and the two tsconfigs have separate roots, so they can't import each other.
+ */
+export type BlobStyle = 'grok' | 'glyph';
+
+export const BLOB_STYLES: BlobStyle[] = ['grok', 'glyph'];
+export const isBlobStyle = (value: unknown): value is BlobStyle =>
+  typeof value === 'string' && (BLOB_STYLES as string[]).includes(value);
+
+export type InstanceDefaults = {
+  directory?: string;
+  agent?: string;
+  model?: { providerID: string; modelID: string; variant?: string };
+  variant?: string;
+  bypass?: boolean;
+  markerColor?: number;
+};
+
+export type EmberSettings = {
+  theme: string;
+  blobStyle: BlobStyle;
+  /** Only list sessions active within this many hours; 0 means no limit. */
+  sessionWindowHours: number;
+  instanceDefaults: Record<string, InstanceDefaults>;
+  pinnedMessages: string[];
+  sessionNotes: Record<string, StoredSessionNote[]>;
+  composerDrafts: Record<string, StoredComposerDraft>;
+  scheduledSessionBindings: Record<string, string>;
+  avatarOverrides: Record<string, StoredAvatarOverride>;
+  projectColorAssignments: Record<string, number>;
+  remoteAccessEnabled: boolean;
+  remotePasswordConfigured: boolean;
+};

@@ -4,7 +4,7 @@ import InstanceBar from './components/InstanceBar';
 import LeftRail from './components/LeftRail';
 import ChatView from './components/ChatView';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { applyTheme, DEFAULT_THEME_ID } from './themes';
+import { applyTheme } from './themes';
 import {
   allocateProjectColors,
   projectForSession,
@@ -17,7 +17,6 @@ import {
   abortSession,
   createClientMessageId,
   createSession,
-  enqueueMessage,
   errorMessageOf,
   listInstances,
   loadAllMessageQueues,
@@ -36,18 +35,19 @@ import {
   previewOf,
   reconcilePolledMessages,
   rejectQuestion,
-  removeQueuedMessage,
-  reorderQueuedMessages,
   replyPermission,
   replyQuestion,
   sendPrompt,
   setSessionArchived,
-  takeQueuedMessage,
   type ModelList,
   type PromptInput,
-  type QueueMessageInput,
 } from './api';
 import { useStableCallback } from '@/lib/useStableCallback';
+import { copyText } from '@/lib/clipboard';
+import { sameMessages } from '@/lib/messageSignature';
+import { useEmberSettings } from './hooks/useEmberSettings';
+import { useFeedback } from './hooks/useFeedback';
+import { useMessageQueue } from './hooks/useMessageQueue';
 import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
 import type {
   AvatarIdentity,
@@ -56,16 +56,12 @@ import type {
   ChatMessage,
   MessagesStatus,
   MessageQueueSession,
-  ModelOption,
-  EmberSettings,
-  EmberSettingsPatch,
   Instance,
   PermissionReply,
   PermissionRequest,
   Project,
   QuestionAnswers,
   QuestionRequest,
-  QueuedMessage,
   Session,
   SessionNote,
   SessionRef,
@@ -109,56 +105,6 @@ const recentModelKeys = (sessions: Session[]): string[] => {
   return keys.slice(0, RECENT_MODEL_COUNT);
 };
 
-const DEFAULT_SETTINGS: EmberSettings = {
-  theme: DEFAULT_THEME_ID,
-  blobStyle: 'grok',
-  sessionWindowHours: 48,
-  instanceDefaults: {},
-  pinnedMessages: [],
-  sessionNotes: {},
-  composerDrafts: {},
-  scheduledSessionBindings: {},
-  avatarOverrides: {},
-  projectColorAssignments: {},
-  remoteAccessEnabled: false,
-  remotePasswordConfigured: false,
-};
-
-// FNV-1a: cheap, stable digest so large payloads (tool output, data URLs) don't get
-// concatenated into a signature string on every poll.
-const digest = (value: string): string => {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return `${value.length}.${hash.toString(36)}`;
-};
-
-const digestInput = (input: Record<string, unknown> | undefined): string => {
-  if (!input) return '';
-  try {
-    return digest(JSON.stringify(input));
-  } catch {
-    // Cyclic or BigInt payloads from the server must not crash a setState updater.
-    return 'unserializable';
-  }
-};
-
-// Tool calls change status without the text changing, so compare the parts too.
-const messageSignature = (message: ChatMessage): string =>
-  `${message.id}|${message.completed ? 1 : 0}|${message.createdAt ?? ''}|${message.completedAt ?? ''}|${message.model ? modelRefKey(message.model) : ''}|${message.error ?? ''}|${message.parts
-    .map((part) => {
-      if (part.type === 'text' || part.type === 'reasoning') return digest(part.text);
-      if (part.type === 'file') return `${part.file.mime}:${part.file.filename}:${digest(part.file.url)}`;
-      const { call } = part;
-      return `${call.id}:${call.status}:${call.title ?? ''}:${call.error ?? ''}:${digestInput(call.input)}:${digest(call.output ?? '')}:${digest(call.diff ?? '')}`;
-    })
-    .join('\u0001')}`;
-
-const sameMessages = (a: ChatMessage[], b: ChatMessage[]): boolean =>
-  a.length === b.length && a.every((m, i) => messageSignature(m) === messageSignature(b[i]));
-
 const forSession = <T extends { instanceId: string; sessionId: string }>(
   list: T[],
   selected: SessionRef | null
@@ -198,38 +144,8 @@ const composerDraftSignature = (drafts: Record<string, StoredComposerDraft>): st
     })
   );
 
-const copyText = async (text: string): Promise<boolean> => {
-  try {
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Clipboard API refused (no focus, permissions); fall back to execCommand below.
-  }
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    return document.execCommand('copy');
-  } catch {
-    return false;
-  } finally {
-    textarea.remove();
-  }
-};
-
 const responseError = (data: unknown, fallback: string): string =>
   errorMessageOf(data) ?? fallback;
-
-type ActionNotice = {
-  message: string;
-  actionLabel?: string;
-  action?: () => void;
-};
 
 const messagePinKey = (session: SessionRef, messageId: string): string =>
   `${sessionKey(session)}::${messageId}`;
@@ -263,15 +179,10 @@ export default function App() {
   }>({ key: null, messages: [], status: 'ready' });
   const [modelsByInstance, setModelsByInstance] = React.useState<Record<string, ModelList>>({});
   const [scheduledTaskNames, setScheduledTaskNames] = React.useState<Record<string, string>>({});
-  const [settings, setSettings] = React.useState<EmberSettings>(DEFAULT_SETTINGS);
-  const [settingsLoaded, setSettingsLoaded] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [sendingKeys, setSendingKeys] = React.useState<Set<string>>(() => new Set());
   const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
   const [bypassOverrides, setBypassOverrides] = React.useState<Record<string, boolean>>({});
-  const [actionError, setActionError] = React.useState<string | null>(null);
-  const [actionNotice, setActionNotice] = React.useState<ActionNotice | null>(null);
-  const [noticePaused, setNoticePaused] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [settingsActivated, setSettingsActivated] = React.useState(false);
   const [avatarPickerSession, setAvatarPickerSession] = React.useState<Session | null>(null);
@@ -280,14 +191,25 @@ export default function App() {
   const [showScheduled, setShowScheduled] = React.useState(false);
   const [mobileRailOpen, setMobileRailOpen] = React.useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
-  const [actionErrorRetry, setActionErrorRetry] = React.useState<(() => void) | null>(null);
-  const [statusAnnouncement, setStatusAnnouncement] = React.useState('');
-  const [errorCopied, setErrorCopied] = React.useState(false);
 
-  const showActionError = (message: string | null, retry?: () => void) => {
-    setActionError(message);
-    setActionErrorRetry(() => retry ?? null);
-  };
+  const {
+    actionError,
+    actionErrorRetry,
+    showActionError,
+    clearActionErrorRetry,
+    errorCopied,
+    setErrorCopied,
+    actionNotice,
+    setActionNotice,
+    setNoticePaused,
+    statusAnnouncement,
+    announceStatus,
+  } = useFeedback();
+
+  const clearActionError = React.useCallback(() => showActionError(null), [showActionError]);
+  const { settings, settingsLoaded, settingsRef, hydrateSettings, markSettingsLoaded, updateSettings } =
+    useEmberSettings({ onError: showActionError, onBeforeSave: clearActionError });
+  const handleSettings = updateSettings;
 
   React.useEffect(() => {
     if (!mobileRailOpen) return;
@@ -307,26 +229,6 @@ export default function App() {
     window.addEventListener('keydown', openOnShortcut);
     return () => window.removeEventListener('keydown', openOnShortcut);
   }, []);
-
-  React.useEffect(() => {
-    setErrorCopied(false);
-  }, [actionError]);
-
-  React.useEffect(() => {
-    if (!errorCopied) return;
-    const timer = window.setTimeout(() => setErrorCopied(false), 1600);
-    return () => window.clearTimeout(timer);
-  }, [errorCopied]);
-
-  React.useEffect(() => {
-    setNoticePaused(false);
-  }, [actionNotice]);
-
-  React.useEffect(() => {
-    if (!actionNotice || noticePaused) return;
-    const timer = window.setTimeout(() => setActionNotice(null), 8000);
-    return () => window.clearTimeout(timer);
-  }, [actionNotice, noticePaused]);
 
   // Keep a live ref to the selected session so pollers can read its
   // directory (for routing) without re-running the effect on every session list refresh.
@@ -350,44 +252,13 @@ export default function App() {
     });
   };
   const bypassReplyIds = React.useRef(new Set<string>());
-  const settingsRevision = React.useRef(0);
   const messageCacheRef = React.useRef(new Map<string, ChatMessage[]>());
   const scheduledBindingsRef = React.useRef<Record<string, string>>({});
-  const settingsRef = React.useRef(settings);
-  settingsRef.current = settings;
   const lastStatusAnnouncementRef = React.useRef<{
     key: string;
     state: BallState;
     signature: string;
   } | null>(null);
-  const statusAnnouncementTimerRef = React.useRef<number | undefined>(undefined);
-
-  const announceStatus = (message: string) => {
-    if (statusAnnouncementTimerRef.current !== undefined) {
-      window.clearTimeout(statusAnnouncementTimerRef.current);
-      statusAnnouncementTimerRef.current = undefined;
-    }
-    if (!message) {
-      setStatusAnnouncement('');
-      return;
-    }
-    // Clear first so repeated identical messages still trigger the live region.
-    setStatusAnnouncement('');
-    statusAnnouncementTimerRef.current = window.setTimeout(() => {
-      setStatusAnnouncement(message);
-      statusAnnouncementTimerRef.current = undefined;
-    }, 40);
-  };
-
-  React.useEffect(
-    () => () => {
-      if (statusAnnouncementTimerRef.current !== undefined) {
-        window.clearTimeout(statusAnnouncementTimerRef.current);
-      }
-    },
-    []
-  );
-
   const cacheMessages = (key: string, messagesForSession: ChatMessage[]) => {
     const cache = messageCacheRef.current;
     cache.delete(key);
@@ -473,9 +344,10 @@ export default function App() {
     : cachedTranscript
       ? 'ready'
       : 'loading';
+  // A retry belongs to the session it failed on; the banner text may still apply.
   React.useEffect(() => {
-    setActionErrorRetry(null);
-  }, [selectedKey]);
+    clearActionErrorRetry();
+  }, [selectedKey, clearActionErrorRetry]);
   const sending = selectedKey ? sendingKeys.has(selectedKey) : false;
   const bypass = selectedKey && selected
     ? bypassOverrides[selectedKey] ?? settings.instanceDefaults[selected.instanceId]?.bypass ?? false
@@ -608,7 +480,7 @@ export default function App() {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [showActionError]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -616,12 +488,11 @@ export default function App() {
       try {
         const [stored, list] = await Promise.all([window.ember.getSettings(), listInstances()]);
         if (cancelled) return;
-        setSettings({ ...DEFAULT_SETTINGS, ...stored });
+        hydrateSettings(stored);
         setInstances(list);
-        setSettingsLoaded(true);
       } catch (err) {
         if (cancelled) return;
-        setSettingsLoaded(true);
+        markSettingsLoaded();
         setLoading(false);
         showActionError(
           err instanceof Error ? err.message : 'Ember could not finish starting.',
@@ -632,7 +503,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hydrateSettings, markSettingsLoaded, showActionError]);
 
   // Per-instance data that rarely changes: projects, models.
   React.useEffect(() => {
@@ -1019,364 +890,15 @@ export default function App() {
     }
   };
 
-  const applyQueueMutation = (
-    instanceId: string,
-    mutation: { session: MessageQueueSession } | null
-  ) => {
-    if (!mutation) return;
-    setQueuesByInstance((prev) => {
-      const existing = prev[instanceId] ?? [];
-      const without = existing.filter((queue) => queue.sessionId !== mutation.session.sessionId);
-      return {
-        ...prev,
-        [instanceId]: mutation.session.items.length || mutation.session.sendingId
-          ? [mutation.session, ...without]
-          : without,
-      };
-    });
-  };
-
-  const handleQueueMessage = async (input: PromptInput): Promise<boolean> => {
-    if (!selected) return false;
-    showActionError(null);
-    const { instanceId, sessionId } = selected;
-    const directory = selectedSession?.directory;
-    if (!directory) {
-      showActionError('Could not queue this message because the session folder is unknown.');
-      return false;
-    }
-    const modelList = modelsByInstance[instanceId];
-    const model = input.model ?? modelList?.models.find(
-      (candidate) => modelRefKey(candidate) === modelList.defaultModelId
-    );
-    if (!model) {
-      showActionError('Could not queue this message until the instance default model is known.');
-      return false;
-    }
-
-    try {
-      const queued = await enqueueMessage(instanceId, sessionId, directory, { ...input, model });
-      if (!queued.ok || !queued.data) {
-        showActionError(
-          queued.status === 404
-            ? 'This OpenChamber instance does not support message queueing yet.'
-            : 'Message could not be queued.',
-          queued.status === 404 ? undefined : () => void handleQueueMessage(input)
-        );
-        return false;
-      }
-      applyQueueMutation(instanceId, queued.data);
-      return true;
-    } catch (err) {
-      console.error('Queue failed', err);
-      showActionError(
-        err instanceof Error ? err.message : 'Message could not be queued.',
-        () => void handleQueueMessage(input)
-      );
-      return false;
-    }
-  };
-
-  const queuedMessageModel = (instanceId: string, item: QueuedMessage): ModelOption => {
-    const modelList = modelsByInstance[instanceId];
-    const found = modelList?.models.find(
-      (candidate) =>
-        candidate.providerID === item.sendConfig.providerID &&
-        candidate.modelID === item.sendConfig.modelID
-    );
-    if (found) return found;
-    return {
-      providerID: item.sendConfig.providerID,
-      modelID: item.sendConfig.modelID,
-      label: `${item.sendConfig.providerID} / ${item.sendConfig.modelID}`,
-      details: {
-        name: item.sendConfig.modelID,
-        providerName: item.sendConfig.providerID,
-        reasoning: false,
-        toolcall: false,
-        attachment: item.attachments.length > 0,
-        inputs: [],
-        variants: item.sendConfig.variant ? [item.sendConfig.variant] : [],
-      },
-    };
-  };
-
-  const queuedMessageInput = (
-    instanceId: string,
-    item: QueuedMessage,
-    model: ModelOption = queuedMessageModel(instanceId, item),
-    variant: string | undefined = item.sendConfig.variant
-  ): QueueMessageInput => ({
-    text: item.text || item.content,
-    model,
-    mode: item.sendConfig.agent,
-    variant,
-    attachments: item.attachments.flatMap((file) =>
-      file.dataUrl ? [{ filename: file.filename, mime: file.mimeType, url: file.dataUrl }] : []
-    ),
-    queuedContext: item.context,
-    agentMention: item.agentMention,
+  const queue = useMessageQueue({
+    selected,
+    selectedSession,
+    selectedQueue,
+    modelsByInstance,
+    setQueuesByInstance,
+    showActionError,
+    sendPrompt: handleSend,
   });
-
-  const handleSendQueuedMessage = async (itemId: string): Promise<boolean> => {
-    if (!selected) return false;
-    showActionError(null);
-    const { instanceId, sessionId } = selected;
-    const directory = selectedSession?.directory;
-    if (!directory) {
-      showActionError('Could not send this queued message because the session folder is unknown.');
-      return false;
-    }
-
-    let input: PromptInput | null = null;
-    try {
-      const taken = await takeQueuedMessage(instanceId, sessionId, itemId);
-      if (!taken.ok || !taken.data) {
-        showActionError(
-          taken.status === 409
-            ? 'That queued message is already being sent.'
-            : taken.status === 404
-              ? 'That queued message is no longer available.'
-              : 'Could not take the queued message.',
-          taken.status === 409 || taken.status === 404
-            ? undefined
-            : () => void handleSendQueuedMessage(itemId)
-        );
-        return false;
-      }
-      applyQueueMutation(instanceId, taken.data);
-      const item = taken.data.item;
-      input = queuedMessageInput(instanceId, item);
-      const sent = await handleSend(input);
-      if (sent) return true;
-
-      const requeued = await enqueueMessage(instanceId, sessionId, directory, {
-        ...input,
-        model: input.model!,
-      });
-      if (requeued.ok && requeued.data) applyQueueMutation(instanceId, requeued.data);
-      const retryId = requeued.data?.itemId;
-      showActionError(
-        requeued.ok
-          ? 'Could not send the queued message now; it was returned to the queue.'
-          : 'Could not send the queued message now or return it to the queue.',
-        retryId ? () => void handleSendQueuedMessage(retryId) : () => void handleSend(input!)
-      );
-      return false;
-    } catch (err) {
-      console.error('Send queued message failed', err);
-      showActionError(
-        err instanceof Error ? err.message : 'Could not send the queued message now.',
-        input ? () => void handleSend(input!) : () => void handleSendQueuedMessage(itemId)
-      );
-      return false;
-    }
-  };
-
-  const handleQueuedModelChange = async (itemId: string, nextModel: ModelOption): Promise<boolean> => {
-    if (!selected || !selectedQueue) return false;
-    showActionError(null);
-    const { instanceId, sessionId } = selected;
-    const directory = selectedSession?.directory;
-    const originalIndex = selectedQueue.items.findIndex((item) => item.id === itemId);
-    if (!directory || originalIndex < 0) return false;
-    const queuedItem = selectedQueue.items[originalIndex];
-    if (
-      queuedItem.sendConfig.providerID === nextModel.providerID &&
-      queuedItem.sendConfig.modelID === nextModel.modelID
-    ) return true;
-    if (selectedQueue.sendingId) {
-      showActionError('Wait until the current queued message finishes sending before changing models.');
-      return false;
-    }
-
-    let takenItem: QueuedMessage | null = null;
-    try {
-      const taken = await takeQueuedMessage(instanceId, sessionId, itemId);
-      if (!taken.ok || !taken.data) {
-        showActionError(
-          taken.status === 409
-            ? 'That queued message is already being sent.'
-            : taken.status === 404
-              ? 'That queued message is no longer available.'
-              : 'Could not take the queued message.'
-        );
-        return false;
-      }
-      applyQueueMutation(instanceId, taken.data);
-      takenItem = taken.data.item;
-
-      const nextVariant = takenItem.sendConfig.variant &&
-        nextModel.details.variants.includes(takenItem.sendConfig.variant)
-        ? takenItem.sendConfig.variant
-        : undefined;
-      const changedInput = queuedMessageInput(instanceId, takenItem, nextModel, nextVariant);
-      const changed = await enqueueMessage(instanceId, sessionId, directory, changedInput);
-      if (!changed.ok || !changed.data) {
-        const restored = await enqueueMessage(
-          instanceId,
-          sessionId,
-          directory,
-          queuedMessageInput(instanceId, takenItem)
-        );
-        if (restored.ok && restored.data) applyQueueMutation(instanceId, restored.data);
-        showActionError(
-          restored.ok
-            ? 'Could not change the queued message model; it was returned to the queue.'
-            : 'Could not change the queued message model or return it to the queue.'
-        );
-        return false;
-      }
-      applyQueueMutation(instanceId, changed.data);
-
-      const newItemId =
-        changed.data.itemId ??
-        changed.data.session.items[changed.data.session.items.length - 1]?.id;
-      if (newItemId) {
-        const currentIds = changed.data.session.items.map((item) => item.id);
-        const withoutNew = currentIds.filter((id) => id !== newItemId);
-        const orderedIds = [...withoutNew];
-        orderedIds.splice(Math.min(originalIndex, orderedIds.length), 0, newItemId);
-        if (orderedIds.join('\u0000') !== currentIds.join('\u0000')) {
-          const reordered = await reorderQueuedMessages(instanceId, sessionId, orderedIds);
-          if (reordered.ok && reordered.data) applyQueueMutation(instanceId, reordered.data);
-          else showActionError('Model changed, but the queued message moved to the end.');
-        }
-      }
-      return true;
-    } catch (err) {
-      console.error('Change queued message model failed', err);
-      if (takenItem) {
-        try {
-          const restored = await enqueueMessage(
-            instanceId,
-            sessionId,
-            directory,
-            queuedMessageInput(instanceId, takenItem)
-          );
-          if (restored.ok && restored.data) applyQueueMutation(instanceId, restored.data);
-        } catch (restoreError) {
-          console.error('Could not restore queued message', restoreError);
-        }
-      }
-      showActionError(
-        err instanceof Error ? err.message : 'Could not change the queued message model.',
-        takenItem ? undefined : () => void handleQueuedModelChange(itemId, nextModel)
-      );
-      return false;
-    }
-  };
-
-  const handleRemoveQueuedMessage = async (itemId: string): Promise<boolean> => {
-    if (!selected) return false;
-    showActionError(null);
-    const previousQueue = selectedQueue;
-    if (previousQueue) {
-      const nextItems = previousQueue.items.filter((item) => item.id !== itemId);
-      setQueuesByInstance((prev) => {
-        const existing = prev[selected.instanceId] ?? [];
-        const without = existing.filter((queue) => queue.sessionId !== selected.sessionId);
-        return {
-          ...prev,
-          [selected.instanceId]: nextItems.length || previousQueue.sendingId
-            ? [{ ...previousQueue, items: nextItems }, ...without]
-            : without,
-        };
-      });
-    }
-
-    const restoreQueue = () => {
-      if (!previousQueue) return;
-      setQueuesByInstance((prev) => {
-        const existing = prev[selected.instanceId] ?? [];
-        return {
-          ...prev,
-          [selected.instanceId]: [
-            previousQueue,
-            ...existing.filter((queue) => queue.sessionId !== previousQueue.sessionId),
-          ],
-        };
-      });
-    };
-
-    try {
-      const removed = await removeQueuedMessage(selected.instanceId, selected.sessionId, itemId);
-      if (!removed.ok || !removed.data) {
-        restoreQueue();
-        showActionError(
-          removed.status === 409 ? 'That queued message is already being sent.' : 'Could not cancel the queued message.',
-          removed.status === 409 ? undefined : () => void handleRemoveQueuedMessage(itemId)
-        );
-        return false;
-      }
-      applyQueueMutation(selected.instanceId, removed.data);
-      return true;
-    } catch (err) {
-      console.error('Cancel queued message failed', err);
-      restoreQueue();
-      showActionError(
-        err instanceof Error ? err.message : 'Could not cancel the queued message.',
-        () => void handleRemoveQueuedMessage(itemId)
-      );
-      return false;
-    }
-  };
-
-  const handleMoveQueuedMessage = async (itemId: string, direction: -1 | 1): Promise<boolean> => {
-    if (!selected || !selectedQueue || selectedQueue.sendingId) return false;
-    showActionError(null);
-    const index = selectedQueue.items.findIndex((item) => item.id === itemId);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= selectedQueue.items.length) return false;
-
-    const previousQueue = selectedQueue;
-    const items = [...selectedQueue.items];
-    [items[index], items[target]] = [items[target], items[index]];
-    const nextQueue = { ...selectedQueue, items };
-    setQueuesByInstance((prev) => ({
-      ...prev,
-      [selected.instanceId]: [
-        nextQueue,
-        ...(prev[selected.instanceId] ?? []).filter((queue) => queue.sessionId !== selected.sessionId),
-      ],
-    }));
-
-    const restoreQueue = () => {
-      setQueuesByInstance((prev) => ({
-        ...prev,
-        [selected.instanceId]: [
-          previousQueue,
-          ...(prev[selected.instanceId] ?? []).filter((queue) => queue.sessionId !== selected.sessionId),
-        ],
-      }));
-    };
-
-    try {
-      const reordered = await reorderQueuedMessages(
-        selected.instanceId,
-        selected.sessionId,
-        items.map((item) => item.id)
-      );
-      if (!reordered.ok || !reordered.data) {
-        restoreQueue();
-        showActionError(
-          'Could not reorder the queued messages.',
-          () => void handleMoveQueuedMessage(itemId, direction)
-        );
-        return false;
-      }
-      applyQueueMutation(selected.instanceId, reordered.data);
-      return true;
-    } catch (err) {
-      console.error('Reorder queued messages failed', err);
-      restoreQueue();
-      showActionError(
-        err instanceof Error ? err.message : 'Could not reorder the queued messages.',
-        () => void handleMoveQueuedMessage(itemId, direction)
-      );
-      return false;
-    }
-  };
 
   const handleReloadSession = async (session: Session) => {
     const key = sessionKey(session);
@@ -1609,37 +1131,6 @@ export default function App() {
     }
   };
 
-  const handleSettings = (
-    patch: EmberSettingsPatch,
-    options?: { preserveActionError?: boolean }
-  ) => {
-    if (!options?.preserveActionError) showActionError(null);
-    const revision = ++settingsRevision.current;
-    setSettings((prev) => ({ ...prev, ...patch }));
-    void window.ember
-      .setSettings(patch)
-      .then((stored) => {
-        if (settingsRevision.current === revision) {
-          setSettings({ ...DEFAULT_SETTINGS, ...stored });
-        }
-      })
-      .catch(async (err) => {
-        if (settingsRevision.current !== revision) return;
-        showActionError(
-          err instanceof Error ? err.message : 'Could not save settings.',
-          () => handleSettings(patch, options)
-        );
-        try {
-          const stored = await window.ember.getSettings();
-          if (settingsRevision.current === revision) {
-            setSettings({ ...DEFAULT_SETTINGS, ...stored });
-          }
-        } catch {
-          // The save already failed and was reported; keep the optimistic value if we can't re-read.
-        }
-      });
-  };
-
   const handleAvatarOverride = (scopeKey: string, override: AvatarOverride | null) => {
     const next = { ...settings.avatarOverrides };
     if (override) next[scopeKey] = override;
@@ -1781,7 +1272,7 @@ export default function App() {
   React.useEffect(() => {
     if (!selectedKey) {
       lastStatusAnnouncementRef.current = null;
-      setStatusAnnouncement('');
+      announceStatus('');
       return;
     }
     const previous = lastStatusAnnouncementRef.current;
@@ -1820,7 +1311,7 @@ export default function App() {
       announceStatus(message);
     }
     lastStatusAnnouncementRef.current = { key: selectedKey, state: selectedState, signature };
-  }, [selectedKey, selectedSession, selectedState, selectedPermissions, selectedQuestions, selectedQueue]);
+  }, [selectedKey, selectedSession, selectedState, selectedPermissions, selectedQuestions, selectedQueue, announceStatus]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -1942,11 +1433,11 @@ export default function App() {
               onCreateSession={handleCreateSession}
               onCancelNewSession={() => setNewSessionInstanceId(null)}
               onSend={handleSend}
-              onQueue={handleQueueMessage}
-              onSendQueued={handleSendQueuedMessage}
-              onQueuedModelChange={handleQueuedModelChange}
-              onMoveQueued={handleMoveQueuedMessage}
-              onRemoveQueued={handleRemoveQueuedMessage}
+              onQueue={queue.queueMessage}
+              onSendQueued={queue.sendQueuedMessage}
+              onQueuedModelChange={queue.changeQueuedModel}
+              onMoveQueued={queue.moveQueued}
+              onRemoveQueued={queue.removeQueued}
               onReload={() => {
                 if (selectedSession) void handleReloadSession(selectedSession);
               }}

@@ -13,10 +13,11 @@ import {
   parseComposerDrafts,
   parseSessionNotes,
   parseStringRecord,
+  isBlobStyle,
   resolveApiUrl,
-  type StoredAvatarOverride,
-  type StoredComposerDraft,
-  type StoredSessionNote,
+  type BlobStyle,
+  type EmberSettings,
+  type InstanceDefaults,
 } from './transport';
 import { startRemoteServer } from './remoteServer';
 import { hashRemotePassword, verifyRemotePassword } from './remoteAuth';
@@ -48,37 +49,6 @@ type Instance = {
   url?: string;
   status: InstanceStatus;
   attachable: boolean;
-};
-
-type BlobStyle = 'grok' | 'glyph';
-
-const BLOB_STYLES: BlobStyle[] = ['grok', 'glyph'];
-const isBlobStyle = (value: unknown): value is BlobStyle =>
-  typeof value === 'string' && (BLOB_STYLES as string[]).includes(value);
-
-type InstanceDefaults = {
-  directory?: string;
-  agent?: string;
-  model?: { providerID: string; modelID: string; variant?: string };
-  variant?: string;
-  bypass?: boolean;
-  markerColor?: number;
-};
-
-type EmberSettings = {
-  theme: string;
-  blobStyle: BlobStyle;
-  /** Only list sessions active within this many hours; 0 means no limit. */
-  sessionWindowHours: number;
-  instanceDefaults: Record<string, InstanceDefaults>;
-  pinnedMessages: string[];
-  sessionNotes: Record<string, StoredSessionNote[]>;
-  composerDrafts: Record<string, StoredComposerDraft>;
-  scheduledSessionBindings: Record<string, string>;
-  avatarOverrides: Record<string, StoredAvatarOverride>;
-  projectColorAssignments: Record<string, number>;
-  remoteAccessEnabled: boolean;
-  remotePasswordConfigured: boolean;
 };
 
 const DEFAULT_THEME_ID = 'stone';

@@ -1,39 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { EmberSettings } from './transport';
 
 type ApiResponse = { ok: boolean; status: number; data: unknown };
-
-type BlobStyle = 'grok' | 'glyph';
-type InstanceDefaults = {
-  directory?: string;
-  agent?: string;
-  model?: { providerID: string; modelID: string; variant?: string };
-  variant?: string;
-  bypass?: boolean;
-  markerColor?: number;
-};
-type AvatarOverride = { colorIndex?: number; shapeName?: string };
-type SessionNote = { id: string; text: string };
-type StoredComposerDraft = {
-  text: string;
-  modelId?: string;
-  variant?: string;
-  mode?: string;
-  updatedAt: number;
-};
-type EmberSettings = {
-  theme: string;
-  blobStyle: BlobStyle;
-  sessionWindowHours: number;
-  instanceDefaults: Record<string, InstanceDefaults>;
-  pinnedMessages: string[];
-  sessionNotes: Record<string, SessionNote[]>;
-  composerDrafts: Record<string, StoredComposerDraft>;
-  scheduledSessionBindings: Record<string, string>;
-  avatarOverrides: Record<string, AvatarOverride>;
-  projectColorAssignments: Record<string, number>;
-  remoteAccessEnabled: boolean;
-  remotePasswordConfigured: boolean;
-};
 
 const ember = {
   listInstances: (): Promise<unknown> => ipcRenderer.invoke('ember:instances'),
