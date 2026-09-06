@@ -86,6 +86,25 @@ describe('session loading', () => {
     expect(mergePolledSessions(current, stalePoll, [])).toEqual(stalePoll);
   });
 
+  test('keeps the locally newer copy when a poll returns a stale session', () => {
+    const local = { id: 'a', instanceId: 'local', updated: 500, model: { providerID: 'p', modelID: 'm' } };
+    const stale = { id: 'a', instanceId: 'local', updated: 100 };
+    const other = { id: 'b', instanceId: 'local', updated: 50 };
+
+    // The poll decides which sessions exist and in what order; the newer local copy wins per id.
+    expect(mergePolledSessions({ local: [local] }, { local: [stale, other] }, [])).toEqual({
+      local: [local, other],
+    });
+    // A poll that has caught up replaces the local copy.
+    const fresher = { id: 'a', instanceId: 'local', updated: 900 };
+    expect(mergePolledSessions({ local: [local] }, { local: [fresher] }, [])).toEqual({ local: [fresher] });
+    // Instances absent from the poll are untouched.
+    expect(mergePolledSessions({ local: [local], remote: [other] }, { local: [local] }, [])).toEqual({
+      local: [local],
+      remote: [other],
+    });
+  });
+
   test('paginates from the last raw record even when subagents are filtered', async () => {
     const paths: string[] = [];
     const firstPage = [
@@ -216,6 +235,16 @@ describe('project loading', () => {
       { id: 'other', name: 'Other', path: '/workspace/other' },
     ]);
   });
+
+  test('reports failure as null rather than an empty project list', async () => {
+    setRequest(async () => ({ ok: false, status: 502, data: null }));
+    expect(await loadProjects('local')).toBeNull();
+  });
+
+  test('does not mistake an array body for a settings object', async () => {
+    setRequest(async () => ({ ok: true, status: 200, data: [{ path: '/x' }] }));
+    expect(await loadProjects('local')).toEqual([]);
+  });
 });
 
 describe('permission loading', () => {
@@ -313,8 +342,13 @@ describe('session creation and model metadata', () => {
     }));
 
     const list = await loadModels('local');
-    expect(list.defaultModelId).toBe('anthropic/claude-sonnet');
-    expect(list.models[0].details.variants).toEqual(['low', 'high']);
+    expect(list?.defaultModelId).toBe('anthropic/claude-sonnet');
+    expect(list?.models[0].details.variants).toEqual(['low', 'high']);
+  });
+
+  test('reports a failed provider request as null so the picker keeps its models', async () => {
+    setRequest(async () => ({ ok: false, status: 500, data: { error: 'boom' } }));
+    expect(await loadModels('local')).toBeNull();
   });
 });
 

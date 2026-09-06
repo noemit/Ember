@@ -123,7 +123,7 @@ export default function CommandPalette({
               } else if (event.key === 'ArrowUp') {
                 event.preventDefault();
                 setActiveIndex((index) => Math.max(index - 1, 0));
-              } else if (event.key === 'Enter' && filtered[activeIndex]) {
+              } else if (event.key === 'Enter' && !event.nativeEvent.isComposing && filtered[activeIndex]) {
                 event.preventDefault();
                 choose(filtered[activeIndex]);
               }

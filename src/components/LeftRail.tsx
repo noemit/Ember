@@ -254,9 +254,6 @@ export default function LeftRail({
   const defaultInstanceId = sorted.find((session) => instanceById[session.instanceId]?.attachable)
     ?.instanceId ?? ready[0]?.id ?? null;
 
-  const archiveLabel = showArchived ? 'Restore session' : 'Archive session';
-  const ArchiveIcon = showArchived ? ArchiveRestore : Archive;
-
   const renderSession = (session: Session) => {
     const key = sessionKey(session);
     const instance = instanceById[session.instanceId];
@@ -265,6 +262,11 @@ export default function LeftRail({
     const state = states[key] ?? 'idle';
     const reloading = reloadingKeys.has(key);
     const markerColor = instanceDefaults[session.instanceId]?.markerColor;
+    // Per row, not per view: the selected session is pinned into the active list even when
+    // it's archived, and its button must offer "Restore" rather than archiving it again.
+    const archived = Boolean(session.archived);
+    const archiveLabel = archived ? 'Restore session' : 'Archive session';
+    const ArchiveIcon = archived ? ArchiveRestore : Archive;
 
     return (
       <motion.div
@@ -320,7 +322,7 @@ export default function LeftRail({
                   </span>
                 </div>
                 <span className="truncate text-[11.5px] leading-4">
-                  {previews[key] ?? (session.directory ? normalizeDirectory(session.directory).split('/').pop() : '')}
+                  {previews[key] ?? (session.directory ? normalizeDirectory(session.directory).split(/[\\/]/).pop() : '')}
                 </span>
                 <span className="flex items-center gap-1 truncate text-[10.5px] text-muted-foreground">
                   {state === 'needs-input' ? (
@@ -350,7 +352,7 @@ export default function LeftRail({
               Customize appearance…
             </ContextMenuItem>
             <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => onArchive(session, !showArchived)}>
+            <ContextMenuItem onSelect={() => onArchive(session, !archived)}>
               <ArchiveIcon />
               {archiveLabel}
             </ContextMenuItem>
@@ -365,7 +367,7 @@ export default function LeftRail({
               aria-label={archiveLabel}
               onClick={(event) => {
                 event.stopPropagation();
-                onArchive(session, !showArchived);
+                onArchive(session, !archived);
               }}
               className="absolute top-1.5 right-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
             >
@@ -459,7 +461,7 @@ export default function LeftRail({
                 aria-label="Show archived sessions"
                 className="w-8 px-0 justify-center"
               >
-                <ArchiveIcon className="size-4" />
+                {showArchived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
               </Toggle>
             </TooltipTrigger>
             <TooltipContent>{showArchived ? 'Back to active sessions' : 'Show archived sessions'}</TooltipContent>
@@ -482,15 +484,16 @@ export default function LeftRail({
           </Tooltip>
 
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon-sm"
-                variant="outline"
-                aria-label="Sort sessions"
-              >
-                <ArrowDownUp className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon-sm" variant="outline" aria-label="Sort sessions">
+                    <ArrowDownUp className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Sort: {sorter === 'name' ? 'Name' : 'Recent activity'}</TooltipContent>
+            </Tooltip>
             <DropdownMenuContent align="end" className="min-w-[160px]">
               <DropdownMenuRadioGroup value={sorter} onValueChange={(value) => setSorter(value as Sorter)}>
                 <DropdownMenuRadioItem value="recent">Recent activity</DropdownMenuRadioItem>
@@ -500,16 +503,21 @@ export default function LeftRail({
           </DropdownMenu>
 
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon-sm"
-                variant={activeFacet ? 'secondary' : 'outline'}
-                disabled={facetGroups.length === 0}
-                aria-label="Filter sessions"
-              >
-                <ListFilter className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon-sm"
+                    variant={activeFacet ? 'secondary' : 'outline'}
+                    disabled={facetGroups.length === 0}
+                    aria-label="Filter sessions"
+                  >
+                    <ListFilter className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{activeFacet ? `Filter: ${activeFacet.label}` : 'Filter sessions'}</TooltipContent>
+            </Tooltip>
             <DropdownMenuContent align="end" className="max-h-[420px] min-w-[220px] overflow-y-auto">
               <DropdownMenuRadioGroup value={filter} onValueChange={setFilter}>
                 <DropdownMenuRadioItem value={ALL_FILTER}>

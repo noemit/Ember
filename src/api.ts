@@ -30,7 +30,7 @@ export type ModelList = {
 const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
 export const errorMessageOf = (value: unknown, depth = 0): string | undefined => {
   if (typeof value === 'string') return value.trim().slice(0, 4000) || undefined;
@@ -61,8 +61,10 @@ const baseName = (value: string): string => {
 export const listInstances = async (): Promise<Instance[]> =>
   asArray(await window.ember.listInstances()) as Instance[];
 
-export const loadProjects = async (instanceId: string): Promise<Project[]> => {
+/** `null` means the request failed; callers keep whatever they already had. */
+export const loadProjects = async (instanceId: string): Promise<Project[] | null> => {
   const response = await window.ember.request(instanceId, 'GET', '/api/config/settings');
+  if (!response.ok) return null;
   const root = asRecord(response.data);
   const paths = new Set<string>();
 
@@ -227,28 +229,49 @@ export const loadAllSessions = async (
   );
 };
 
+const newerSession = (a: Session, b: Session): Session =>
+  (b.updated ?? 0) > (a.updated ?? 0) ? b : a;
+
+/**
+ * Applies a poll result on top of the current lists. The poll is authoritative for which
+ * sessions exist, but a local optimistic bump (send, archive, create) may be newer than what
+ * the server has indexed yet, so per session the copy with the later `updated` wins.
+ * `preserved` sessions are kept even when the poll doesn't list them.
+ */
 export const mergePolledSessions = (
   current: Record<string, Session[]>,
   polled: Record<string, Session[]>,
   preserved: Session[]
 ): Record<string, Session[]> => {
-  const merged = { ...current, ...polled };
+  const merged: Record<string, Session[]> = { ...current };
+  Object.entries(polled).forEach(([instanceId, list]) => {
+    const previous = new Map((current[instanceId] ?? []).map((session) => [session.id, session]));
+    merged[instanceId] = list.map((session) => {
+      const local = previous.get(session.id);
+      return local ? newerSession(session, local) : session;
+    });
+  });
   preserved.forEach((session) => {
     const list = merged[session.instanceId] ?? [];
-    if (!list.some((entry) => entry.id === session.id)) {
-      merged[session.instanceId] = [session, ...list];
-    }
+    const index = list.findIndex((entry) => entry.id === session.id);
+    merged[session.instanceId] =
+      index === -1
+        ? [session, ...list]
+        : list.map((entry, i) => (i === index ? newerSession(entry, session) : entry));
   });
   return merged;
 };
 
+/** Only instances that answered are present; a failed instance keeps its previous projects. */
 export const loadAllProjects = async (
   instanceIds: string[]
 ): Promise<Record<string, Project[]>> => {
   const results = await Promise.all(
     instanceIds.map(async (instanceId) => [instanceId, await loadProjects(instanceId)] as const)
   );
-  return Object.fromEntries(results);
+  return Object.fromEntries(
+    results.filter((entry): entry is readonly [string, Project[]] => entry[1] !== null)
+  );
 };
 
 export type ScheduledIdentityData = {
@@ -843,8 +866,10 @@ export const loadSessionPreview = async (
   }
 };
 
-export const loadModels = async (instanceId: string): Promise<ModelList> => {
+/** `null` means the request failed; callers keep whatever they already had. */
+export const loadModels = async (instanceId: string): Promise<ModelList | null> => {
   const response = await window.ember.request(instanceId, 'GET', '/api/provider');
+  if (!response.ok) return null;
   const root = asRecord(response.data);
   const rawProviders = Array.isArray(response.data)
     ? response.data

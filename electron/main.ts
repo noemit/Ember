@@ -140,6 +140,25 @@ const readJson = (file: string): Record<string, unknown> => {
   }
 };
 
+// OpenChamber's settings are consulted on every proxied API request (several per second
+// across instances). Re-parse only when the file's mtime moves; a stat is far cheaper.
+let openchamberSettingsCache: { mtimeMs: number; root: Record<string, unknown> } | null = null;
+const readOpenchamberSettings = (): Record<string, unknown> => {
+  const file = openchamberSettingsPath();
+  let mtimeMs = -1;
+  try {
+    mtimeMs = fs.statSync(file).mtimeMs;
+  } catch {
+    // Missing file: fall through and cache the empty result under mtime -1.
+  }
+  if (openchamberSettingsCache && openchamberSettingsCache.mtimeMs === mtimeMs) {
+    return openchamberSettingsCache.root;
+  }
+  const root = readJson(file);
+  openchamberSettingsCache = { mtimeMs, root };
+  return root;
+};
+
 const writeJson = (file: string, data: unknown): void => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
@@ -227,7 +246,7 @@ const probeHealth = async (url: string, headers: Record<string, string>): Promis
 };
 
 const loadInstances = async (): Promise<Instance[]> => {
-  const root = readJson(openchamberSettingsPath());
+  const root = readOpenchamberSettings();
   const hosts = Array.isArray(root.desktopHosts) ? (root.desktopHosts as StoredHost[]) : [];
   const sshInstances = Array.isArray(root.desktopSshInstances)
     ? (root.desktopSshInstances as StoredSshInstance[])
@@ -309,7 +328,7 @@ const loadInstances = async (): Promise<Instance[]> => {
 };
 
 const instanceTarget = (instanceId: string): { url: string; headers: Record<string, string> } | null => {
-  const root = readJson(openchamberSettingsPath());
+  const root = readOpenchamberSettings();
   const hosts = Array.isArray(root.desktopHosts) ? (root.desktopHosts as StoredHost[]) : [];
   const host =
     instanceId === 'local'

@@ -566,6 +566,17 @@ export default function ChatView({
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [pickerActivated, setPickerActivated] = React.useState(false);
   const [queueModelPickerItemId, setQueueModelPickerItemId] = React.useState<string | null>(null);
+  // Queue mutations round-trip to the server; lock the row so a double-click can't fire two.
+  const [busyQueueItemId, setBusyQueueItemId] = React.useState<string | null>(null);
+  const runQueueAction = async (itemId: string, action: () => Promise<boolean>) => {
+    if (busyQueueItemId) return;
+    setBusyQueueItemId(itemId);
+    try {
+      await action();
+    } finally {
+      setBusyQueueItemId((current) => (current === itemId ? null : current));
+    }
+  };
   const [attachments, setAttachments] = React.useState<FileAttachment[]>([]);
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [replyContext, setReplyContext] = React.useState<ChatMessage | null>(null);
@@ -663,11 +674,19 @@ export default function ChatView({
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
     const accepted = [...files].filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
-    setAttachmentError(
-      accepted.length < files.length ? 'Files over 10 MB were skipped.' : null
-    );
-    const read = await Promise.all(accepted.map(readAttachment));
-    setAttachments((prev) => [...prev, ...read]);
+    const skippedForSize = files.length - accepted.length;
+    // One unreadable file (permissions, removed drive) must not drop the whole batch.
+    const results = await Promise.allSettled(accepted.map(readAttachment));
+    const read = results
+      .filter((result): result is PromiseFulfilledResult<FileAttachment> => result.status === 'fulfilled')
+      .map((result) => result.value);
+    const unreadable = results.length - read.length;
+    const problems = [
+      skippedForSize > 0 ? `${skippedForSize} over 10 MB` : null,
+      unreadable > 0 ? `${unreadable} could not be read` : null,
+    ].filter((entry): entry is string => entry !== null);
+    setAttachmentError(problems.length > 0 ? `Skipped ${problems.join(', ')}.` : null);
+    if (read.length > 0) setAttachments((prev) => [...prev, ...read]);
   };
 
   React.useEffect(() => {
@@ -1022,7 +1041,8 @@ export default function ChatView({
                 <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
                   {queueItems.map((item, index) => {
                     const sendingItem = queue?.sendingId === item.id;
-                    const reorderLocked = Boolean(queue?.sendingId);
+                    const busy = sendingItem || busyQueueItemId === item.id;
+                    const reorderLocked = Boolean(queue?.sendingId) || busyQueueItemId !== null;
                     const preview = item.text.trim() || item.content.trim() ||
                       `${item.attachments.length} attachment${item.attachments.length === 1 ? '' : 's'}`;
                     return (
@@ -1030,7 +1050,7 @@ export default function ChatView({
                         key={item.id}
                         className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5"
                       >
-                        {sendingItem ? (
+                        {busy ? (
                           <Loader2 className="size-3 flex-none animate-spin text-highlight" />
                         ) : (
                           <span className="size-1.5 flex-none rounded-full bg-highlight" aria-hidden="true" />
@@ -1039,7 +1059,7 @@ export default function ChatView({
                           <span className="block truncate" title={preview}>{preview}</span>
                           <button
                             type="button"
-                            disabled={sendingItem || models.length === 0}
+                            disabled={busy || models.length === 0}
                             onClick={() => setQueueModelPickerItemId(item.id)}
                             aria-label={`Change model for queued message: ${preview.slice(0, 60)}`}
                             title="Change queued message model"
@@ -1059,7 +1079,7 @@ export default function ChatView({
                             variant="ghost"
                             size="icon-xs"
                             disabled={reorderLocked || index === 0}
-                            onClick={() => void onMoveQueued(item.id, -1)}
+                            onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, -1))}
                             aria-label={`Move queued message up: ${preview.slice(0, 60)}`}
                             title="Move up"
                           >
@@ -1070,7 +1090,7 @@ export default function ChatView({
                             variant="ghost"
                             size="icon-xs"
                             disabled={reorderLocked || index === queueItems.length - 1}
-                            onClick={() => void onMoveQueued(item.id, 1)}
+                            onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, 1))}
                             aria-label={`Move queued message down: ${preview.slice(0, 60)}`}
                             title="Move down"
                           >
@@ -1080,8 +1100,8 @@ export default function ChatView({
                             type="button"
                             variant="ghost"
                             size="xs"
-                            disabled={sendingItem}
-                            onClick={() => void onSendQueued(item.id)}
+                            disabled={busy}
+                            onClick={() => void runQueueAction(item.id, () => onSendQueued(item.id))}
                             aria-label={`Send queued message now: ${preview.slice(0, 60)}`}
                             title="Send now and steer the current turn"
                             className="px-1.5 text-[11px] text-muted-foreground hover:text-highlight"
@@ -1092,8 +1112,8 @@ export default function ChatView({
                             type="button"
                             variant="ghost"
                             size="xs"
-                            disabled={sendingItem}
-                            onClick={() => void onRemoveQueued(item.id)}
+                            disabled={busy}
+                            onClick={() => void runQueueAction(item.id, () => onRemoveQueued(item.id))}
                             aria-label={`Cancel queued message: ${preview.slice(0, 60)}`}
                             title={sendingItem ? 'Cannot cancel while this message is being sent' : 'Cancel queued message'}
                             className="px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
@@ -1120,7 +1140,7 @@ export default function ChatView({
                     const nextModel = models.find((entry) => modelKey(entry) === next);
                     const itemId = queueModelPickerItem.id;
                     setQueueModelPickerItemId(null);
-                    if (nextModel) void onQueuedModelChange(itemId, nextModel);
+                    if (nextModel) void runQueueAction(itemId, () => onQueuedModelChange(itemId, nextModel));
                   }}
                   onOpenChange={(open) => {
                     if (!open) setQueueModelPickerItemId(null);

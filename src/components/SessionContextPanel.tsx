@@ -151,7 +151,7 @@ export default function SessionContextPanel({
             maxLength={20_000}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+              if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 addNote();
               }

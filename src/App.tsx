@@ -89,6 +89,9 @@ const SESSION_POLL_MS = 10_000;
 const SCHEDULE_POLL_MS = 30_000;
 const PREVIEW_COUNT = 24;
 const PREVIEW_CONCURRENCY = 4;
+// Transcripts kept warm for instant switching. Must cover PREVIEW_COUNT or the preview
+// loader evicts what it just fetched.
+const MESSAGE_CACHE_LIMIT = 32;
 const RECENT_MODEL_COUNT = 5;
 const CREATED_SESSION_GRACE_MS = 2 * 60_000;
 
@@ -120,14 +123,35 @@ const DEFAULT_SETTINGS: EmberSettings = {
   remotePasswordConfigured: false,
 };
 
+// FNV-1a: cheap, stable digest so large payloads (tool output, data URLs) don't get
+// concatenated into a signature string on every poll.
+const digest = (value: string): string => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${value.length}.${hash.toString(36)}`;
+};
+
+const digestInput = (input: Record<string, unknown> | undefined): string => {
+  if (!input) return '';
+  try {
+    return digest(JSON.stringify(input));
+  } catch {
+    // Cyclic or BigInt payloads from the server must not crash a setState updater.
+    return 'unserializable';
+  }
+};
+
 // Tool calls change status without the text changing, so compare the parts too.
 const messageSignature = (message: ChatMessage): string =>
   `${message.id}|${message.completed ? 1 : 0}|${message.createdAt ?? ''}|${message.completedAt ?? ''}|${message.model ? modelRefKey(message.model) : ''}|${message.error ?? ''}|${message.parts
     .map((part) => {
-      if (part.type === 'text' || part.type === 'reasoning') return part.text;
-      if (part.type === 'file') return `${part.file.mime}:${part.file.filename}:${part.file.url}`;
+      if (part.type === 'text' || part.type === 'reasoning') return digest(part.text);
+      if (part.type === 'file') return `${part.file.mime}:${part.file.filename}:${digest(part.file.url)}`;
       const { call } = part;
-      return `${call.id}:${call.status}:${call.title ?? ''}:${call.error ?? ''}:${JSON.stringify(call.input ?? null)}:${call.output ?? ''}:${call.diff ?? ''}`;
+      return `${call.id}:${call.status}:${call.title ?? ''}:${call.error ?? ''}:${digestInput(call.input)}:${digest(call.output ?? '')}:${digest(call.diff ?? '')}`;
     })
     .join('\u0001')}`;
 
@@ -285,7 +309,22 @@ export default function App() {
   const selectedSessionRef = React.useRef<Session | null>(null);
   const selectedKeyRef = React.useRef<string | null>(null);
   const pendingCreatedSessions = React.useRef(new Map<string, { session: Session; expiresAt: number }>());
+  // Snapshot the entries first: deleting from a Map while `forEach`-ing it can skip entries.
+  const prunePendingCreated = (shouldDrop: (pending: { session: Session; expiresAt: number }) => boolean) => {
+    [...pendingCreatedSessions.current.entries()].forEach(([key, pending]) => {
+      if (shouldDrop(pending)) pendingCreatedSessions.current.delete(key);
+    });
+  };
   const pendingOptimisticIds = React.useRef(new Set<string>());
+  // Once a reconciled transcript no longer carries an optimistic bubble, the server has its
+  // own copy and the id can be released. Ids of failed sends are released by their caller.
+  const releaseReconciledOptimistic = (messages: ChatMessage[]) => {
+    if (pendingOptimisticIds.current.size === 0) return;
+    const stillPending = new Set(messages.map((message) => message.id));
+    [...pendingOptimisticIds.current].forEach((id) => {
+      if (!stillPending.has(id)) pendingOptimisticIds.current.delete(id);
+    });
+  };
   const bypassReplyIds = React.useRef(new Set<string>());
   const settingsRevision = React.useRef(0);
   const messageCacheRef = React.useRef(new Map<string, ChatMessage[]>());
@@ -329,7 +368,7 @@ export default function App() {
     const cache = messageCacheRef.current;
     cache.delete(key);
     cache.set(key, messagesForSession);
-    while (cache.size > 20) {
+    while (cache.size > MESSAGE_CACHE_LIMIT) {
       const oldest = cache.keys().next().value;
       if (oldest === undefined) break;
       cache.delete(oldest);
@@ -577,8 +616,14 @@ export default function App() {
           Promise.all(readyIds.map(async (id) => [id, await loadModels(id)] as const)),
         ]);
         if (cancelled) return;
-        setProjectsByInstance(projects);
-        setModelsByInstance(Object.fromEntries(modelLists));
+        // An instance that failed to answer is absent from these maps; keep its previous data.
+        setProjectsByInstance((prev) => ({ ...prev, ...projects }));
+        setModelsByInstance((prev) => ({
+          ...prev,
+          ...Object.fromEntries(
+            modelLists.filter((entry): entry is readonly [string, ModelList] => entry[1] !== null)
+          ),
+        }));
       } catch (err) {
         if (!cancelled) {
           showActionError(err instanceof Error ? err.message : 'Could not load instance metadata.');
@@ -608,12 +653,11 @@ export default function App() {
         const next = await loadAllSessions(readyIds, directoryHints);
         if (cancelled) return;
         const now = Date.now();
-        pendingCreatedSessions.current.forEach((pending, key) => {
-          if (
+        prunePendingCreated(
+          (pending) =>
             pending.expiresAt <= now ||
-            next[pending.session.instanceId]?.some((session) => session.id === pending.session.id)
-          ) pendingCreatedSessions.current.delete(key);
-        });
+            Boolean(next[pending.session.instanceId]?.some((session) => session.id === pending.session.id))
+        );
         const preserved = [
           ...(selectedSessionRef.current ? [selectedSessionRef.current] : []),
           ...[...pendingCreatedSessions.current.values()].map((pending) => pending.session),
@@ -672,13 +716,20 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readyKey, selectedKey]);
 
+  // Read through refs so this effect only re-runs when the session list changes. Depending on
+  // `previews` directly made every 3s transcript poll cancel an in-flight preview batch.
+  const previewsRef = React.useRef(previews);
+  previewsRef.current = previews;
+  const previewVersionsRef = React.useRef(previewVersions);
+  previewVersionsRef.current = previewVersions;
+
   React.useEffect(() => {
     const targets = [...sessions]
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
       .slice(0, PREVIEW_COUNT)
       .filter((session) => {
         const key = sessionKey(session);
-        return !(key in previews) || previewVersions[key] !== session.updated;
+        return !(key in previewsRef.current) || previewVersionsRef.current[key] !== session.updated;
       });
     if (targets.length === 0) return;
     let cancelled = false;
@@ -718,7 +769,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [sessions, previews, previewVersions]);
+  }, [sessions]);
 
   // Messages for the open session, kept fresh while the agent is working.
   React.useEffect(() => {
@@ -747,6 +798,7 @@ export default function App() {
         setTranscript((current) => {
           if (current.key !== key) return current;
           const merged = reconcilePolledMessages(current.messages, next, pendingOptimisticIds.current);
+          releaseReconciledOptimistic(merged);
           const result = sameMessages(current.messages, merged) ? current.messages : merged;
           cacheMessages(key, result);
           return { key, messages: result, status: 'ready' };
@@ -798,9 +850,7 @@ export default function App() {
         return false;
       }
       const now = Date.now();
-      pendingCreatedSessions.current.forEach((pending, key) => {
-        if (pending.expiresAt <= now) pendingCreatedSessions.current.delete(key);
-      });
+      prunePendingCreated((pending) => pending.expiresAt <= now);
       pendingCreatedSessions.current.set(sessionKey(created), {
         session: created,
         expiresAt: now + CREATED_SESSION_GRACE_MS,
@@ -819,17 +869,8 @@ export default function App() {
       setBypassOverrides((prev) => ({ ...prev, [sessionKey(ref)]: options.bypass }));
       setSelected(ref);
       setNewSessionInstanceId(null);
-      const fresh = await loadSessions(options.instanceId, created.directory);
-      if (fresh) {
-        // Keep the optimistic session at the top while the server catches up.
-        const seen = new Set<string>();
-        const merged = [created, ...fresh].filter((session) => {
-          if (seen.has(session.id)) return false;
-          seen.add(session.id);
-          return true;
-        });
-        setSessionsByInstance((prev) => ({ ...prev, [options.instanceId]: merged }));
-      }
+      // The optimistic insert above plus the pendingCreatedSessions grace keep the row visible;
+      // the next session poll (which includes the selected session's directory) is authoritative.
       return true;
     } catch (err) {
       showActionError(err instanceof Error ? err.message : 'Could not create a new agent.');
@@ -877,8 +918,10 @@ export default function App() {
 
     try {
       const sent = await sendPrompt(instanceId, sessionId, input, directory, optimisticId);
-      pendingOptimisticIds.current.delete(optimisticId);
+      // Keep the optimistic id registered until the transcript below is reconciled; the 3s
+      // poller can land in between and would otherwise drop the bubble for one tick.
       if (!sent.ok) {
+        pendingOptimisticIds.current.delete(optimisticId);
         removeOptimistic();
         showActionError(
           responseError(sent.data, 'Message could not be sent.'),
@@ -901,7 +944,14 @@ export default function App() {
             : session
         ),
       }));
-      const next = await loadMessages(instanceId, sessionId, directory);
+      const loaded = await loadMessages(instanceId, sessionId, directory);
+      // The server may not have indexed the user turn yet; keep the bubble until it does.
+      const next = reconcilePolledMessages(
+        messageCacheRef.current.get(key) ?? [],
+        loaded,
+        pendingOptimisticIds.current
+      );
+      releaseReconciledOptimistic(next);
       const preview = previewOf(next);
       cacheMessages(key, next);
       if (selectedKeyRef.current === key) {
@@ -925,7 +975,8 @@ export default function App() {
       );
       return accepted;
     } finally {
-      pendingOptimisticIds.current.delete(optimisticId);
+      // Accepted sends keep the id until a poll shows the server copy (see releaseReconciledOptimistic).
+      if (!accepted) pendingOptimisticIds.current.delete(optimisticId);
       setSendingKeys((prev) => {
         if (!prev.has(key)) return prev;
         const next = new Set(prev);
@@ -1328,6 +1379,7 @@ export default function App() {
       }
       const preview = previewOf(messageResult.value);
       setPreviews((current) => ({ ...current, [key]: preview }));
+      setPreviewVersions((current) => ({ ...current, [key]: session.updated }));
     } else if (selectedKeyRef.current === key) {
       setTranscript((current) =>
         current.key === key ? { ...current, status: 'error' } : current
