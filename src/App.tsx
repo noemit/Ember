@@ -43,6 +43,7 @@ import {
   replyQuestion,
   sendPrompt,
   setSessionArchived,
+  takeQueuedMessage,
   type ModelList,
   type PromptInput,
 } from './api';
@@ -53,6 +54,7 @@ import type {
   ChatMessage,
   MessagesStatus,
   MessageQueueSession,
+  ModelOption,
   EmberSettings,
   EmberSettingsPatch,
   Instance,
@@ -61,6 +63,7 @@ import type {
   Project,
   QuestionAnswers,
   QuestionRequest,
+  QueuedMessage,
   Session,
   SessionNote,
   SessionRef,
@@ -942,6 +945,95 @@ export default function App() {
     }
   };
 
+  const queuedMessageModel = (instanceId: string, item: QueuedMessage): ModelOption => {
+    const modelList = modelsByInstance[instanceId];
+    const found = modelList?.models.find(
+      (candidate) =>
+        candidate.providerID === item.sendConfig.providerID &&
+        candidate.modelID === item.sendConfig.modelID
+    );
+    if (found) return found;
+    return {
+      providerID: item.sendConfig.providerID,
+      modelID: item.sendConfig.modelID,
+      label: `${item.sendConfig.providerID} / ${item.sendConfig.modelID}`,
+      details: {
+        name: item.sendConfig.modelID,
+        providerName: item.sendConfig.providerID,
+        reasoning: false,
+        toolcall: false,
+        attachment: item.attachments.length > 0,
+        inputs: [],
+        variants: item.sendConfig.variant ? [item.sendConfig.variant] : [],
+      },
+    };
+  };
+
+  const handleSendQueuedMessage = async (itemId: string): Promise<boolean> => {
+    if (!selected) return false;
+    showActionError(null);
+    const { instanceId, sessionId } = selected;
+    const directory = selectedSession?.directory;
+    if (!directory) {
+      showActionError('Could not send this queued message because the session folder is unknown.');
+      return false;
+    }
+
+    let input: PromptInput | null = null;
+    try {
+      const taken = await takeQueuedMessage(instanceId, sessionId, itemId);
+      if (!taken.ok || !taken.data) {
+        showActionError(
+          taken.status === 409
+            ? 'That queued message is already being sent.'
+            : taken.status === 404
+              ? 'That queued message is no longer available.'
+              : 'Could not take the queued message.',
+          taken.status === 409 || taken.status === 404
+            ? undefined
+            : () => void handleSendQueuedMessage(itemId)
+        );
+        return false;
+      }
+      applyQueueMutation(instanceId, taken.data);
+      const item = taken.data.item;
+      input = {
+        text: item.text || item.content,
+        model: queuedMessageModel(instanceId, item),
+        mode: item.sendConfig.agent,
+        variant: item.sendConfig.variant,
+        attachments: item.attachments.flatMap((file) =>
+          file.dataUrl ? [{ filename: file.filename, mime: file.mimeType, url: file.dataUrl }] : []
+        ),
+        queuedContext: item.context,
+        agentMention: item.agentMention,
+      };
+      const sent = await handleSend(input);
+      if (sent) return true;
+
+      const requeued = await enqueueMessage(instanceId, sessionId, directory, {
+        ...input,
+        model: input.model!,
+      });
+      if (requeued.ok && requeued.data) applyQueueMutation(instanceId, requeued.data);
+      const retryId = requeued.data?.itemId;
+      showActionError(
+        requeued.ok
+          ? 'Could not send the queued message now; it was returned to the queue.'
+          : 'Could not send the queued message now or return it to the queue.',
+        retryId ? () => void handleSendQueuedMessage(retryId) : () => void handleSend(input!)
+      );
+      return false;
+    } catch (err) {
+      console.error('Send queued message failed', err);
+      showActionError(
+        err instanceof Error ? err.message : 'Could not send the queued message now.',
+        input ? () => void handleSend(input!) : () => void handleSendQueuedMessage(itemId)
+      );
+      return false;
+    }
+  };
+
   const handleRemoveQueuedMessage = async (itemId: string): Promise<boolean> => {
     if (!selected) return false;
     showActionError(null);
@@ -1514,6 +1606,7 @@ export default function App() {
               onCancelNewSession={() => setNewSessionInstanceId(null)}
               onSend={handleSend}
               onQueue={handleQueueMessage}
+              onSendQueued={handleSendQueuedMessage}
               onRemoveQueued={handleRemoveQueuedMessage}
               onReload={() => {
                 if (selectedSession) void handleReloadSession(selectedSession);

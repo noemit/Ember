@@ -8,6 +8,7 @@ import type {
   MessageQueueMutation,
   MessageQueueSession,
   MessageQueueSnapshot,
+  MessageQueueTakeMutation,
   ModelDetails,
   ModelOption,
   PermissionReply,
@@ -716,6 +717,23 @@ const toQueuedMessage = (value: unknown): QueuedMessage | null => {
         return parsed;
       })
       .filter((attachment): attachment is QueuedMessage['attachments'][number] => attachment !== null),
+    context: asArray(item.context)
+      .map((entry) => {
+        const raw = asRecord(entry);
+        const text = optionalString(raw.text);
+        if (!text) return null;
+        const parsed: QueuedMessage['context'][number] = {
+          kind: optionalString(raw.kind) ?? 'context',
+          text,
+        };
+        if (raw.metadata && typeof raw.metadata === 'object') {
+          parsed.metadata = raw.metadata as Record<string, unknown>;
+        }
+        const instructions = optionalString(raw.instructions);
+        if (instructions) parsed.instructions = instructions;
+        return parsed;
+      })
+      .filter((entry): entry is QueuedMessage['context'][number] => entry !== null),
     sendConfig: {
       providerID,
       modelID,
@@ -749,6 +767,12 @@ const toMessageQueueMutation = (value: unknown): MessageQueueMutation | null => 
     session,
     itemId: optionalString(mutation.itemId),
   };
+};
+
+const toMessageQueueTakeMutation = (value: unknown): MessageQueueTakeMutation | null => {
+  const mutation = toMessageQueueMutation(value);
+  const item = toQueuedMessage(asRecord(value).item);
+  return mutation && item ? { ...mutation, item } : null;
 };
 
 export const loadMessageQueue = async (
@@ -932,6 +956,9 @@ export type PromptInput = {
   variant?: string;
   attachments?: FileAttachment[];
   replyContext?: string;
+  /** Full context recovered when a queued message is sent immediately. */
+  queuedContext?: QueuedMessage['context'];
+  agentMention?: string;
 };
 
 export type QueueMessageInput = Omit<PromptInput, 'model'> & {
@@ -943,7 +970,7 @@ export const enqueueMessage = async (
   instanceId: string,
   sessionId: string,
   directory: string,
-  { text, model, mode, variant, attachments = [], replyContext }: QueueMessageInput
+  { text, model, mode, variant, attachments = [], replyContext, queuedContext = [], agentMention }: QueueMessageInput
 ): Promise<{ ok: boolean; status: number; data: MessageQueueMutation | null }> => {
   const sendConfig: Record<string, string> = {
     providerID: model.providerID,
@@ -961,12 +988,15 @@ export const enqueueMessage = async (
       source: 'local',
       dataUrl: file.url,
     })),
-    context: replyContext
-      ? [{
-          kind: 'synthetic',
-          text: `Earlier pinned message being replied to:\n\n${replyContext}`,
-        }]
-      : [],
+    context: queuedContext.length
+      ? queuedContext
+      : replyContext
+        ? [{
+            kind: 'synthetic',
+            text: `Earlier pinned message being replied to:\n\n${replyContext}`,
+          }]
+        : [],
+    ...(agentMention ? { agentMention } : {}),
     sendConfig,
   };
   const response = await window.ember.request(
@@ -991,27 +1021,56 @@ export const removeQueuedMessage = async (
   return { ...response, data: toMessageQueueMutation(response.data) };
 };
 
+export const takeQueuedMessage = async (
+  instanceId: string,
+  sessionId: string,
+  itemId: string
+): Promise<{ ok: boolean; status: number; data: MessageQueueTakeMutation | null }> => {
+  const response = await window.ember.request(
+    instanceId,
+    'POST',
+    `/api/message-queue/sessions/${encodeURIComponent(sessionId)}/items/${encodeURIComponent(itemId)}/take`
+  );
+  return { ...response, data: toMessageQueueTakeMutation(response.data) };
+};
+
 export const sendPrompt = async (
   instanceId: string,
   sessionId: string,
-  { text, model, mode, variant, attachments = [], replyContext }: PromptInput,
+  { text, model, mode, variant, attachments = [], replyContext, queuedContext = [], agentMention }: PromptInput,
   directory?: string,
   messageId?: string
 ): Promise<{ ok: boolean; status: number; data: unknown }> => {
-  const parts: unknown[] = [
-    ...(replyContext
-      ? [
-          {
-            type: 'text',
-            text: `Earlier pinned message being replied to:\n\n${replyContext}`,
-            synthetic: true,
-            metadata: { emberReplyContext: true },
-          },
-        ]
-      : []),
-    ...attachments.map((file) => ({ type: 'file', mime: file.mime, filename: file.filename, url: file.url })),
-  ];
-  if (text) parts.push({ type: 'text', text });
+  const takenContextParts = queuedContext.flatMap((entry) => {
+    const synthetic: Record<string, unknown> = { type: 'text', text: entry.text, synthetic: true };
+    if (entry.kind !== 'context') return [synthetic];
+    if (entry.metadata) synthetic.metadata = entry.metadata;
+    return entry.instructions
+      ? [{ type: 'text', text: entry.instructions, synthetic: true }, synthetic]
+      : [synthetic];
+  });
+  const takenPayload = queuedContext.length > 0 || Boolean(agentMention);
+  const parts: unknown[] = takenPayload
+    ? [
+        ...(text.trim() ? [{ type: 'text', text }] : []),
+        ...attachments.map((file) => ({ type: 'file', mime: file.mime, filename: file.filename, url: file.url })),
+        ...takenContextParts,
+        ...(agentMention ? [{ type: 'agent', name: agentMention }] : []),
+      ]
+    : [
+        ...(replyContext
+          ? [
+              {
+                type: 'text',
+                text: `Earlier pinned message being replied to:\n\n${replyContext}`,
+                synthetic: true,
+                metadata: { emberReplyContext: true },
+              },
+            ]
+          : []),
+        ...attachments.map((file) => ({ type: 'file', mime: file.mime, filename: file.filename, url: file.url })),
+      ];
+  if (!takenPayload && text) parts.push({ type: 'text', text });
   const body: Record<string, unknown> = { parts };
   if (model) body.model = { providerID: model.providerID, modelID: model.modelID };
   if (mode) body.agent = mode;

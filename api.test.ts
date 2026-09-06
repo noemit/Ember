@@ -21,6 +21,7 @@ import {
   replyPermission,
   replyQuestion,
   sendPrompt,
+  takeQueuedMessage,
 } from './src/api';
 import { shouldOfferSessionReload } from './src/components/ChatView';
 import { isAssistantTurnEnd } from './src/components/Transcript';
@@ -549,6 +550,40 @@ describe('message queue', () => {
     });
   });
 
+  test('preserves taken context and agent mentions when requeueing', async () => {
+    let requestBody: unknown;
+    setRequest(async (_instanceId, _method, _path, body) => {
+      requestBody = body;
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          revision: 9,
+          session: {
+            sessionId: 'ses_1',
+            directory: '/workspace/ember',
+            sendingId: null,
+            items: [],
+          },
+        },
+      };
+    });
+
+    await enqueueMessage('local', 'ses_1', '/workspace/ember', {
+      text: 'Steer this',
+      model: queueModel,
+      queuedContext: [{ kind: 'context', text: 'Diff context', instructions: 'Read this first' }],
+      agentMention: 'reviewer',
+    });
+
+    expect(requestBody).toMatchObject({
+      item: {
+        context: [{ kind: 'context', text: 'Diff context', instructions: 'Read this first' }],
+        agentMention: 'reviewer',
+      },
+    });
+  });
+
   test('removes a queued message through the server queue endpoint', async () => {
     let requestMethod = '';
     let requestPath = '';
@@ -575,6 +610,60 @@ describe('message queue', () => {
     expect(response.data?.session.items).toEqual([]);
     expect(requestMethod).toBe('DELETE');
     expect(requestPath).toBe('/api/message-queue/sessions/ses_1/items/queued-1');
+  });
+
+  test('takes a queued message back with its full send payload', async () => {
+    let requestMethod = '';
+    let requestPath = '';
+    setRequest(async (_instanceId, method, path) => {
+      requestMethod = method;
+      requestPath = path;
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          revision: 10,
+          session: {
+            sessionId: 'ses_1',
+            directory: '/workspace/ember',
+            sendingId: null,
+            items: [],
+          },
+          item: {
+            id: 'queued-1',
+            createdAt: 100,
+            content: 'Steer this',
+            text: 'Steer this',
+            attachments: [{
+              filename: 'log.txt',
+              mimeType: 'text/plain',
+              dataUrl: 'data:text/plain;base64,bG9n',
+            }],
+            context: [{
+              kind: 'context',
+              text: 'Diff context',
+              metadata: { source: 'pin' },
+              instructions: 'Read this first',
+            }],
+            sendConfig: { providerID: 'anthropic', modelID: 'claude-sonnet', agent: 'build', variant: 'high' },
+            agentMention: 'reviewer',
+          },
+        },
+      };
+    });
+
+    const response = await takeQueuedMessage('local', 'ses_1', 'queued-1');
+    expect(response.ok).toBe(true);
+    expect(requestMethod).toBe('POST');
+    expect(requestPath).toBe('/api/message-queue/sessions/ses_1/items/queued-1/take');
+    expect(response.data?.item).toEqual(expect.objectContaining({
+      id: 'queued-1',
+      text: 'Steer this',
+      agentMention: 'reviewer',
+      attachments: [expect.objectContaining({ dataUrl: 'data:text/plain;base64,bG9n' })],
+      context: [expect.objectContaining({ kind: 'context', text: 'Diff context', instructions: 'Read this first' })],
+      sendConfig: expect.objectContaining({ agent: 'build', variant: 'high' }),
+    }));
   });
 });
 
@@ -620,6 +709,46 @@ describe('message submission', () => {
     expect(messageId).toMatch(/^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
     await sendPrompt('local', 'session', { text: 'Hello', variant: 'high' }, undefined, messageId);
     expect(requestBody).toMatchObject({ messageID: messageId, variant: 'high' });
+  });
+
+  test('reconstructs a taken queued message for immediate steering', async () => {
+    let requestPath = '';
+    let requestBody: unknown;
+    setRequest(async (_instanceId, _method, path, body) => {
+      requestPath = path;
+      requestBody = body;
+      return { ok: true, status: 204, data: null };
+    });
+
+    await sendPrompt('local', 'session', {
+      text: 'Steer this',
+      model: queueModel,
+      mode: 'build',
+      variant: 'high',
+      attachments: [{ filename: 'log.txt', mime: 'text/plain', url: 'data:text/plain;base64,bG9n' }],
+      queuedContext: [{
+        kind: 'context',
+        text: 'Diff context',
+        metadata: { source: 'pin' },
+        instructions: 'Read this first',
+      }],
+      agentMention: 'reviewer',
+    }, '/workspace/ember', 'msg_123');
+
+    expect(requestPath).toBe('/api/session/session/prompt_async?directory=%2Fworkspace%2Fember');
+    expect(requestBody).toEqual({
+      parts: [
+        { type: 'text', text: 'Steer this' },
+        { type: 'file', mime: 'text/plain', filename: 'log.txt', url: 'data:text/plain;base64,bG9n' },
+        { type: 'text', text: 'Read this first', synthetic: true },
+        { type: 'text', text: 'Diff context', synthetic: true, metadata: { source: 'pin' } },
+        { type: 'agent', name: 'reviewer' },
+      ],
+      model: { providerID: 'anthropic', modelID: 'claude-sonnet' },
+      agent: 'build',
+      variant: 'high',
+      messageID: 'msg_123',
+    });
   });
 
   test('replaces an optimistic message when the poll returns its server copy', () => {

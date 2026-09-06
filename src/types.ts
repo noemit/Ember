@@ -195,8 +195,15 @@ export type QueuedMessageAttachment = {
   mimeType: string;
   size?: number;
   source?: string;
-  /** Present only when an item is taken back for editing. */
+  /** Full payload, present when an item is taken for immediate sending or editing. */
   dataUrl?: string;
+};
+
+export type QueuedMessageContext = {
+  kind: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+  instructions?: string;
 };
 
 export type QueuedMessage = {
@@ -205,6 +212,7 @@ export type QueuedMessage = {
   content: string;
   text: string;
   attachments: QueuedMessageAttachment[];
+  context: QueuedMessageContext[];
   sendConfig: QueuedMessageSendConfig;
   agentMention?: string;
 };
@@ -225,6 +233,11 @@ export type MessageQueueMutation = {
   revision: number;
   session: MessageQueueSession;
   itemId?: string;
+};
+
+export type MessageQueueTakeMutation = MessageQueueMutation & {
+  /** Full queued payload, including attachment data URLs and captured context. */
+  item: QueuedMessage;
 };
 
 export type ModelDetails = {

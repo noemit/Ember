@@ -71,6 +71,13 @@ type MockQueuedMessage = {
     dataUrl?: string;
   }>;
   sendConfig: { providerID: string; modelID: string; agent?: string; variant?: string };
+  context?: Array<{
+    kind: string;
+    text: string;
+    metadata?: Record<string, unknown>;
+    instructions?: string;
+  }>;
+  agentMention?: string;
 };
 
 const minutes = (n: number) => Date.now() - n * 60_000;
@@ -391,6 +398,18 @@ const bridge: EmberBridge = {
       queueRevision += 1;
       return delay(ok(queueMutation(instanceId, sessionId)));
     }
+    const queuedItemTakeMatch = url.pathname.match(/^\/api\/message-queue\/sessions\/([^/]+)\/items\/([^/]+)\/take$/);
+    if (queuedItemTakeMatch && method === 'POST') {
+      const sessionId = decodeURIComponent(queuedItemTakeMatch[1]);
+      const itemId = decodeURIComponent(queuedItemTakeMatch[2]);
+      const items = queuedMessages[instanceId]?.[sessionId] ?? [];
+      const index = items.findIndex((item) => item.id === itemId);
+      if (index === -1) return { ok: false, status: 404, data: null };
+      const [item] = items.splice(index, 1);
+      if (items.length === 0) delete queuedMessages[instanceId][sessionId];
+      queueRevision += 1;
+      return delay(ok({ ...queueMutation(instanceId, sessionId), item }));
+    }
     if (path === '/api/config/settings') return delay(ok({ projects: projects[instanceId] ?? [] }));
     const scheduledMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/scheduled-tasks$/);
     if (scheduledMatch && method === 'GET') {
@@ -519,13 +538,14 @@ const bridge: EmberBridge = {
           mime?: string;
           url?: string;
           metadata?: { emberReplyContext?: boolean };
+          synthetic?: boolean;
         }>;
         model?: { providerID: string; modelID: string };
         variant?: string;
       };
       const parts = prompt?.parts ?? [];
       const text = parts
-        .filter((part) => part.type === 'text' && part.metadata?.emberReplyContext !== true)
+        .filter((part) => part.type === 'text' && part.metadata?.emberReplyContext !== true && part.synthetic !== true)
         .map((part) => part.text ?? '')
         .join('');
       const files = parts.filter((p) => p.type === 'file').map((p) => ({ filename: p.filename ?? 'file', mime: p.mime ?? '', url: p.url ?? '' }));

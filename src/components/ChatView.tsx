@@ -193,6 +193,7 @@ type Props = {
   onCancelNewSession: () => void;
   onSend: (input: PromptInput) => Promise<boolean>;
   onQueue: (input: PromptInput) => Promise<boolean>;
+  onSendQueued: (itemId: string) => Promise<boolean>;
   onRemoveQueued: (itemId: string) => Promise<boolean>;
   onReload: () => void;
   onAbort: () => void;
@@ -542,6 +543,7 @@ export default function ChatView({
   onCancelNewSession,
   onSend,
   onQueue,
+  onSendQueued,
   onRemoveQueued,
   onReload,
   onAbort,
@@ -975,6 +977,20 @@ export default function ChatView({
                             {item.attachments.length} file{item.attachments.length === 1 ? '' : 's'}
                           </span>
                         ) : null}
+                        <button
+                          type="button"
+                          aria-disabled={sendingItem}
+                          onClick={() => {
+                            if (!sendingItem) void onSendQueued(item.id);
+                          }}
+                          aria-label={sendingItem
+                            ? `Queued message is being sent: ${preview.slice(0, 60)}`
+                            : `Send queued message now: ${preview.slice(0, 60)}`}
+                          title="Send now and steer the current turn"
+                          className="flex-none rounded p-0.5 text-muted-foreground hover:text-highlight aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
+                        >
+                          <ArrowUp className="size-3.5" />
+                        </button>
                         <button
                           type="button"
                           aria-disabled={sendingItem}
