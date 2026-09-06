@@ -10,10 +10,12 @@ import {
   normalizeApiMethod,
   parseAvatarOverrides,
   parseColorAssignments,
+  parseComposerDrafts,
   parseSessionNotes,
   parseStringRecord,
   resolveApiUrl,
   type StoredAvatarOverride,
+  type StoredComposerDraft,
   type StoredSessionNote,
 } from './transport';
 import { startRemoteServer } from './remoteServer';
@@ -71,6 +73,7 @@ type EmberSettings = {
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
   sessionNotes: Record<string, StoredSessionNote[]>;
+  composerDrafts: Record<string, StoredComposerDraft>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, StoredAvatarOverride>;
   projectColorAssignments: Record<string, number>;
@@ -169,6 +172,7 @@ const readEmberSettings = (): EmberSettings => {
       ? root.pinnedMessages.filter((entry): entry is string => typeof entry === 'string').slice(0, 2000)
       : [],
     sessionNotes: parseSessionNotes(root.sessionNotes),
+    composerDrafts: parseComposerDrafts(root.composerDrafts),
     scheduledSessionBindings: parseStringRecord(root.scheduledSessionBindings),
     avatarOverrides: parseAvatarOverrides(root.avatarOverrides),
     projectColorAssignments: parseColorAssignments(root.projectColorAssignments),
@@ -432,6 +436,7 @@ const updateSettings = (patch: unknown): EmberSettings => {
       .slice(0, 2000);
   }
   if (value.sessionNotes !== undefined) settings.sessionNotes = parseSessionNotes(value.sessionNotes);
+  if (value.composerDrafts !== undefined) settings.composerDrafts = parseComposerDrafts(value.composerDrafts);
   if (value.scheduledSessionBindings !== undefined) settings.scheduledSessionBindings = parseStringRecord(value.scheduledSessionBindings);
   if (value.avatarOverrides !== undefined) settings.avatarOverrides = parseAvatarOverrides(value.avatarOverrides);
   if (value.projectColorAssignments !== undefined) settings.projectColorAssignments = parseColorAssignments(value.projectColorAssignments);

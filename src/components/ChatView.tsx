@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Check, ChevronDown, FilePenLine, Loader2, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, FilePenLine, ListOrdered, Loader2, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -28,6 +28,7 @@ import type {
   Instance,
   InstanceDefaults,
   MessagesStatus,
+  MessageQueueSession,
   ModelOption,
   NewSessionOptions,
   Project,
@@ -37,6 +38,7 @@ import type {
   QuestionRequest,
   Session,
   SessionNote,
+  StoredComposerDraft,
 } from '../types';
 
 const loadModelPicker = () => import('./ModelPicker');
@@ -174,17 +176,24 @@ type Props = {
   /** `provider/model` keys the instance used most recently, newest first. */
   recentModels: string[];
   sending: boolean;
+  queue: MessageQueueSession | null;
   reloading: boolean;
   bypass: boolean;
   pinnedMessageIds: Set<string>;
   sessionNotes: SessionNote[];
+  savedComposerDrafts: Record<string, StoredComposerDraft>;
+  composerDraftsHydrated: boolean;
+  onComposerDraftsChange: (drafts: Record<string, StoredComposerDraft>) => void;
   onTogglePin: (message: ChatMessage) => void;
   onSessionNotesChange: (notes: SessionNote[]) => void;
+  onDeleteNote: (note: SessionNote) => void;
   onBypassChange: (enabled: boolean) => void;
   onNewSessionInstanceChange: (instanceId: string) => void;
   onCreateSession: (options: NewSessionOptions) => Promise<boolean>;
   onCancelNewSession: () => void;
   onSend: (input: PromptInput) => Promise<boolean>;
+  onQueue: (input: PromptInput) => Promise<boolean>;
+  onRemoveQueued: (itemId: string) => Promise<boolean>;
   onReload: () => void;
   onAbort: () => void;
   onPermission: (request: PermissionRequest, reply: PermissionReply) => Promise<boolean>;
@@ -232,6 +241,23 @@ const saveComposerDraft = (
     if (!oldest) break;
     drafts.delete(oldest);
   }
+};
+
+const composerFromStored = (draft: StoredComposerDraft): ComposerState => ({
+  text: draft.text,
+  modelId: draft.modelId ?? DEFAULT_MODEL,
+  variant: draft.variant ?? '',
+  mode: draft.mode ?? 'build',
+  attachments: [],
+  replyContext: null,
+});
+
+const storedFromComposer = (state: ComposerState): StoredComposerDraft => {
+  const draft: StoredComposerDraft = { text: state.text, updatedAt: Date.now() };
+  if (state.modelId !== DEFAULT_MODEL) draft.modelId = state.modelId;
+  if (state.variant) draft.variant = state.variant;
+  if (state.mode !== 'build') draft.mode = state.mode;
+  return draft;
 };
 
 export const shouldOfferSessionReload = (
@@ -499,17 +525,24 @@ export default function ChatView({
   defaultModelId,
   recentModels,
   sending,
+  queue,
   reloading,
   bypass,
   pinnedMessageIds,
   sessionNotes,
+  savedComposerDrafts,
+  composerDraftsHydrated,
+  onComposerDraftsChange,
   onTogglePin,
   onSessionNotesChange,
+  onDeleteNote,
   onBypassChange,
   onNewSessionInstanceChange,
   onCreateSession,
   onCancelNewSession,
   onSend,
+  onQueue,
+  onRemoveQueued,
   onReload,
   onAbort,
   onPermission,
@@ -535,7 +568,54 @@ export default function ChatView({
   const createdModelRef = React.useRef<{ key: string; variant?: string } | null>(null);
   const composerDraftsRef = React.useRef(new Map<string, ComposerState>());
   const previousComposerKeyRef = React.useRef<string | null>(null);
+  const draftsHydratedRef = React.useRef(false);
+  const draftPersistTimerRef = React.useRef<number | undefined>(undefined);
+  const onComposerDraftsChangeRef = React.useRef(onComposerDraftsChange);
+  onComposerDraftsChangeRef.current = onComposerDraftsChange;
   const composerKey = session ? `${session.instanceId}::${session.id}` : null;
+
+  React.useEffect(() => {
+    if (!composerDraftsHydrated || draftsHydratedRef.current) return;
+    draftsHydratedRef.current = true;
+    Object.entries(savedComposerDrafts).forEach(([key, draft]) => {
+      if (!composerDraftsRef.current.has(key)) {
+        composerDraftsRef.current.set(key, composerFromStored(draft));
+      }
+    });
+    const restored = composerKey ? composerDraftsRef.current.get(composerKey) : undefined;
+    if (restored && !text && attachments.length === 0 && !replyContext) {
+      setText(restored.text);
+      setModelId(restored.modelId);
+      setVariant(restored.variant);
+      setMode(restored.mode);
+    }
+  }, [composerDraftsHydrated, savedComposerDrafts]);
+
+  const snapshotComposerDrafts = () =>
+    Object.fromEntries(
+      [...composerDraftsRef.current.entries()].map(([key, draft]) => [key, storedFromComposer(draft)])
+    );
+
+  const scheduleDraftPersistence = () => {
+    if (!draftsHydratedRef.current) return;
+    if (draftPersistTimerRef.current !== undefined) window.clearTimeout(draftPersistTimerRef.current);
+    draftPersistTimerRef.current = window.setTimeout(() => {
+      draftPersistTimerRef.current = undefined;
+      onComposerDraftsChangeRef.current(snapshotComposerDrafts());
+    }, 600);
+  };
+
+  React.useEffect(() => () => {
+    if (draftPersistTimerRef.current === undefined) return;
+    window.clearTimeout(draftPersistTimerRef.current);
+    onComposerDraftsChangeRef.current(snapshotComposerDrafts());
+  }, []);
+
+  const updateComposerDraft = (key: string, draft: ComposerState | null) => {
+    if (draft) saveComposerDraft(composerDraftsRef.current, key, draft);
+    else composerDraftsRef.current.delete(key);
+    scheduleDraftPersistence();
+  };
 
   const last = messages[messages.length - 1];
   const busy = sending || state === 'active' || (last?.role === 'assistant' && !last.completed);
@@ -568,7 +648,7 @@ export default function ChatView({
     const previousKey = previousComposerKeyRef.current;
     if (previousKey && previousKey !== composerKey) {
       if (text.trim() || attachments.length || replyContext) {
-        saveComposerDraft(composerDraftsRef.current, previousKey, {
+        updateComposerDraft(previousKey, {
           text,
           modelId,
           variant,
@@ -577,7 +657,7 @@ export default function ChatView({
           replyContext,
         });
       } else {
-        composerDraftsRef.current.delete(previousKey);
+        updateComposerDraft(previousKey, null);
       }
     }
     previousComposerKeyRef.current = composerKey;
@@ -646,13 +726,16 @@ export default function ChatView({
     return created;
   };
 
-  const canSend = Boolean(session) && !sending && (text.trim().length > 0 || attachments.length > 0);
+  const canSend = Boolean(session) && (text.trim().length > 0 || attachments.length > 0);
+  const queueItems = queue?.items ?? [];
+  const shouldQueue = Boolean(session && (busy || queueItems.length > 0));
 
   const submit = () => {
     if (!canSend) return;
     const submitted: ComposerState = { text: text.trim(), modelId, variant, mode, attachments, replyContext };
     const submittedKey = composerKey;
-    onSend({
+    const send = shouldQueue ? onQueue : onSend;
+    send({
       text: submitted.text,
       model,
       mode: submitted.mode,
@@ -662,13 +745,13 @@ export default function ChatView({
     }).then((sent) => {
       if (sent) return;
       if (submittedKey && previousComposerKeyRef.current !== submittedKey) {
-        saveComposerDraft(composerDraftsRef.current, submittedKey, submitted);
+        updateComposerDraft(submittedKey, submitted);
         return;
       }
       if (submittedKey && composerDraftsRef.current.has(submittedKey)) {
         const currentDraft = composerDraftsRef.current.get(submittedKey);
         if (currentDraft) {
-          saveComposerDraft(composerDraftsRef.current, submittedKey, {
+          updateComposerDraft(submittedKey, {
             ...currentDraft,
             attachments: currentDraft.attachments.length ? currentDraft.attachments : submitted.attachments,
             replyContext: currentDraft.replyContext ?? submitted.replyContext,
@@ -683,7 +766,7 @@ export default function ChatView({
       setAttachments(submitted.attachments);
       setReplyContext(submitted.replyContext);
     });
-    if (composerKey) composerDraftsRef.current.delete(composerKey);
+    if (composerKey) updateComposerDraft(composerKey, null);
     setText('');
     setAttachments([]);
     setAttachmentError(null);
@@ -705,7 +788,7 @@ export default function ChatView({
     setText((current) => {
       const next = current.trim() ? `${current}\n\n${noteText.trim()}` : noteText.trim();
       if (composerKey) {
-        saveComposerDraft(composerDraftsRef.current, composerKey, {
+        updateComposerDraft(composerKey, {
           text: next,
           modelId,
           variant,
@@ -857,6 +940,60 @@ export default function ChatView({
       {session ? (
         <div className="safe-composer flex-none border-t bg-card p-2.5 sm:p-3">
           <div className="mx-auto flex max-w-[760px] flex-col gap-2">
+            {queueItems.length ? (
+              <section
+                aria-label="Queued messages"
+                className="rounded-xl border bg-background/80 px-3 py-2 text-[11.5px] shadow-sm"
+              >
+                <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
+                  <ListOrdered className="size-3.5 text-highlight" />
+                  <span className="font-medium text-foreground">
+                    {queueItems.length} queued {queueItems.length === 1 ? 'message' : 'messages'}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    {queue?.sendingId ? 'Sending the next one…' : 'They send when this agent is idle.'}
+                  </span>
+                </div>
+                <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
+                  {queueItems.map((item) => {
+                    const sendingItem = queue?.sendingId === item.id;
+                    const preview = item.text.trim() || item.content.trim() ||
+                      `${item.attachments.length} attachment${item.attachments.length === 1 ? '' : 's'}`;
+                    return (
+                      <li
+                        key={item.id}
+                        className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5"
+                      >
+                        {sendingItem ? (
+                          <Loader2 className="size-3 flex-none animate-spin text-highlight" />
+                        ) : (
+                          <span className="size-1.5 flex-none rounded-full bg-highlight" aria-hidden="true" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate" title={preview}>{preview}</span>
+                        {item.attachments.length ? (
+                          <span className="flex-none rounded bg-background px-1 py-0.5 text-[10px] text-muted-foreground">
+                            {item.attachments.length} file{item.attachments.length === 1 ? '' : 's'}
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          aria-disabled={sendingItem}
+                          onClick={() => {
+                            if (!sendingItem) void onRemoveQueued(item.id);
+                          }}
+                          aria-label={sendingItem
+                            ? `Queued message is being sent: ${preview.slice(0, 60)}`
+                            : `Remove queued message: ${preview.slice(0, 60)}`}
+                          className="flex-none rounded p-0.5 text-muted-foreground hover:text-destructive aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </section>
+            ) : null}
             <motion.div
               layout
             className={cn(
@@ -887,14 +1024,14 @@ export default function ChatView({
               ref={textareaRef}
               value={text}
               rows={1}
-              placeholder={session ? 'Message the agent…' : 'Select a session first'}
-              aria-label="Message the agent"
+              placeholder={session ? (shouldQueue ? 'Queue a follow-up…' : 'Message the agent…') : 'Select a session first'}
+              aria-label={shouldQueue ? 'Queue a follow-up message' : 'Message the agent'}
               disabled={!session}
               onChange={(event) => {
                 setText(event.target.value);
                 if (composerKey) {
                   if (event.target.value.trim() || attachments.length || replyContext) {
-                    saveComposerDraft(composerDraftsRef.current, composerKey, {
+                    updateComposerDraft(composerKey, {
                       text: event.target.value,
                       modelId,
                       variant,
@@ -903,7 +1040,7 @@ export default function ChatView({
                       replyContext,
                     });
                   } else {
-                    composerDraftsRef.current.delete(composerKey);
+                    updateComposerDraft(composerKey, null);
                   }
                 }
               }}
@@ -1088,7 +1225,8 @@ export default function ChatView({
                 className="size-7 rounded-full"
                 disabled={!canSend}
                 onClick={submit}
-                aria-label="Send"
+                aria-label={shouldQueue ? 'Queue message' : 'Send'}
+                title={shouldQueue ? 'Queue message' : 'Send'}
               >
                 <ArrowUp className={cn(sending && 'animate-pulse')} />
               </Button>
@@ -1110,6 +1248,7 @@ export default function ChatView({
             focusRequest={contextRequest}
             onClose={() => setContextOpen(false)}
             onNotesChange={onSessionNotesChange}
+            onDeleteNote={onDeleteNote}
             onInsertNotes={insertNotes}
             onJump={jumpToMessage}
             onReply={replyToMessage}

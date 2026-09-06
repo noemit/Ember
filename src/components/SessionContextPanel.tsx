@@ -16,6 +16,7 @@ type Props = {
   focusRequest: number;
   onClose: () => void;
   onNotesChange: (notes: SessionNote[]) => void;
+  onDeleteNote: (note: SessionNote) => void;
   onInsertNotes: (text: string) => void;
   onJump: (messageId: string) => void;
   onReply: (message: ChatMessage) => void;
@@ -48,6 +49,7 @@ export default function SessionContextPanel({
   focusRequest,
   onClose,
   onNotesChange,
+  onDeleteNote,
   onInsertNotes,
   onJump,
   onReply,
@@ -102,12 +104,12 @@ export default function SessionContextPanel({
     });
   };
 
-  const removeNote = (id: string) => {
-    onNotesChange(notes.filter((note) => note.id !== id));
+  const removeNote = (note: SessionNote) => {
+    onDeleteNote(note);
     setSelectedIds((current) => {
-      if (!current.has(id)) return current;
+      if (!current.has(note.id)) return current;
       const next = new Set(current);
-      next.delete(id);
+      next.delete(note.id);
       return next;
     });
   };
@@ -203,7 +205,7 @@ export default function SessionContextPanel({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    onClick={() => removeNote(note.id)}
+                    onClick={() => removeNote(note)}
                     aria-label="Delete note"
                     className="text-muted-foreground hover:text-destructive"
                   >

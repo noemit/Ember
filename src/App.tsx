@@ -17,8 +17,10 @@ import {
   abortSession,
   createClientMessageId,
   createSession,
+  enqueueMessage,
   errorMessageOf,
   listInstances,
+  loadAllMessageQueues,
   loadAllPermissions,
   loadAllProjects,
   loadAllQuestions,
@@ -36,6 +38,7 @@ import {
   previewOf,
   reconcilePolledMessages,
   rejectQuestion,
+  removeQueuedMessage,
   replyPermission,
   replyQuestion,
   sendPrompt,
@@ -49,6 +52,7 @@ import type {
   BallState,
   ChatMessage,
   MessagesStatus,
+  MessageQueueSession,
   EmberSettings,
   EmberSettingsPatch,
   Instance,
@@ -60,6 +64,7 @@ import type {
   Session,
   SessionNote,
   SessionRef,
+  StoredComposerDraft,
   NewSessionOptions,
 } from './types';
 
@@ -103,6 +108,7 @@ const DEFAULT_SETTINGS: EmberSettings = {
   instanceDefaults: {},
   pinnedMessages: [],
   sessionNotes: {},
+  composerDrafts: {},
   scheduledSessionBindings: {},
   avatarOverrides: {},
   projectColorAssignments: {},
@@ -134,8 +140,44 @@ const sameNumberRecord = (a: Record<string, number>, b: Record<string, number>):
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 };
 
+const composerDraftSignature = (drafts: Record<string, StoredComposerDraft>): string =>
+  JSON.stringify(
+    Object.keys(drafts).sort().map((key) => {
+      const draft = drafts[key];
+      return [key, draft.text, draft.modelId ?? '', draft.variant ?? '', draft.mode ?? ''];
+    })
+  );
+
+const copyText = async (text: string): Promise<boolean> => {
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    textarea.remove();
+  }
+};
+
 const responseError = (data: unknown, fallback: string): string =>
   errorMessageOf(data) ?? fallback;
+
+type ActionNotice = {
+  message: string;
+  actionLabel?: string;
+  action?: () => void;
+};
 
 const messagePinKey = (session: SessionRef, messageId: string): string =>
   `${sessionKey(session)}::${messageId}`;
@@ -155,6 +197,9 @@ export default function App() {
   const [questionsByInstance, setQuestionsByInstance] = React.useState<
     Record<string, QuestionRequest[]>
   >({});
+  const [queuesByInstance, setQueuesByInstance] = React.useState<
+    Record<string, MessageQueueSession[]>
+  >({});
   const [previews, setPreviews] = React.useState<Record<string, string>>({});
   const [previewVersions, setPreviewVersions] = React.useState<Record<string, number | undefined>>({});
   const [selected, setSelected] = React.useState<SessionRef | null>(null);
@@ -164,11 +209,14 @@ export default function App() {
   const [modelsByInstance, setModelsByInstance] = React.useState<Record<string, ModelList>>({});
   const [scheduledTaskNames, setScheduledTaskNames] = React.useState<Record<string, string>>({});
   const [settings, setSettings] = React.useState<EmberSettings>(DEFAULT_SETTINGS);
+  const [settingsLoaded, setSettingsLoaded] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [sendingKeys, setSendingKeys] = React.useState<Set<string>>(() => new Set());
   const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
   const [bypassOverrides, setBypassOverrides] = React.useState<Record<string, boolean>>({});
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [actionNotice, setActionNotice] = React.useState<ActionNotice | null>(null);
+  const [noticePaused, setNoticePaused] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [settingsActivated, setSettingsActivated] = React.useState(false);
   const [avatarPickerSession, setAvatarPickerSession] = React.useState<Session | null>(null);
@@ -177,6 +225,14 @@ export default function App() {
   const [showScheduled, setShowScheduled] = React.useState(false);
   const [mobileRailOpen, setMobileRailOpen] = React.useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
+  const [actionErrorRetry, setActionErrorRetry] = React.useState<(() => void) | null>(null);
+  const [statusAnnouncement, setStatusAnnouncement] = React.useState('');
+  const [errorCopied, setErrorCopied] = React.useState(false);
+
+  const showActionError = (message: string | null, retry?: () => void) => {
+    setActionError(message);
+    setActionErrorRetry(() => retry ?? null);
+  };
 
   React.useEffect(() => {
     if (!mobileRailOpen) return;
@@ -197,6 +253,26 @@ export default function App() {
     return () => window.removeEventListener('keydown', openOnShortcut);
   }, []);
 
+  React.useEffect(() => {
+    setErrorCopied(false);
+  }, [actionError]);
+
+  React.useEffect(() => {
+    if (!errorCopied) return;
+    const timer = window.setTimeout(() => setErrorCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [errorCopied]);
+
+  React.useEffect(() => {
+    setNoticePaused(false);
+  }, [actionNotice]);
+
+  React.useEffect(() => {
+    if (!actionNotice || noticePaused) return;
+    const timer = window.setTimeout(() => setActionNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [actionNotice, noticePaused]);
+
   // Keep a live ref to the selected session so pollers can read its
   // directory (for routing) without re-running the effect on every session list refresh.
   const selectedSessionRef = React.useRef<Session | null>(null);
@@ -206,6 +282,40 @@ export default function App() {
   const bypassReplyIds = React.useRef(new Set<string>());
   const settingsRevision = React.useRef(0);
   const scheduledBindingsRef = React.useRef<Record<string, string>>({});
+  const settingsRef = React.useRef(settings);
+  settingsRef.current = settings;
+  const lastStatusAnnouncementRef = React.useRef<{
+    key: string;
+    state: BallState;
+    signature: string;
+  } | null>(null);
+  const statusAnnouncementTimerRef = React.useRef<number | undefined>(undefined);
+
+  const announceStatus = (message: string) => {
+    if (statusAnnouncementTimerRef.current !== undefined) {
+      window.clearTimeout(statusAnnouncementTimerRef.current);
+      statusAnnouncementTimerRef.current = undefined;
+    }
+    if (!message) {
+      setStatusAnnouncement('');
+      return;
+    }
+    // Clear first so repeated identical messages still trigger the live region.
+    setStatusAnnouncement('');
+    statusAnnouncementTimerRef.current = window.setTimeout(() => {
+      setStatusAnnouncement(message);
+      statusAnnouncementTimerRef.current = undefined;
+    }, 40);
+  };
+
+  React.useEffect(
+    () => () => {
+      if (statusAnnouncementTimerRef.current !== undefined) {
+        window.clearTimeout(statusAnnouncementTimerRef.current);
+      }
+    },
+    []
+  );
 
   const readyIds = React.useMemo(
     () => instances.filter((instance) => instance.attachable).map((instance) => instance.id),
@@ -260,6 +370,9 @@ export default function App() {
   }, [statesByInstance, permissions, questions]);
 
   const selectedKey = selected ? sessionKey(selected) : null;
+  React.useEffect(() => {
+    setActionErrorRetry(null);
+  }, [selectedKey]);
   const sending = selectedKey ? sendingKeys.has(selectedKey) : false;
   const bypass = selectedKey && selected
     ? bypassOverrides[selectedKey] ?? settings.instanceDefaults[selected.instanceId]?.bypass ?? false
@@ -269,6 +382,9 @@ export default function App() {
     : null;
   const selectedInstance = selected
     ? instances.find((instance) => instance.id === selected.instanceId) ?? null
+    : null;
+  const selectedQueue = selected
+    ? (queuesByInstance[selected.instanceId] ?? []).find((queue) => queue.sessionId === selected.sessionId) ?? null
     : null;
   const allocatedProjectColors = React.useMemo(() => {
     const keys = Object.entries(projectsByInstance).flatMap(([instanceId, projects]) =>
@@ -369,11 +485,14 @@ export default function App() {
 
   const refreshInstances = React.useCallback(async () => {
     setRefreshing(true);
-    setActionError(null);
+    showActionError(null);
     try {
       setInstances(await listInstances());
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not reprobe instances.');
+      showActionError(
+        err instanceof Error ? err.message : 'Could not reprobe instances.',
+        () => void refreshInstances()
+      );
     } finally {
       setRefreshing(false);
     }
@@ -387,10 +506,15 @@ export default function App() {
         if (cancelled) return;
         setSettings({ ...DEFAULT_SETTINGS, ...stored });
         setInstances(list);
+        setSettingsLoaded(true);
       } catch (err) {
         if (cancelled) return;
+        setSettingsLoaded(true);
         setLoading(false);
-        setActionError(err instanceof Error ? err.message : 'Ember could not finish starting.');
+        showActionError(
+          err instanceof Error ? err.message : 'Ember could not finish starting.',
+          () => window.location.reload()
+        );
       }
     })();
     return () => {
@@ -417,7 +541,7 @@ export default function App() {
         setModelsByInstance(Object.fromEntries(modelLists));
       } catch (err) {
         if (!cancelled) {
-          setActionError(err instanceof Error ? err.message : 'Could not load instance metadata.');
+          showActionError(err instanceof Error ? err.message : 'Could not load instance metadata.');
         }
       }
     })();
@@ -482,15 +606,17 @@ export default function App() {
         if (selectedSessionRef.current?.directory) {
           directoryHints[selectedSessionRef.current.instanceId] = [selectedSessionRef.current.directory];
         }
-        const [nextStates, nextPermissions, nextQuestions] = await Promise.all([
+        const [nextStates, nextPermissions, nextQuestions, nextQueues] = await Promise.all([
           loadAllSessionStates(readyIds),
           loadAllPermissions(readyIds, directoryHints),
           loadAllQuestions(readyIds, directoryHints),
+          loadAllMessageQueues(readyIds),
         ]);
         if (cancelled) return;
         setStatesByInstance((prev) => ({ ...prev, ...nextStates }));
         setPermissionsByInstance((prev) => ({ ...prev, ...nextPermissions }));
         setQuestionsByInstance((prev) => ({ ...prev, ...nextQuestions }));
+        setQueuesByInstance((prev) => ({ ...prev, ...nextQueues }));
       } catch (err) {
         console.error('Failed to load session state', err);
       } finally {
@@ -612,17 +738,17 @@ export default function App() {
     });
 
   const beginNewAgent = (instanceId: string) => {
-    setActionError(null);
+    showActionError(null);
     setSelected(null);
     setNewSessionInstanceId(instanceId);
   };
 
   const handleCreateSession = async (options: NewSessionOptions): Promise<boolean> => {
-    setActionError(null);
+    showActionError(null);
     try {
       const created = await createSession(options.instanceId, options.directory);
       if (!created) {
-        setActionError('Could not create a new agent.');
+        showActionError('Could not create a new agent.');
         return false;
       }
       const now = Date.now();
@@ -660,14 +786,14 @@ export default function App() {
       }
       return true;
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not create a new agent.');
+      showActionError(err instanceof Error ? err.message : 'Could not create a new agent.');
       return false;
     }
   };
 
   const handleSend = async (input: PromptInput): Promise<boolean> => {
     if (!selected) return false;
-    setActionError(null);
+    showActionError(null);
     const { instanceId, sessionId } = selected;
     const { model, text, attachments = [], variant } = input;
     const key = sessionKey(selected);
@@ -708,7 +834,10 @@ export default function App() {
       pendingOptimisticIds.current.delete(optimisticId);
       if (!sent.ok) {
         removeOptimistic();
-        setActionError(responseError(sent.data, 'Message could not be sent.'));
+        showActionError(
+          responseError(sent.data, 'Message could not be sent.'),
+          () => void handleSend(input)
+        );
         return false;
       }
       accepted = true;
@@ -735,12 +864,13 @@ export default function App() {
     } catch (err) {
       console.error('Send failed', err);
       if (!accepted) removeOptimistic();
-      setActionError(
+      showActionError(
         accepted
           ? 'Message was sent, but the transcript could not be refreshed yet.'
           : err instanceof Error
             ? err.message
-            : 'Message could not be sent.'
+            : 'Message could not be sent.',
+        accepted ? undefined : () => void handleSend(input)
       );
       return accepted;
     } finally {
@@ -754,10 +884,92 @@ export default function App() {
     }
   };
 
+  const applyQueueMutation = (
+    instanceId: string,
+    mutation: { session: MessageQueueSession } | null
+  ) => {
+    if (!mutation) return;
+    setQueuesByInstance((prev) => {
+      const existing = prev[instanceId] ?? [];
+      const without = existing.filter((queue) => queue.sessionId !== mutation.session.sessionId);
+      return {
+        ...prev,
+        [instanceId]: mutation.session.items.length || mutation.session.sendingId
+          ? [mutation.session, ...without]
+          : without,
+      };
+    });
+  };
+
+  const handleQueueMessage = async (input: PromptInput): Promise<boolean> => {
+    if (!selected) return false;
+    showActionError(null);
+    const { instanceId, sessionId } = selected;
+    const directory = selectedSession?.directory;
+    if (!directory) {
+      showActionError('Could not queue this message because the session folder is unknown.');
+      return false;
+    }
+    const modelList = modelsByInstance[instanceId];
+    const model = input.model ?? modelList?.models.find(
+      (candidate) => modelRefKey(candidate) === modelList.defaultModelId
+    );
+    if (!model) {
+      showActionError('Could not queue this message until the instance default model is known.');
+      return false;
+    }
+
+    try {
+      const queued = await enqueueMessage(instanceId, sessionId, directory, { ...input, model });
+      if (!queued.ok || !queued.data) {
+        showActionError(
+          queued.status === 404
+            ? 'This OpenChamber instance does not support message queueing yet.'
+            : 'Message could not be queued.',
+          queued.status === 404 ? undefined : () => void handleQueueMessage(input)
+        );
+        return false;
+      }
+      applyQueueMutation(instanceId, queued.data);
+      return true;
+    } catch (err) {
+      console.error('Queue failed', err);
+      showActionError(
+        err instanceof Error ? err.message : 'Message could not be queued.',
+        () => void handleQueueMessage(input)
+      );
+      return false;
+    }
+  };
+
+  const handleRemoveQueuedMessage = async (itemId: string): Promise<boolean> => {
+    if (!selected) return false;
+    showActionError(null);
+    try {
+      const removed = await removeQueuedMessage(selected.instanceId, selected.sessionId, itemId);
+      if (!removed.ok) {
+        showActionError(
+          removed.status === 409 ? 'That queued message is already being sent.' : 'Could not remove the queued message.',
+          removed.status === 409 ? undefined : () => void handleRemoveQueuedMessage(itemId)
+        );
+        return false;
+      }
+      applyQueueMutation(selected.instanceId, removed.data);
+      return true;
+    } catch (err) {
+      console.error('Remove queued message failed', err);
+      showActionError(
+        err instanceof Error ? err.message : 'Could not remove the queued message.',
+        () => void handleRemoveQueuedMessage(itemId)
+      );
+      return false;
+    }
+  };
+
   const handleReloadSession = async (session: Session) => {
     const key = sessionKey(session);
     if (reloadingKeys.has(key)) return;
-    setActionError(null);
+    showActionError(null);
     setReloadingKeys((current) => new Set(current).add(key));
     const hints = session.directory ? { [session.instanceId]: [session.directory] } : {};
     const results = await Promise.allSettled([
@@ -796,7 +1008,10 @@ export default function App() {
       setQuestionsByInstance((current) => ({ ...current, [session.instanceId]: questionResult.value! }));
     }
     if (results.some((result) => result.status === 'rejected')) {
-      setActionError('Some session data could not be refreshed. Ember will keep retrying.');
+      showActionError(
+        'Some session data could not be refreshed.',
+        () => void handleReloadSession(session)
+      );
     }
     setReloadingKeys((current) => {
       const next = new Set(current);
@@ -808,11 +1023,15 @@ export default function App() {
   // Archive/restore on the source OpenChamber instance, then mirror locally so the
   // row leaves the current view without waiting for the next poll.
   const handleArchive = async (session: Session, archived: boolean) => {
-    setActionError(null);
+    showActionError(null);
+    setActionNotice(null);
     try {
       const ok = await setSessionArchived(session, archived);
       if (!ok) {
-        setActionError(archived ? 'Could not archive this session.' : 'Could not restore this session.');
+        showActionError(
+          archived ? 'Could not archive this session.' : 'Could not restore this session.',
+          () => void handleArchive(session, archived)
+        );
         return;
       }
       setSessionsByInstance((prev) => ({
@@ -822,13 +1041,23 @@ export default function App() {
         ),
       }));
       if (selectedKey === sessionKey(session)) setSelected(null);
+      setActionNotice(
+        archived
+          ? {
+              message: 'Session archived.',
+              actionLabel: 'Undo',
+              action: () => void handleArchive(session, false),
+            }
+          : { message: 'Session restored.' }
+      );
     } catch (err) {
-      setActionError(
+      showActionError(
         err instanceof Error
           ? err.message
           : archived
             ? 'Could not archive this session.'
-            : 'Could not restore this session.'
+            : 'Could not restore this session.',
+        () => void handleArchive(session, archived)
       );
     }
   };
@@ -838,14 +1067,17 @@ export default function App() {
     request: PermissionRequest,
     reply: PermissionReply
   ): Promise<boolean> => {
-    setActionError(null);
+    showActionError(null);
     try {
       const directory = request.directory ?? (sessionsByInstance[request.instanceId] ?? []).find(
         (session) => session.id === request.sessionId
       )?.directory;
       const ok = await replyPermission(request, reply, directory);
       if (!ok) {
-        setActionError('Could not reply to this permission request.');
+        showActionError(
+          'Could not reply to this permission request.',
+          () => void handlePermission(request, reply)
+        );
         return false;
       }
       setPermissionsByInstance((prev) => ({
@@ -854,8 +1086,9 @@ export default function App() {
       }));
       return true;
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : 'Could not reply to this permission request.'
+      showActionError(
+        err instanceof Error ? err.message : 'Could not reply to this permission request.',
+        () => void handlePermission(request, reply)
       );
       return false;
     }
@@ -889,25 +1122,29 @@ export default function App() {
     request: QuestionRequest,
     answers: QuestionAnswers | null
   ): Promise<boolean> => {
-    setActionError(null);
+    showActionError(null);
     try {
       const directory = request.directory ?? sessionDirectory(request.instanceId, request.sessionId);
       const ok = answers
         ? await replyQuestion(request, answers, directory)
         : await rejectQuestion(request, directory);
       if (!ok) {
-        setActionError(answers ? 'Could not submit this answer.' : 'Could not dismiss this question.');
+        showActionError(
+          answers ? 'Could not submit this answer.' : 'Could not dismiss this question.',
+          () => void handleQuestion(request, answers)
+        );
         return false;
       }
       dropQuestion(request);
       return true;
     } catch (err) {
-      setActionError(
+      showActionError(
         err instanceof Error
           ? err.message
           : answers
             ? 'Could not submit this answer.'
-            : 'Could not dismiss this question.'
+            : 'Could not dismiss this question.',
+        () => void handleQuestion(request, answers)
       );
       return false;
     }
@@ -915,12 +1152,12 @@ export default function App() {
 
   const handleAbort = async () => {
     if (!selectedSession) return;
-    setActionError(null);
+    showActionError(null);
     const key = sessionKey(selectedSession);
     try {
       const aborted = await abortSession(selectedSession);
       if (!aborted) {
-        setActionError('Could not stop this agent.');
+        showActionError('Could not stop this agent.', () => void handleAbort());
         return;
       }
       const next = await loadMessages(
@@ -933,12 +1170,18 @@ export default function App() {
       }
     } catch (err) {
       console.error('Abort refresh failed', err);
-      setActionError(err instanceof Error ? err.message : 'Could not stop this agent.');
+      showActionError(
+        err instanceof Error ? err.message : 'Could not stop this agent.',
+        () => void handleAbort()
+      );
     }
   };
 
-  const handleSettings = (patch: EmberSettingsPatch) => {
-    setActionError(null);
+  const handleSettings = (
+    patch: EmberSettingsPatch,
+    options?: { preserveActionError?: boolean }
+  ) => {
+    if (!options?.preserveActionError) showActionError(null);
     const revision = ++settingsRevision.current;
     setSettings((prev) => ({ ...prev, ...patch }));
     void window.ember
@@ -950,7 +1193,10 @@ export default function App() {
       })
       .catch(async (err) => {
         if (settingsRevision.current !== revision) return;
-        setActionError(err instanceof Error ? err.message : 'Could not save settings.');
+        showActionError(
+          err instanceof Error ? err.message : 'Could not save settings.',
+          () => handleSettings(patch, options)
+        );
         try {
           const stored = await window.ember.getSettings();
           if (settingsRevision.current === revision) {
@@ -1031,6 +1277,23 @@ export default function App() {
     });
   };
 
+  const handleComposerDraftsChange = (drafts: Record<string, StoredComposerDraft>) => {
+    const composerDrafts = Object.fromEntries(
+      Object.entries(drafts)
+        .filter(([key, draft]) => key.length > 0 && key.length <= 500 && draft.text.trim())
+        .slice(-50)
+        .map(([key, draft]) => [key, {
+          text: draft.text.slice(0, 200_000),
+          ...(draft.modelId ? { modelId: draft.modelId } : {}),
+          ...(draft.variant ? { variant: draft.variant } : {}),
+          ...(draft.mode ? { mode: draft.mode } : {}),
+          updatedAt: draft.updatedAt || Date.now(),
+        }])
+    );
+    if (composerDraftSignature(composerDrafts) === composerDraftSignature(settings.composerDrafts)) return;
+    handleSettings({ composerDrafts }, { preserveActionError: true });
+  };
+
   const handleSessionNotes = (notes: SessionNote[]) => {
     if (!selectedKey) return;
     const sessionNotes = { ...settings.sessionNotes };
@@ -1041,6 +1304,30 @@ export default function App() {
     if (clean.length) sessionNotes[selectedKey] = clean;
     else delete sessionNotes[selectedKey];
     handleSettings({ sessionNotes });
+  };
+
+  const handleDeleteSessionNote = (deleted: SessionNote) => {
+    if (!selectedKey) return;
+    const key = selectedKey;
+    const current = settingsRef.current.sessionNotes[key] ?? [];
+    const index = current.findIndex((note) => note.id === deleted.id);
+    if (index < 0) return;
+    handleSessionNotes(current.filter((note) => note.id !== deleted.id));
+    showActionError(null);
+    setActionNotice({
+      message: 'Note deleted.',
+      actionLabel: 'Undo',
+      action: () => {
+        const latest = settingsRef.current.sessionNotes[key] ?? [];
+        if (latest.some((note) => note.id === deleted.id)) return;
+        const restored = [...latest];
+        restored.splice(Math.min(index, restored.length), 0, deleted);
+        handleSettings({
+          sessionNotes: { ...settingsRef.current.sessionNotes, [key]: restored },
+        });
+        setActionNotice({ message: 'Note restored.' });
+      },
+    });
   };
 
   const selectedModels = selected ? modelsByInstance[selected.instanceId] : undefined;
@@ -1062,10 +1349,57 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const selectedQuestions = React.useMemo(() => forSelected(questions), [questions, selected]);
 
+  React.useEffect(() => {
+    if (!selectedKey) {
+      lastStatusAnnouncementRef.current = null;
+      setStatusAnnouncement('');
+      return;
+    }
+    const previous = lastStatusAnnouncementRef.current;
+    const sessionLabel = selectedSession?.title ?? 'selected session';
+    const requestSignature = [
+      ...selectedPermissions.map((request) => `p:${request.id}`),
+      ...selectedQuestions.map((request) => `q:${request.id}`),
+      ...(selectedQueue?.items.map((item) => `m:${item.id}`) ?? []),
+      selectedQueue?.sendingId ? `s:${selectedQueue.sendingId}` : '',
+    ].join('|');
+    let message = '';
+    if (selectedPermissions.length > 0) {
+      message = `Agent in ${sessionLabel} is waiting for approval.`;
+    } else if (selectedQuestions.length > 0) {
+      message = `Agent in ${sessionLabel} has a question.`;
+    } else if (selectedQueue?.sendingId) {
+      message = `Sending a queued message in ${sessionLabel}.`;
+    } else if (selectedQueue?.items.length) {
+      const count = selectedQueue.items.length;
+      message = selectedState === 'active'
+        ? `Agent in ${sessionLabel} is working; ${count} ${count === 1 ? 'message is' : 'messages are'} queued.`
+        : `${count} queued ${count === 1 ? 'message' : 'messages'} in ${sessionLabel}.`;
+    } else if (selectedState === 'active') {
+      message = `Agent in ${sessionLabel} is working.`;
+    } else if (selectedState === 'error') {
+      message = `Agent in ${sessionLabel} stopped with an error.`;
+    } else if (
+      previous?.key === selectedKey &&
+      previous.state === 'active' &&
+      selectedState === 'idle'
+    ) {
+      message = `Agent in ${sessionLabel} finished.`;
+    }
+    const signature = `${selectedState}:${requestSignature}:${message}`;
+    if (previous?.key !== selectedKey || previous.signature !== signature) {
+      announceStatus(message);
+    }
+    lastStatusAnnouncementRef.current = { key: selectedKey, state: selectedState, signature };
+  }, [selectedKey, selectedSession, selectedState, selectedPermissions, selectedQuestions, selectedQueue]);
+
   return (
     <MotionConfig reducedMotion="user">
       <TooltipProvider delayDuration={300}>
         <div className="flex h-full flex-col">
+          <div className="sr-only" aria-live="polite" aria-atomic="true">
+            {statusAnnouncement}
+          </div>
           <InstanceBar
             instances={instances}
             hidden={hidden}
@@ -1159,12 +1493,17 @@ export default function App() {
               defaultModelId={selectedModels?.defaultModelId ?? null}
               recentModels={recentModels}
               sending={sending}
+              queue={selectedQueue}
               reloading={selectedKey ? reloadingKeys.has(selectedKey) : false}
               bypass={bypass}
               pinnedMessageIds={pinnedMessageIds}
               sessionNotes={selectedKey ? settings.sessionNotes[selectedKey] ?? [] : []}
+              savedComposerDrafts={settings.composerDrafts}
+              composerDraftsHydrated={settingsLoaded}
+              onComposerDraftsChange={handleComposerDraftsChange}
               onTogglePin={handleTogglePin}
               onSessionNotesChange={handleSessionNotes}
+              onDeleteNote={handleDeleteSessionNote}
               onBypassChange={(enabled) => {
                 if (selectedKey) {
                   setBypassOverrides((prev) => ({ ...prev, [selectedKey]: enabled }));
@@ -1174,6 +1513,8 @@ export default function App() {
               onCreateSession={handleCreateSession}
               onCancelNewSession={() => setNewSessionInstanceId(null)}
               onSend={handleSend}
+              onQueue={handleQueueMessage}
+              onRemoveQueued={handleRemoveQueuedMessage}
               onReload={() => {
                 if (selectedSession) void handleReloadSession(selectedSession);
               }}
@@ -1235,20 +1576,82 @@ export default function App() {
             </React.Suspense>
           ) : null}
 
-          {actionError ? (
-            <div
-              role="alert"
-              className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 z-[100] flex max-w-[420px] items-start gap-3 rounded-lg border border-destructive/40 bg-popover px-3 py-2.5 text-[12px] shadow-lg sm:left-auto"
-            >
-              <span className="min-w-0 flex-1">{actionError}</span>
-              <button
-                type="button"
-                className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
-                onClick={() => setActionError(null)}
-                aria-label="Dismiss error"
-              >
-                Dismiss
-              </button>
+          {actionError || actionNotice ? (
+            <div className="fixed top-[calc(3.5rem+env(safe-area-inset-top))] right-3 left-3 z-[100] flex max-w-[420px] flex-col gap-2 sm:top-auto sm:right-3 sm:bottom-[max(0.75rem,env(safe-area-inset-bottom))] sm:left-auto">
+              {actionError ? (
+                <div
+                  role="alert"
+                  className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-popover px-3 py-2.5 text-[12px] shadow-lg"
+                >
+                  <span className="min-w-0 flex-1">{actionError}</span>
+                  {actionErrorRetry ? (
+                    <button
+                      type="button"
+                      className="rounded font-medium text-highlight hover:underline focus-visible:outline-2"
+                      onClick={() => actionErrorRetry()}
+                      aria-label="Retry failed action"
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
+                    onClick={() => {
+                      void copyText(actionError).then((copied) => setErrorCopied(copied));
+                    }}
+                    aria-label="Copy error message"
+                  >
+                    {errorCopied ? 'Copied' : 'Copy'}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
+                    onClick={() => showActionError(null)}
+                    aria-label="Dismiss error"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              ) : null}
+              {actionNotice ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  onFocusCapture={() => setNoticePaused(true)}
+                  onBlurCapture={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setNoticePaused(false);
+                    }
+                  }}
+                  onPointerEnter={() => setNoticePaused(true)}
+                  onPointerLeave={() => setNoticePaused(false)}
+                  className="flex items-start gap-3 rounded-lg border border-highlight/35 bg-popover px-3 py-2.5 text-[12px] shadow-lg"
+                >
+                  <span className="min-w-0 flex-1">{actionNotice.message}</span>
+                  {actionNotice.actionLabel && actionNotice.action ? (
+                    <button
+                      type="button"
+                      className="rounded font-medium text-highlight hover:underline focus-visible:outline-2"
+                      onClick={() => {
+                        const action = actionNotice.action;
+                        setActionNotice(null);
+                        action?.();
+                      }}
+                    >
+                      {actionNotice.actionLabel}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
+                    onClick={() => setActionNotice(null)}
+                    aria-label="Dismiss message"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

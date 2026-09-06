@@ -182,6 +182,51 @@ export type QuestionRequest = {
 /** One answer per question: the chosen option labels, or a single custom string. */
 export type QuestionAnswers = string[][];
 
+export type QueuedMessageSendConfig = {
+  providerID: string;
+  modelID: string;
+  agent?: string;
+  variant?: string;
+};
+
+export type QueuedMessageAttachment = {
+  id?: string;
+  filename: string;
+  mimeType: string;
+  size?: number;
+  source?: string;
+  /** Present only when an item is taken back for editing. */
+  dataUrl?: string;
+};
+
+export type QueuedMessage = {
+  id: string;
+  createdAt: number;
+  content: string;
+  text: string;
+  attachments: QueuedMessageAttachment[];
+  sendConfig: QueuedMessageSendConfig;
+  agentMention?: string;
+};
+
+export type MessageQueueSession = {
+  sessionId: string;
+  directory: string;
+  items: QueuedMessage[];
+  sendingId: string | null;
+};
+
+export type MessageQueueSnapshot = {
+  revision: number;
+  sessions: MessageQueueSession[];
+};
+
+export type MessageQueueMutation = {
+  revision: number;
+  session: MessageQueueSession;
+  itemId?: string;
+};
+
 export type ModelDetails = {
   name: string;
   providerName: string;
@@ -213,6 +258,14 @@ export type SessionNote = {
   text: string;
 };
 
+export type StoredComposerDraft = {
+  text: string;
+  modelId?: string;
+  variant?: string;
+  mode?: AgentMode;
+  updatedAt: number;
+};
+
 export type EmberSettings = {
   theme: string;
   blobStyle: BlobStyle;
@@ -221,6 +274,7 @@ export type EmberSettings = {
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
   sessionNotes: Record<string, SessionNote[]>;
+  composerDrafts: Record<string, StoredComposerDraft>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, AvatarOverride>;
   projectColorAssignments: Record<string, number>;

@@ -13,6 +13,13 @@ type InstanceDefaults = {
 };
 type AvatarOverride = { colorIndex?: number; shapeName?: string };
 type SessionNote = { id: string; text: string };
+type StoredComposerDraft = {
+  text: string;
+  modelId?: string;
+  variant?: string;
+  mode?: string;
+  updatedAt: number;
+};
 type EmberSettings = {
   theme: string;
   blobStyle: BlobStyle;
@@ -20,6 +27,7 @@ type EmberSettings = {
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
   sessionNotes: Record<string, SessionNote[]>;
+  composerDrafts: Record<string, StoredComposerDraft>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, AvatarOverride>;
   projectColorAssignments: Record<string, number>;

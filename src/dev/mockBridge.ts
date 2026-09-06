@@ -57,6 +57,22 @@ type MockPermission = {
   always: string[];
 };
 
+type MockQueuedMessage = {
+  id: string;
+  createdAt: number;
+  content: string;
+  text: string;
+  attachments: Array<{
+    id?: string;
+    filename: string;
+    mimeType: string;
+    size?: number;
+    source?: string;
+    dataUrl?: string;
+  }>;
+  sendConfig: { providerID: string; modelID: string; agent?: string; variant?: string };
+};
+
 const minutes = (n: number) => Date.now() - n * 60_000;
 
 const instances = [
@@ -195,6 +211,19 @@ const questions: Record<string, MockQuestion[]> = {
   studio: [],
 };
 
+const queuedMessages: Record<string, Record<string, MockQueuedMessage[]>> = {};
+let queueRevision = 0;
+
+const queueSnapshot = (instanceId: string) => ({
+  revision: queueRevision,
+  sessions: Object.entries(queuedMessages[instanceId] ?? {}).map(([sessionId, items]) => ({
+    sessionId,
+    directory: sessions[instanceId]?.find((session) => session.id === sessionId)?.directory ?? '',
+    items,
+    sendingId: null,
+  })),
+});
+
 let settings: EmberSettings = {
   theme: 'stone',
   blobStyle: 'grok',
@@ -214,6 +243,7 @@ let settings: EmberSettings = {
       { id: 'progress-decision', text: 'Decision: keep the progress indicator visible after onboarding.' },
     ],
   },
+  composerDrafts: {},
   scheduledSessionBindings: {
     'local::ses_a1': 'task:local::p1::daily-channel-brief',
     'local::ses_a7': 'task:local::p1::daily-channel-brief',
@@ -262,6 +292,42 @@ const delay = <T,>(value: T, ms = 120): Promise<T> =>
 
 const ok = (data: unknown) => ({ ok: true, status: 200, data });
 
+const queueMutation = (instanceId: string, sessionId: string, itemId?: string) => ({
+  revision: queueRevision,
+  itemId,
+  session: queueSnapshot(instanceId).sessions.find((session) => session.sessionId === sessionId) ?? {
+    sessionId,
+    directory: sessions[instanceId]?.find((session) => session.id === sessionId)?.directory ?? '',
+    items: [],
+    sendingId: null,
+  },
+});
+
+const deliverQueuedMessage = (instanceId: string, sessionId: string) => {
+  const session = sessions[instanceId]?.find((entry) => entry.id === sessionId);
+  const item = queuedMessages[instanceId]?.[sessionId]?.[0];
+  if (!session || !item || session.status === 'busy') return;
+  queuedMessages[instanceId][sessionId].shift();
+  if (queuedMessages[instanceId][sessionId].length === 0) delete queuedMessages[instanceId][sessionId];
+  queueRevision += 1;
+  session.messages.push({
+    role: 'user',
+    text: item.text,
+    files: item.attachments
+      .filter((file) => file.dataUrl)
+      .map((file) => ({ filename: file.filename, mime: file.mimeType, url: file.dataUrl! })),
+  });
+  session.model = { id: item.sendConfig.modelID, providerID: item.sendConfig.providerID, variant: item.sendConfig.variant };
+  session.updated = Date.now();
+  session.status = 'busy';
+  setTimeout(() => {
+    session.messages.push({ role: 'assistant', text: `Queued message delivered: ${item.text}` });
+    session.status = 'idle';
+    session.updated = Date.now();
+    setTimeout(() => deliverQueuedMessage(instanceId, sessionId), 100);
+  }, 1200);
+};
+
 const bridge: EmberBridge = {
   listInstances: () => delay(instances, 300),
   getSettings: () => delay(settings),
@@ -294,6 +360,37 @@ const bridge: EmberBridge = {
   request: async (instanceId, method, path, body) => {
     const list = sessions[instanceId] ?? [];
     const url = new URL(path, 'http://mock');
+    if (url.pathname === '/api/message-queue' && method === 'GET') {
+      return delay(ok(queueSnapshot(instanceId)));
+    }
+    const queueMatch = url.pathname.match(/^\/api\/message-queue\/sessions\/([^/]+)\/items$/);
+    if (queueMatch && method === 'POST') {
+      const sessionId = decodeURIComponent(queueMatch[1]);
+      const session = list.find((entry) => entry.id === sessionId);
+      const item = (body as { item?: Omit<MockQueuedMessage, 'id' | 'createdAt'> })?.item;
+      if (!session || !item?.sendConfig) return { ok: false, status: 404, data: null };
+      const queued: MockQueuedMessage = {
+        ...item,
+        id: `queued-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: Date.now(),
+      };
+      queuedMessages[instanceId] ??= {};
+      queuedMessages[instanceId][sessionId] = [...queuedMessages[instanceId][sessionId] ?? [], queued].slice(-20);
+      queueRevision += 1;
+      if (session.status !== 'busy') setTimeout(() => deliverQueuedMessage(instanceId, sessionId), 150);
+      return delay(ok(queueMutation(instanceId, sessionId, queued.id)));
+    }
+    const queuedItemMatch = url.pathname.match(/^\/api\/message-queue\/sessions\/([^/]+)\/items\/([^/]+)$/);
+    if (queuedItemMatch && method === 'DELETE') {
+      const sessionId = decodeURIComponent(queuedItemMatch[1]);
+      const itemId = decodeURIComponent(queuedItemMatch[2]);
+      const items = queuedMessages[instanceId]?.[sessionId] ?? [];
+      queuedMessages[instanceId] ??= {};
+      queuedMessages[instanceId][sessionId] = items.filter((item) => item.id !== itemId);
+      if (queuedMessages[instanceId][sessionId].length === 0) delete queuedMessages[instanceId][sessionId];
+      queueRevision += 1;
+      return delay(ok(queueMutation(instanceId, sessionId)));
+    }
     if (path === '/api/config/settings') return delay(ok({ projects: projects[instanceId] ?? [] }));
     const scheduledMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/scheduled-tasks$/);
     if (scheduledMatch && method === 'GET') {
@@ -442,6 +539,7 @@ const bridge: EmberBridge = {
         setTimeout(() => {
           session.messages.push({ role: 'assistant', text: `Echo from ${instanceId}: ${text}` });
           session.status = 'idle';
+          setTimeout(() => deliverQueuedMessage(instanceId, session.id), 100);
         }, 1800);
       }
       return delay(ok({}));

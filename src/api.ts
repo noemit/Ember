@@ -5,6 +5,9 @@ import type {
   FileAttachment,
   Instance,
   MessagePart,
+  MessageQueueMutation,
+  MessageQueueSession,
+  MessageQueueSnapshot,
   ModelDetails,
   ModelOption,
   PermissionReply,
@@ -12,6 +15,7 @@ import type {
   Project,
   QuestionAnswers,
   QuestionRequest,
+  QueuedMessage,
   Session,
   ToolCall,
   ToolStatus,
@@ -680,6 +684,101 @@ export const rejectQuestion = async (request: QuestionRequest, directory?: strin
   return response.ok;
 };
 
+const toQueuedMessage = (value: unknown): QueuedMessage | null => {
+  const item = asRecord(value);
+  const id = optionalString(item.id);
+  if (!id) return null;
+  const sendConfig = asRecord(item.sendConfig);
+  const providerID = optionalString(sendConfig.providerID);
+  const modelID = optionalString(sendConfig.modelID);
+  if (!providerID || !modelID) return null;
+  const content = typeof item.content === 'string' ? item.content : '';
+  const text = typeof item.text === 'string' ? item.text : content;
+  return {
+    id,
+    createdAt: typeof item.createdAt === 'number' ? item.createdAt : 0,
+    content,
+    text,
+    attachments: asArray(item.attachments)
+      .map((attachment) => {
+        const raw = asRecord(attachment);
+        const filename = optionalString(raw.filename);
+        const mimeType = optionalString(raw.mimeType);
+        if (!filename || !mimeType) return null;
+        const parsed: QueuedMessage['attachments'][number] = { filename, mimeType };
+        const attachmentId = optionalString(raw.id);
+        if (attachmentId) parsed.id = attachmentId;
+        if (typeof raw.size === 'number' && raw.size >= 0) parsed.size = raw.size;
+        const source = optionalString(raw.source);
+        if (source) parsed.source = source;
+        const dataUrl = optionalString(raw.dataUrl);
+        if (dataUrl) parsed.dataUrl = dataUrl;
+        return parsed;
+      })
+      .filter((attachment): attachment is QueuedMessage['attachments'][number] => attachment !== null),
+    sendConfig: {
+      providerID,
+      modelID,
+      agent: optionalString(sendConfig.agent),
+      variant: optionalString(sendConfig.variant),
+    },
+    agentMention: optionalString(item.agentMention),
+  };
+};
+
+const toMessageQueueSession = (value: unknown): MessageQueueSession | null => {
+  const session = asRecord(value);
+  const sessionId = optionalString(session.sessionId);
+  if (!sessionId) return null;
+  return {
+    sessionId,
+    directory: typeof session.directory === 'string' ? session.directory : '',
+    items: asArray(session.items)
+      .map(toQueuedMessage)
+      .filter((item): item is QueuedMessage => item !== null),
+    sendingId: optionalString(session.sendingId) ?? null,
+  };
+};
+
+const toMessageQueueMutation = (value: unknown): MessageQueueMutation | null => {
+  const mutation = asRecord(value);
+  const session = toMessageQueueSession(mutation.session);
+  if (!session) return null;
+  return {
+    revision: typeof mutation.revision === 'number' ? mutation.revision : 0,
+    session,
+    itemId: optionalString(mutation.itemId),
+  };
+};
+
+export const loadMessageQueue = async (
+  instanceId: string
+): Promise<MessageQueueSnapshot | null> => {
+  const response = await window.ember.request(instanceId, 'GET', '/api/message-queue');
+  if (!response.ok) return null;
+  const snapshot = asRecord(response.data);
+  return {
+    revision: typeof snapshot.revision === 'number' ? snapshot.revision : 0,
+    sessions: asArray(snapshot.sessions)
+      .map(toMessageQueueSession)
+      .filter((session): session is MessageQueueSession => session !== null),
+  };
+};
+
+export const loadAllMessageQueues = async (
+  instanceIds: string[]
+): Promise<Record<string, MessageQueueSession[]>> => {
+  const results = await Promise.all(
+    instanceIds.map(async (instanceId) => {
+      const snapshot = await loadMessageQueue(instanceId);
+      return snapshot ? ([instanceId, snapshot.sessions] as const) : null;
+    })
+  );
+  return Object.fromEntries(
+    results.filter((entry): entry is readonly [string, MessageQueueSession[]] => entry !== null)
+  );
+};
+
 /** Stop the agent's current turn. */
 export const abortSession = async (session: Session): Promise<boolean> => {
   const response = await window.ember.request(
@@ -833,6 +932,63 @@ export type PromptInput = {
   variant?: string;
   attachments?: FileAttachment[];
   replyContext?: string;
+};
+
+export type QueueMessageInput = Omit<PromptInput, 'model'> & {
+  /** OpenChamber's server-owned queue requires a concrete provider/model. */
+  model: ModelOption;
+};
+
+export const enqueueMessage = async (
+  instanceId: string,
+  sessionId: string,
+  directory: string,
+  { text, model, mode, variant, attachments = [], replyContext }: QueueMessageInput
+): Promise<{ ok: boolean; status: number; data: MessageQueueMutation | null }> => {
+  const sendConfig: Record<string, string> = {
+    providerID: model.providerID,
+    modelID: model.modelID,
+  };
+  if (mode) sendConfig.agent = mode;
+  if (variant) sendConfig.variant = variant;
+  const item = {
+    content: text.trim(),
+    text,
+    attachments: attachments.map((file, index) => ({
+      id: `attachment-${index}`,
+      filename: file.filename,
+      mimeType: file.mime,
+      source: 'local',
+      dataUrl: file.url,
+    })),
+    context: replyContext
+      ? [{
+          kind: 'synthetic',
+          text: `Earlier pinned message being replied to:\n\n${replyContext}`,
+        }]
+      : [],
+    sendConfig,
+  };
+  const response = await window.ember.request(
+    instanceId,
+    'POST',
+    `/api/message-queue/sessions/${encodeURIComponent(sessionId)}/items`,
+    { directory, item }
+  );
+  return { ...response, data: toMessageQueueMutation(response.data) };
+};
+
+export const removeQueuedMessage = async (
+  instanceId: string,
+  sessionId: string,
+  itemId: string
+): Promise<{ ok: boolean; status: number; data: MessageQueueMutation | null }> => {
+  const response = await window.ember.request(
+    instanceId,
+    'DELETE',
+    `/api/message-queue/sessions/${encodeURIComponent(sessionId)}/items/${encodeURIComponent(itemId)}`
+  );
+  return { ...response, data: toMessageQueueMutation(response.data) };
 };
 
 export const sendPrompt = async (

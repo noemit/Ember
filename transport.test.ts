@@ -5,6 +5,7 @@ import {
   normalizeApiMethod,
   parseAvatarOverrides,
   parseColorAssignments,
+  parseComposerDrafts,
   parseSessionNotes,
   parseStringRecord,
   resolveApiUrl,
@@ -45,7 +46,7 @@ describe('instance transport validation', () => {
     expect(normalizeApiMethod('get')).toBe('GET');
     expect(normalizeApiMethod('POST')).toBe('POST');
     expect(normalizeApiMethod('patch')).toBe('PATCH');
-    expect(normalizeApiMethod('DELETE')).toBeNull();
+    expect(normalizeApiMethod('DELETE')).toBe('DELETE');
     expect(normalizeApiMethod('TRACE')).toBeNull();
   });
 });
@@ -74,6 +75,29 @@ describe('appearance settings validation', () => {
       empty: [],
     })).toEqual({
       valid: [{ id: 'note-1', text: 'one' }, { id: 'legacy-1', text: 'two' }],
+    });
+  });
+
+  test('keeps bounded composer drafts without attachment payloads', () => {
+    expect(parseComposerDrafts({
+      'local::session': {
+        text: 'Resume this draft',
+        modelId: 'anthropic/claude-sonnet',
+        variant: 'high',
+        mode: 'plan',
+        updatedAt: 100,
+        attachments: [{ url: 'data:text/plain;base64,secret' }],
+      },
+      'local::empty': { text: '   ' },
+      'local::huge': { text: 'x'.repeat(200_001) },
+    })).toEqual({
+      'local::session': {
+        text: 'Resume this draft',
+        modelId: 'anthropic/claude-sonnet',
+        variant: 'high',
+        mode: 'plan',
+        updatedAt: 100,
+      },
     });
   });
 

@@ -12,18 +12,24 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `bun run test` — Bun regression tests for API pagination/failures, transport security, and theme contrast.
 - `bun run build` — typecheck, then build the production renderer to `dist/` and electron main/preload to `dist-electron/`.
 
+## Completion
+
+- When a requested task is complete and its checks pass, commit the intended files and push `main`.
+  If checks cannot run or need a live/manual pass, say so before pushing.
+
 ## Layout
 
 - `electron/` — main process (reads OpenChamber hosts, probes health, proxies API calls, stores
   Ember settings in `~/.config/ember/settings.json`) and the preload bridge. Opt-in remote access
   serves the app on the detected Tailscale IPv4 address at port `57821`; it requires a locally
   hashed password and uses an HttpOnly session cookie.
-- `src/App.tsx` — owns all state: instances, per-instance sessions/states/models, selection, and the
-  command-palette data. Sessions are keyed by `sessionKey()` (`instanceId::sessionId`) because ids
-  repeat across instances.
-- `src/components/ChatView.tsx` — owns the transcript shell and composer. Text, model, reasoning
-  variant, agent mode, attachments, and reply context are kept per session; the one-line textarea
-  grows to a capped height and failed sends restore the draft.
+- `src/App.tsx` — owns all state: instances, per-instance sessions/states/models/queues, selection,
+  command-palette data, undo/retry notices, and polite screen-reader status announcements. Sessions
+  are keyed by `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances.
+- `src/components/ChatView.tsx` — owns the transcript shell, queued-message list, and composer.
+  Text, model, reasoning variant, agent mode, attachments, and reply context are kept per session;
+  the one-line textarea grows to a capped height and failed sends restore the draft. Draft text and
+  model/agent choices persist across restarts, while attachments and reply context remain in-memory.
 - `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.
@@ -61,8 +67,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   pin-to-bottom scrolling (ResizeObserver + `scrollend`), and message jump/highlight support.
 - `src/components/SessionContextPanel.tsx` — persistent notes/pins side panel. Notes are keyed by
   session, stored in Ember settings as up to 100 selectable text entries, and selected notes append
-  to the composer without replacing its draft; pin actions jump, reply, or unpin without changing
-  OpenChamber data.
+  to the composer without replacing its draft; deleting a note offers undo. Pin actions jump, reply,
+  or unpin without changing OpenChamber data.
 - `src/components/Markdown.tsx` — assistant prose via `react-markdown` + `remark-gfm` (no raw
   HTML). A small rehype plugin reuses `Linkify.tsx`'s tokenizer to link bare local paths; all
   anchors route through `window.ember.openExternal`.
@@ -81,7 +87,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - Archiving is OpenCode-native: `PATCH /api/session/:id` with `{ time: { archived: ms | 0 } }`.
   Sessions load from `/api/experimental/session?archived=true` (plain `/api/session` ignores the
   archived filter) and are split client-side on a truthy `time.archived`, since restored sessions
-  carry `archived: 0`.
+  carry `archived: 0`. Archiving offers undo through the local notice toast.
+- Busy-session queueing uses OpenChamber's server-owned queue: `GET /api/message-queue`, enqueue with
+  `POST /api/message-queue/sessions/:id/items` `{ directory, item }`, and remove with
+  `DELETE /api/message-queue/sessions/:id/items/:itemId`. Queue items require a concrete
+  `sendConfig` (`providerID`, `modelID`, optional `agent`/`variant`); Ember resolves the instance
+  default before queueing. The server dispatches items once the session is idle.
 - "Recent" models in the composer are derived from the instance's own sessions (`session.model`
   from the list endpoint, newest `time.updated` first) — nothing is stored on the Ember side.
 - Permissions: `GET /api/permission` lists pending requests; Ember merges the global response with

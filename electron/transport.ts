@@ -1,8 +1,8 @@
-const API_METHODS = new Set(['GET', 'POST', 'PATCH']);
+const API_METHODS = new Set(['GET', 'POST', 'PATCH', 'DELETE']);
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const DEFAULT_LOCAL_PORT = 57123;
 
-export type ApiMethod = 'GET' | 'POST' | 'PATCH';
+export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 const parseHttpUrl = (value: string): URL | null => {
   try {
@@ -143,6 +143,37 @@ export const parseSessionNotes = (value: unknown): Record<string, StoredSessionN
       if (parsed.length) notes[key] = parsed;
     });
   return notes;
+};
+
+export type StoredComposerDraft = {
+  text: string;
+  modelId?: string;
+  variant?: string;
+  mode?: string;
+  updatedAt: number;
+};
+
+export const parseComposerDrafts = (value: unknown): Record<string, StoredComposerDraft> => {
+  if (!value || typeof value !== 'object') return {};
+  const drafts: Record<string, StoredComposerDraft> = {};
+  Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !UNSAFE_RECORD_KEYS.has(key) && key.length > 0 && key.length <= 500)
+    .slice(-50)
+    .forEach(([key, raw]) => {
+      if (!raw || typeof raw !== 'object') return;
+      const entry = raw as Record<string, unknown>;
+      const text = typeof entry.text === 'string' ? entry.text : '';
+      if (!text.trim() || text.length > 200_000) return;
+      const draft: StoredComposerDraft = {
+        text,
+        updatedAt: typeof entry.updatedAt === 'number' && entry.updatedAt > 0 ? entry.updatedAt : Date.now(),
+      };
+      if (typeof entry.modelId === 'string' && entry.modelId.length <= 300) draft.modelId = entry.modelId;
+      if (typeof entry.variant === 'string' && entry.variant.length <= 100) draft.variant = entry.variant;
+      if (typeof entry.mode === 'string' && entry.mode.length <= 100) draft.mode = entry.mode;
+      drafts[key] = draft;
+    });
+  return drafts;
 };
 
 export const parseAvatarOverrides = (value: unknown): Record<string, StoredAvatarOverride> => {

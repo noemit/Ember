@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import {
   createClientMessageId,
   createSession,
+  enqueueMessage,
   errorMessageOf,
+  loadAllMessageQueues,
   loadAllPermissions,
   loadAllQuestions,
   loadAllSessions,
@@ -15,13 +17,14 @@ import {
   loadScheduledIdentityData,
   mergePolledSessions,
   reconcilePolledMessages,
+  removeQueuedMessage,
   replyPermission,
   replyQuestion,
   sendPrompt,
 } from './src/api';
 import { shouldOfferSessionReload } from './src/components/ChatView';
 import { isAssistantTurnEnd } from './src/components/Transcript';
-import type { ChatMessage } from './src/types';
+import type { ChatMessage, ModelOption } from './src/types';
 
 const setRequest = (
   request: (instanceId: string, method: string, path: string, body?: unknown) => Promise<unknown>
@@ -44,6 +47,21 @@ const assistantMessage = (id: string): ChatMessage => ({
   parts: [],
   completed: true,
 });
+
+const queueModel: ModelOption = {
+  providerID: 'anthropic',
+  modelID: 'claude-sonnet',
+  label: 'Anthropic / Claude Sonnet',
+  details: {
+    name: 'Claude Sonnet',
+    providerName: 'Anthropic',
+    reasoning: true,
+    toolcall: true,
+    attachment: true,
+    inputs: ['text'],
+    variants: ['low', 'high'],
+  },
+};
 
 describe('session loading', () => {
   test('omits failed instances so existing state is preserved', async () => {
@@ -417,6 +435,146 @@ describe('question loading', () => {
     }, [['Dark']])).toBe(true);
     expect(requestPath).toBe('/api/question/que_1/reply?directory=%2Fworkspace%2Fember');
     expect(requestBody).toEqual({ answers: [['Dark']] });
+  });
+});
+
+describe('message queue', () => {
+  test('loads queued sessions and skips malformed items', async () => {
+    setRequest(async (_instanceId, _method, path) => {
+      expect(path).toBe('/api/message-queue');
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          revision: 7,
+          sessions: [{
+            sessionId: 'ses_1',
+            directory: '/workspace/ember',
+            sendingId: null,
+            items: [{
+              id: 'queued-1',
+              createdAt: 100,
+              content: 'Follow up',
+              text: 'Follow up',
+              attachments: [],
+              sendConfig: { providerID: 'anthropic', modelID: 'claude-sonnet', variant: 'high' },
+            }, { id: 'broken' }],
+          }],
+        },
+      };
+    });
+
+    expect(await loadAllMessageQueues(['local'])).toEqual({
+      local: [
+        expect.objectContaining({
+          sessionId: 'ses_1',
+          directory: '/workspace/ember',
+          sendingId: null,
+          items: [
+            expect.objectContaining({
+              id: 'queued-1',
+              text: 'Follow up',
+              sendConfig: expect.objectContaining({ variant: 'high' }),
+            }),
+          ],
+        }),
+      ],
+    });
+  });
+
+  test('enqueues the composer payload in OpenChamber queue format', async () => {
+    let requestPath = '';
+    let requestBody: unknown;
+    setRequest(async (_instanceId, _method, path, body) => {
+      requestPath = path;
+      requestBody = body;
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          revision: 8,
+          itemId: 'queued-1',
+          session: {
+            sessionId: 'ses_1',
+            directory: '/workspace/ember',
+            sendingId: null,
+            items: [{
+              id: 'queued-1',
+              createdAt: 100,
+              content: 'Run the tests',
+              text: 'Run the tests',
+              attachments: [],
+              sendConfig: { providerID: 'anthropic', modelID: 'claude-sonnet' },
+            }],
+          },
+        },
+      };
+    });
+
+    const response = await enqueueMessage('local', 'ses_1', '/workspace/ember', {
+      text: 'Run the tests',
+      model: queueModel,
+      mode: 'build',
+      variant: 'high',
+      attachments: [{ filename: 'log.txt', mime: 'text/plain', url: 'data:text/plain;base64,bG9n' }],
+      replyContext: 'Earlier context',
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.data?.itemId).toBe('queued-1');
+    expect(requestPath).toBe('/api/message-queue/sessions/ses_1/items');
+    expect(requestBody).toEqual({
+      directory: '/workspace/ember',
+      item: {
+        content: 'Run the tests',
+        text: 'Run the tests',
+        attachments: [{
+          id: 'attachment-0',
+          filename: 'log.txt',
+          mimeType: 'text/plain',
+          source: 'local',
+          dataUrl: 'data:text/plain;base64,bG9n',
+        }],
+        context: [{
+          kind: 'synthetic',
+          text: 'Earlier pinned message being replied to:\n\nEarlier context',
+        }],
+        sendConfig: {
+          providerID: 'anthropic',
+          modelID: 'claude-sonnet',
+          agent: 'build',
+          variant: 'high',
+        },
+      },
+    });
+  });
+
+  test('removes a queued message through the server queue endpoint', async () => {
+    let requestMethod = '';
+    let requestPath = '';
+    setRequest(async (_instanceId, method, path) => {
+      requestMethod = method;
+      requestPath = path;
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          revision: 9,
+          session: {
+            sessionId: 'ses_1',
+            directory: '/workspace/ember',
+            sendingId: null,
+            items: [],
+          },
+        },
+      };
+    });
+
+    const response = await removeQueuedMessage('local', 'ses_1', 'queued-1');
+    expect(response.ok).toBe(true);
+    expect(response.data?.session.items).toEqual([]);
+    expect(requestMethod).toBe('DELETE');
+    expect(requestPath).toBe('/api/message-queue/sessions/ses_1/items/queued-1');
   });
 });
 
