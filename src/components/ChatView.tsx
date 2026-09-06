@@ -30,6 +30,7 @@ import type {
   MessagesStatus,
   MessageQueueSession,
   ModelOption,
+  ModelRef,
   NewSessionOptions,
   Project,
   PermissionReply,
@@ -712,6 +713,21 @@ export default function ChatView({
       ? `${defaultModel.details.providerName} / ${defaultModel.details.name} (Default)`
       : 'Server default';
   const variantOptions = variantModel?.details.variants ?? [];
+  const lastMessage = messages[messages.length - 1];
+  const activeModelRef: ModelRef | undefined =
+    (lastMessage?.role === 'user' ? lastMessage.model : undefined) ??
+    session?.model ??
+    lastMessage?.model ??
+    model ??
+    defaultModel;
+  const activeModelOption = activeModelRef
+    ? models.find(
+        (entry) =>
+          entry.providerID === activeModelRef.providerID &&
+          entry.modelID === activeModelRef.modelID
+      )
+    : undefined;
+  const activeModelLabel = activeModelOption?.details.name ?? activeModelRef?.modelID;
   const setupInstance = instances.find((candidate) => candidate.id === newSessionInstanceId) ?? null;
   const setupProjects = newSessionInstanceId ? projectsByInstance[newSessionInstanceId] ?? [] : [];
   const setupModels = newSessionInstanceId ? modelsByInstance[newSessionInstanceId]?.models ?? [] : [];
@@ -894,6 +910,7 @@ export default function ChatView({
                 questions={questions}
                 state={state}
                 sending={sending}
+                activeModelLabel={activeModelLabel}
                 accentColor={blobColor(blobStyle, identity)}
                 pinnedMessageIds={pinnedMessageIds}
                 focusMessageId={focusMessageId}

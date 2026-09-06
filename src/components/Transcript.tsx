@@ -45,6 +45,8 @@ type Props = {
   questions: QuestionRequest[];
   state: BallState;
   sending: boolean;
+  /** Friendly model name for the turn currently producing output. */
+  activeModelLabel?: string;
   /** CSS colour of the session's blob, so the activity line reads as "this agent is thinking". */
   accentColor: string;
   pinnedMessageIds: Set<string>;
@@ -564,6 +566,7 @@ export default function Transcript({
   questions,
   state,
   sending,
+  activeModelLabel,
   accentColor,
   pinnedMessageIds,
   focusMessageId,
@@ -675,7 +678,9 @@ export default function Transcript({
         ? 'Sending'
         : runningTool?.type === 'tool'
           ? `Running ${runningTool.call.tool}`
-          : 'Thinking';
+          : activeModelLabel
+            ? `${activeModelLabel} is thinking`
+            : 'Thinking';
   const waitingOnHistory = messages.length === 0 && messagesStatus !== 'ready';
   const activity = activityLabel && !waitingOnHistory
     ? `${activityLabel}${activeSince ? ` · ${formatElapsed(activityNow - activeSince)}` : ''}`

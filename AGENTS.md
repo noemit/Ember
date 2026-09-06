@@ -65,8 +65,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   sets the tab favicon instead. `blob/color.ts` exposes `blobColor(style, seed)` for UI that
   wants the blob's dominant colour (the transcript's activity dot uses it).
 - `src/components/Transcript.tsx` — message list: text bubbles, expandable tool rows (input/
-  output/diff), collapsed reasoning, file parts, permission + question cards, live activity line
-  (suppressed until initial history resolves), pin-to-bottom scrolling (ResizeObserver +
+  output/diff), collapsed reasoning, file parts, permission + question cards, model-named live
+  activity line (suppressed until initial history resolves), pin-to-bottom scrolling (ResizeObserver +
   `scrollend`), and message jump/highlight support.
 - `src/components/SessionContextPanel.tsx` — persistent notes/pins side panel. Notes are keyed by
   session, stored in Ember settings as up to 100 selectable text entries, and selected notes append
