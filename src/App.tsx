@@ -50,6 +50,7 @@ import {
 } from './api';
 import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
 import type {
+  AvatarIdentity,
   AvatarOverride,
   BallState,
   ChatMessage,
@@ -157,6 +158,16 @@ const messageSignature = (message: ChatMessage): string =>
 
 const sameMessages = (a: ChatMessage[], b: ChatMessage[]): boolean =>
   a.length === b.length && a.every((m, i) => messageSignature(m) === messageSignature(b[i]));
+
+const sameIdentity = (a: AvatarIdentity, b: AvatarIdentity): boolean =>
+  a.sessionKey === b.sessionKey &&
+  a.projectKey === b.projectKey &&
+  a.taskKey === b.taskKey &&
+  a.colorSeed === b.colorSeed &&
+  a.shapeSeed === b.shapeSeed &&
+  a.motionSeed === b.motionSeed &&
+  a.colorIndex === b.colorIndex &&
+  a.shapeName === b.shapeName;
 
 const sameStringRecord = (a: Record<string, string>, b: Record<string, string>): boolean => {
   const keys = Object.keys(a);
@@ -471,24 +482,31 @@ export default function App() {
     );
     return allocateProjectColors(keys, settings.projectColorAssignments);
   }, [projectsByInstance, settings.projectColorAssignments]);
-  const avatarIdentities = React.useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(sessionsByInstance).flatMap(([instanceId, list]) =>
-          list.map((session) => [
-            sessionKey(session),
-            resolveAvatarIdentity(
-              session,
-              projectsByInstance[instanceId] ?? [],
-              settings.scheduledSessionBindings,
-              settings.avatarOverrides,
-              allocatedProjectColors
-            ),
-          ])
-        )
-      ),
-    [sessionsByInstance, projectsByInstance, settings.scheduledSessionBindings, settings.avatarOverrides, allocatedProjectColors]
-  );
+  // Every blob renderer memoizes on its identity object, so hand back the previous reference
+  // whenever a session's identity hasn't actually changed; otherwise each 10s poll would
+  // re-derive traits for every visible avatar.
+  const avatarIdentitiesRef = React.useRef<Record<string, AvatarIdentity>>({});
+  const avatarIdentities = React.useMemo(() => {
+    const previous = avatarIdentitiesRef.current;
+    const next = Object.fromEntries(
+      Object.entries(sessionsByInstance).flatMap(([instanceId, list]) =>
+        list.map((session) => {
+          const key = sessionKey(session);
+          const identity = resolveAvatarIdentity(
+            session,
+            projectsByInstance[instanceId] ?? [],
+            settings.scheduledSessionBindings,
+            settings.avatarOverrides,
+            allocatedProjectColors
+          );
+          const before = previous[key];
+          return [key, before && sameIdentity(before, identity) ? before : identity];
+        })
+      )
+    );
+    avatarIdentitiesRef.current = next;
+    return next;
+  }, [sessionsByInstance, projectsByInstance, settings.scheduledSessionBindings, settings.avatarOverrides, allocatedProjectColors]);
   const selectedIdentity = selectedKey
     ? avatarIdentities[selectedKey] ?? seedIdentity(selectedKey)
     : seedIdentity('');

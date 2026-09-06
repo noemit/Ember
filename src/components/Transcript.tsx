@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import Linkify from './Linkify';
 import { cn } from '@/lib/utils';
+import { useStableCallback } from '@/lib/useStableCallback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type {
@@ -559,6 +560,115 @@ const MessageFooter = ({
   );
 };
 
+const renderBlock = (message: ChatMessage, block: Block) => {
+  const mine = message.role === 'user';
+  if (block.type === 'text') {
+    return (
+      <motion.div
+        key={block.id}
+        layout="position"
+        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={spring}
+        className={cn(
+          'max-w-[85%] rounded-xl px-3.5 py-2 text-[13px] leading-relaxed',
+          mine
+            ? 'self-end whitespace-pre-wrap break-words rounded-br-sm bg-user-bubble text-user-bubble-foreground'
+            : 'self-start rounded-bl-sm bg-muted text-foreground'
+        )}
+      >
+        {mine ? (
+          <Linkify text={block.text} />
+        ) : (
+          <React.Suspense fallback={<MarkdownFallback text={block.text} />}>
+            <Markdown text={block.text} />
+          </React.Suspense>
+        )}
+      </motion.div>
+    );
+  }
+  return (
+    <motion.div
+      key={block.id}
+      layout="position"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={spring}
+      className="flex flex-col"
+    >
+      {block.type === 'tools' ? (
+        <ToolGroupRow tool={block.tool} calls={block.calls} />
+      ) : block.type === 'reasoning' ? (
+        <ReasoningRow text={block.text} />
+      ) : (
+        <FileBlock file={block.file} mine={mine} />
+      )}
+    </motion.div>
+  );
+};
+
+type MessageRowProps = {
+  message: ChatMessage;
+  highlighted: boolean;
+  pinned: boolean;
+  showMetadata: boolean;
+  onTogglePin: (message: ChatMessage) => void;
+  onReply: (message: ChatMessage) => void;
+  registerNode: (id: string, node: HTMLDivElement | null) => void;
+};
+
+/**
+ * One message. Memoized so a 3s poll that only appends or updates the tail doesn't re-render
+ * (and re-measure for layout animation) every earlier bubble in a long transcript.
+ */
+const MessageRow = React.memo(function MessageRow({
+  message,
+  highlighted,
+  pinned,
+  showMetadata,
+  onTogglePin,
+  onReply,
+  registerNode,
+}: MessageRowProps) {
+  const blocks = React.useMemo(() => toBlocks(message.parts), [message.parts]);
+  const ref = React.useCallback(
+    (node: HTMLDivElement | null) => registerNode(message.id, node),
+    [registerNode, message.id]
+  );
+  return (
+    <motion.div
+      ref={ref}
+      layout="position"
+      className={cn(
+        'group/message relative flex w-full flex-col gap-1.5 rounded-xl px-5 transition-[background-color,box-shadow] sm:px-7',
+        highlighted && 'bg-highlight/10 ring-2 ring-highlight/30'
+      )}
+    >
+      {blocks.map((block) => renderBlock(message, block))}
+      {message.error ? <MessageError error={message.error} /> : null}
+      <button
+        type="button"
+        onClick={() => onTogglePin(message)}
+        title={pinned ? 'Unpin message' : 'Pin this message'}
+        aria-label={pinned ? 'Unpin message' : 'Pin this message'}
+        className={cn(
+          'absolute top-1 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-50 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 sm:opacity-0 sm:group-hover/message:opacity-100',
+          message.role === 'user' ? 'right-0' : 'left-0',
+          pinned && 'text-highlight'
+        )}
+      >
+        {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+      </button>
+      <MessageFooter
+        message={message}
+        showMetadata={showMetadata}
+        pinned={pinned}
+        onReply={() => onReply(message)}
+      />
+    </motion.div>
+  );
+});
+
 export default function Transcript({
   messages,
   messagesStatus,
@@ -686,52 +796,12 @@ export default function Transcript({
     ? `${activityLabel}${activeSince ? ` · ${formatElapsed(activityNow - activeSince)}` : ''}`
     : null;
 
-  const renderBlock = (message: ChatMessage, block: Block) => {
-    const mine = message.role === 'user';
-    if (block.type === 'text') {
-      return (
-        <motion.div
-          key={block.id}
-          layout="position"
-          initial={{ opacity: 0, y: 10, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={spring}
-          className={cn(
-            'max-w-[85%] rounded-xl px-3.5 py-2 text-[13px] leading-relaxed',
-            mine
-              ? 'self-end whitespace-pre-wrap break-words rounded-br-sm bg-user-bubble text-user-bubble-foreground'
-              : 'self-start rounded-bl-sm bg-muted text-foreground'
-          )}
-        >
-          {mine ? (
-            <Linkify text={block.text} />
-          ) : (
-            <React.Suspense fallback={<MarkdownFallback text={block.text} />}>
-              <Markdown text={block.text} />
-            </React.Suspense>
-          )}
-        </motion.div>
-      );
-    }
-    return (
-      <motion.div
-        key={block.id}
-        layout="position"
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={spring}
-        className="flex flex-col"
-      >
-        {block.type === 'tools' ? (
-          <ToolGroupRow tool={block.tool} calls={block.calls} />
-        ) : block.type === 'reasoning' ? (
-          <ReasoningRow text={block.text} />
-        ) : (
-          <FileBlock file={block.file} mine={mine} />
-        )}
-      </motion.div>
-    );
-  };
+  const registerNode = React.useCallback((id: string, node: HTMLDivElement | null) => {
+    if (node) messageRefs.current.set(id, node);
+    else messageRefs.current.delete(id);
+  }, []);
+  const togglePin = useStableCallback(onTogglePin);
+  const reply = useStableCallback(onReply);
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -747,44 +817,16 @@ export default function Transcript({
         >
           <AnimatePresence initial={false}>
             {messages.map((message, index) => (
-              <motion.div
+              <MessageRow
                 key={message.id}
-                ref={(node) => {
-                  if (node) messageRefs.current.set(message.id, node);
-                  else messageRefs.current.delete(message.id);
-                }}
-                layout="position"
-                className={cn(
-                  'group/message relative flex w-full flex-col gap-1.5 rounded-xl px-5 transition-[background-color,box-shadow] sm:px-7',
-                  highlightedMessageId === message.id && 'bg-highlight/10 ring-2 ring-highlight/30'
-                )}
-              >
-                {toBlocks(message.parts).map((block) => renderBlock(message, block))}
-                {message.error ? <MessageError error={message.error} /> : null}
-                <button
-                  type="button"
-                  onClick={() => onTogglePin(message)}
-                  title={pinnedMessageIds.has(message.id) ? 'Unpin message' : 'Pin this message'}
-                  aria-label={pinnedMessageIds.has(message.id) ? 'Unpin message' : 'Pin this message'}
-                  className={cn(
-                    'absolute top-1 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-50 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 sm:opacity-0 sm:group-hover/message:opacity-100',
-                    message.role === 'user' ? 'right-0' : 'left-0',
-                    pinnedMessageIds.has(message.id) && 'text-highlight'
-                  )}
-                >
-                  {pinnedMessageIds.has(message.id) ? (
-                    <PinOff className="size-3.5" />
-                  ) : (
-                    <Pin className="size-3.5" />
-                  )}
-                </button>
-                <MessageFooter
-                  message={message}
-                  showMetadata={isAssistantTurnEnd(messages, index, turnPending)}
-                  pinned={pinnedMessageIds.has(message.id)}
-                  onReply={() => onReply(message)}
-                />
-              </motion.div>
+                message={message}
+                highlighted={highlightedMessageId === message.id}
+                pinned={pinnedMessageIds.has(message.id)}
+                showMetadata={isAssistantTurnEnd(messages, index, turnPending)}
+                onTogglePin={togglePin}
+                onReply={reply}
+                registerNode={registerNode}
+              />
             ))}
 
             {permissions.map((request) => (

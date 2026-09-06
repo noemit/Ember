@@ -61,6 +61,9 @@ const components: Components = {
   ),
 };
 
+const remarkPlugins = [remarkGfm];
+const rehypePlugins = [rehypeLinkPaths];
+
 type Props = {
   text: string;
   className?: string;
@@ -82,7 +85,7 @@ function Markdown({ text, className }: Props) {
         className
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeLinkPaths]} components={components}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
         {text}
       </ReactMarkdown>
     </div>

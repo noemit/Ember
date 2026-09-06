@@ -18,7 +18,12 @@ type Props = {
 
 /** Picks the blob renderer for the active style so callers don't care which is on. */
 export default function Blob({ style, ...rest }: Props) {
-  const props = { ...rest, identity: rest.identity ?? seedIdentity(rest.seed) };
+  // Renderers memoize on the identity reference; a fresh object per render would defeat that.
+  const identity = React.useMemo(
+    () => rest.identity ?? seedIdentity(rest.seed),
+    [rest.identity, rest.seed]
+  );
+  const props = { ...rest, identity };
   if (style === 'grok') return <GrokBlob {...props} />;
   const Variant = style === 'gem' ? GemBlob : style === 'glyph' ? GlyphBlob : CritterBlob;
   const size = rest.size ?? 30;
