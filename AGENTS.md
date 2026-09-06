@@ -9,8 +9,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `bun run dev:web` — renderer only under Vite with a mock bridge (`src/dev/mockBridge.ts`) so the UI
   can be exercised in a plain browser. The mock loads automatically when `window.ember` is absent.
 - `bun run typecheck` — both tsconfigs (renderer + electron).
+- `bun run lint` — eslint (typescript-eslint + `react-hooks/rules-of-hooks` and `exhaustive-deps`).
+  Every `eslint-disable` must carry a `-- reason`. The React Compiler rules are intentionally off.
 - `bun run test` — Bun regression tests for API pagination/failures, transport security, and theme contrast.
-- `bun run build` — typecheck, then build the production renderer to `dist/` and electron main/preload to `dist-electron/`.
+- `bun run check` — typecheck + lint + test; run this before committing.
+- `bun run build` — typecheck the renderer, build it to `dist/`, and emit electron main/preload to `dist-electron/`.
+- `bun.lock` is intentionally untracked (`packageManager` pins the Bun version instead).
 
 ## Completion
 
@@ -20,25 +24,43 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 ## Layout
 
 - `electron/` — main process (reads OpenChamber hosts, probes health, proxies API calls, stores
-  Ember settings in `~/.config/ember/settings.json`) and the preload bridge. Opt-in remote access
+  Ember settings in `~/.config/ember/settings.json`) and the preload bridge. OpenChamber's
+  `settings.json` is consulted on every proxied request, so it's cached by mtime
+  (`readOpenchamberSettings`). The settings contract (`EmberSettings`, `BlobStyle`,
+  `InstanceDefaults`) lives once in `electron/transport.ts` and is imported by main and preload;
+  the renderer keeps its own copy in `src/types.ts` because the two tsconfigs have separate roots
+  and main parses persisted JSON into its trusted shapes at the boundary. Opt-in remote access
   serves the app on the detected Tailscale IPv4 address at port `57821`; it requires a locally
   hashed password and uses an HttpOnly session cookie.
-- `src/App.tsx` — owns all state: instances, per-instance sessions/states/models/queues, selection,
-  command-palette data, undo/retry notices, and polite screen-reader status announcements. Sessions
-  are keyed by `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances. A bounded
-  in-memory message cache is warmed by sidebar preview loads; transcript state is keyed by session so
-  switching renders the selected session's cached transcript before the first paint while the fresh
-  fetch runs.
-- `src/components/ChatView.tsx` — owns the transcript shell, queued-message list, and composer.
-  Text, model, reasoning variant, agent mode, attachments, and reply context are kept per session;
-  the one-line textarea grows to a capped height and failed sends restore the draft. Draft text and
-  model/agent choices persist across restarts (including choice-only drafts), while attachments and
-  reply context remain in-memory.
+- `src/App.tsx` — owns the data state: instances, per-instance sessions/states/models/queues,
+  selection, pollers, and the send/reload/archive/permission handlers. Sessions are keyed by
+  `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances. A bounded in-memory
+  message cache (`MESSAGE_CACHE_LIMIT`, ≥ `PREVIEW_COUNT`) is warmed by sidebar preview loads;
+  transcript state is keyed by session so switching renders the cached transcript before the first
+  paint while the fresh fetch runs. Session polls merge per id with the newer `updated` winning
+  (`mergePolledSessions`), and an optimistic user bubble keeps its id registered until a poll shows
+  the server's copy (`releaseReconciledOptimistic`), so neither can flicker out.
+- `src/hooks/` — concerns pulled out of App: `useFeedback` (error banner + retry, notice toast,
+  live-region announcements), `useEmberSettings` (optimistic writes to main with revision guarding),
+  `useMessageQueue` (the server-owned queue handlers, see Notes).
+- `src/lib/` — `useStableCallback` (pin a prop's identity for `React.memo` children),
+  `messageSignature` (digest-based change detection for polls), `clipboard`.
+- `src/components/ChatView.tsx` — the transcript shell and composer. Text, model, reasoning variant,
+  agent mode, attachments, and reply context are kept per session; the one-line textarea grows to a
+  capped height and failed sends restore the draft. Draft text and model/agent choices persist
+  across restarts (including choice-only drafts), while attachments and reply context stay in memory.
+  `NewSessionSetup.tsx` (with its project picker) and `QueuedMessageList.tsx` are lazy children;
+  the queue list is keyed by session so its per-item UI resets on switch.
+- `src/components/LeftRail.tsx` — session list. Rows are a memoized `SessionRow`; the timestamp is
+  a self-ticking `RelativeTime`. Archive/restore is decided per row from `session.archived`, not the
+  view toggle, because the selected session is pinned into the list even when filters hide it.
 - `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.
-- `src/blob/` — session avatars. `Blob.tsx` switches between `GrokBlob` (flat), `GemBlob`
-  (faceted) and `GlyphBlob` (hand-drawn icons, no eyes). `blob/seed.ts` resolves three identity
+- `src/blob/` — session avatars. `Blob.tsx` switches between `GrokBlob` ("Buddy", flat) and
+  `GlyphBlob` (hand-drawn icons, no eyes); Gem and Critter were removed, and stored settings that
+  still name them fall back to the default. Renderers memoize on the `identity` object, so App
+  hands back the previous reference when nothing changed. `blob/seed.ts` resolves three identity
   channels: project/directory + instance picks colour, a scheduled-task binding (or session key)
   picks shape, and the session key picks tilt/motion. OpenChamber task bindings come from each
   project's scheduled-task endpoint and observed `lastSessionId` mappings are retained in Ember
@@ -48,18 +70,7 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}` = colour, `{id}` =
   per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours come from
   `--glyph-0..63`, which `applyTheme` sets after `blob/contrast.ts` nudges each palette colour's
-  lightness to ≥3:1 against the theme's panel/elev/bg. `CritterBlob` (little
-  flat monsters) composes independent slots from `critter.ts` — body × crown × side × tail × feet
-  × eyes × mouth × marking × colour pair. Slot priority follows what survives at 30px: silhouette
-  (aspect ratio / taper / bumps), then eye count, then top contour, then big accent fields.
-  Guard rules in the component keep combos readable: protrusion budget (≤2 of crown/side/tail),
-  big mouths only with calm eye pairs, accent budget (must appear once, patterns only on plain
-  bodies), no flat-line mouths, never a bare body. Appendages are authored for the right side at
-  the origin and mirrored. Colours are `--critter-N` / `-accent` / `-ink` (fill contrast-adjusted
-  per theme, accent re-picked from a light/dark candidate, ink falls back to the pale accent on
-  dark fills). State is carried by a ring/badge outside `.blob-body` (spinning dashes = active,
-  pulsing ring + highlight dot = needs-input, red ring + dot + desaturated body = error) so it
-  survives reduced-motion.
+  lightness to ≥3:1 against the theme's panel/elev/bg.
 - `src/blob/dockIcon.ts` — rasterises the selected session's blob (via `renderToStaticMarkup`,
   with theme CSS vars inlined since an `<img>`-loaded SVG can't see them) onto a `--sidebar`
   squircle and sends the PNG over `window.ember.setDockIcon` → `app.dock.setIcon`. Driven by an
