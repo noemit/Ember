@@ -1488,7 +1488,11 @@ export default function App() {
   const handleComposerDraftsChange = (drafts: Record<string, StoredComposerDraft>) => {
     const composerDrafts = Object.fromEntries(
       Object.entries(drafts)
-        .filter(([key, draft]) => key.length > 0 && key.length <= 500 && draft.text.trim())
+        .filter(([key, draft]) =>
+          key.length > 0 &&
+          key.length <= 500 &&
+          (draft.text.trim() || draft.modelId || draft.variant || draft.mode)
+        )
         .slice(-50)
         .map(([key, draft]) => [key, {
           text: draft.text.slice(0, 200_000),

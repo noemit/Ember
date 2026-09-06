@@ -256,8 +256,11 @@ const composerFromStored = (draft: StoredComposerDraft): ComposerState => ({
 });
 
 const storedFromComposer = (state: ComposerState): StoredComposerDraft => {
-  const draft: StoredComposerDraft = { text: state.text, updatedAt: Date.now() };
-  if (state.modelId !== DEFAULT_MODEL) draft.modelId = state.modelId;
+  const draft: StoredComposerDraft = {
+    text: state.text,
+    modelId: state.modelId,
+    updatedAt: Date.now(),
+  };
   if (state.variant) draft.variant = state.variant;
   if (state.mode !== 'build') draft.mode = state.mode;
   return draft;
@@ -572,6 +575,7 @@ export default function ChatView({
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const createdModelRef = React.useRef<{ key: string; variant?: string } | null>(null);
   const composerDraftsRef = React.useRef(new Map<string, ComposerState>());
+  const touchedComposerChoicesRef = React.useRef(new Set<string>());
   const previousComposerKeyRef = React.useRef<string | null>(null);
   const draftsHydratedRef = React.useRef(false);
   const draftPersistTimerRef = React.useRef<number | undefined>(undefined);
@@ -583,6 +587,9 @@ export default function ChatView({
     if (!composerDraftsHydrated || draftsHydratedRef.current) return;
     draftsHydratedRef.current = true;
     Object.entries(savedComposerDrafts).forEach(([key, draft]) => {
+      if (draft.modelId !== undefined || draft.variant || draft.mode) {
+        touchedComposerChoicesRef.current.add(key);
+      }
       if (!composerDraftsRef.current.has(key)) {
         composerDraftsRef.current.set(key, composerFromStored(draft));
       }
@@ -618,8 +625,25 @@ export default function ChatView({
 
   const updateComposerDraft = (key: string, draft: ComposerState | null) => {
     if (draft) saveComposerDraft(composerDraftsRef.current, key, draft);
-    else composerDraftsRef.current.delete(key);
+    else {
+      composerDraftsRef.current.delete(key);
+      touchedComposerChoicesRef.current.delete(key);
+    }
     scheduleDraftPersistence();
+  };
+
+  const updateComposerChoices = (patch: Partial<Pick<ComposerState, 'modelId' | 'variant' | 'mode'>>) => {
+    if (!composerKey) return;
+    touchedComposerChoicesRef.current.add(composerKey);
+    updateComposerDraft(composerKey, {
+      text,
+      modelId,
+      variant,
+      mode,
+      attachments,
+      replyContext,
+      ...patch,
+    });
   };
 
   const last = messages[messages.length - 1];
@@ -652,7 +676,12 @@ export default function ChatView({
   React.useEffect(() => {
     const previousKey = previousComposerKeyRef.current;
     if (previousKey && previousKey !== composerKey) {
-      if (text.trim() || attachments.length || replyContext) {
+      if (
+        text.trim() ||
+        attachments.length ||
+        replyContext ||
+        touchedComposerChoicesRef.current.has(previousKey)
+      ) {
         updateComposerDraft(previousKey, {
           text,
           modelId,
@@ -1087,7 +1116,12 @@ export default function ChatView({
               onChange={(event) => {
                 setText(event.target.value);
                 if (composerKey) {
-                  if (event.target.value.trim() || attachments.length || replyContext) {
+                  if (
+                    event.target.value.trim() ||
+                    attachments.length ||
+                    replyContext ||
+                    touchedComposerChoicesRef.current.has(composerKey)
+                  ) {
                     updateComposerDraft(composerKey, {
                       text: event.target.value,
                       modelId,
@@ -1137,12 +1171,14 @@ export default function ChatView({
                     defaultModelId={defaultModelId}
                     collapseProviders
                     onSelect={(next) => {
-                      setModelId(next);
                       const nextModel = models.find((entry) => modelKey(entry) === next);
                       const nextVariants =
                         nextModel?.details.variants ??
                         (next === DEFAULT_MODEL ? defaultModel?.details.variants ?? [] : []);
-                      if (variant && !nextVariants.includes(variant)) setVariant('');
+                      const nextVariant = variant && nextVariants.includes(variant) ? variant : '';
+                      setModelId(next);
+                      setVariant(nextVariant);
+                      updateComposerChoices({ modelId: next, variant: nextVariant });
                     }}
                     onOpenChange={setPickerOpen}
                   />
@@ -1152,7 +1188,11 @@ export default function ChatView({
               {variantOptions.length ? (
                 <Select
                   value={variant || '__default'}
-                  onValueChange={(value) => setVariant(value === '__default' ? '' : value)}
+                  onValueChange={(value) => {
+                    const nextVariant = value === '__default' ? '' : value;
+                    setVariant(nextVariant);
+                    updateComposerChoices({ variant: nextVariant });
+                  }}
                   disabled={!session}
                 >
                   <SelectTrigger
@@ -1175,7 +1215,10 @@ export default function ChatView({
 
               <Select
                 value={mode}
-                onValueChange={setMode}
+                onValueChange={(nextMode) => {
+                  setMode(nextMode);
+                  updateComposerChoices({ mode: nextMode });
+                }}
                 disabled={!session}
               >
                 <SelectTrigger size="sm" className="h-7 border-none bg-transparent px-2 text-xs shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted">

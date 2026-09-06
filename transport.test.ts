@@ -89,6 +89,12 @@ describe('appearance settings validation', () => {
         updatedAt: 100,
         attachments: [{ url: 'data:text/plain;base64,secret' }],
       },
+      'local::choice': {
+        text: '',
+        modelId: 'default',
+        variant: 'high',
+        updatedAt: 101,
+      },
       'local::empty': { text: '   ' },
       'local::huge': { text: 'x'.repeat(200_001) },
     })).toEqual({
@@ -98,6 +104,12 @@ describe('appearance settings validation', () => {
         variant: 'high',
         mode: 'plan',
         updatedAt: 100,
+      },
+      'local::choice': {
+        text: '',
+        modelId: 'default',
+        variant: 'high',
+        updatedAt: 101,
       },
     });
   });

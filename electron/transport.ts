@@ -163,14 +163,17 @@ export const parseComposerDrafts = (value: unknown): Record<string, StoredCompos
       if (!raw || typeof raw !== 'object') return;
       const entry = raw as Record<string, unknown>;
       const text = typeof entry.text === 'string' ? entry.text : '';
-      if (!text.trim() || text.length > 200_000) return;
+      const modelId = typeof entry.modelId === 'string' && entry.modelId.length <= 300 ? entry.modelId : undefined;
+      const variant = typeof entry.variant === 'string' && entry.variant.length <= 100 ? entry.variant : undefined;
+      const mode = typeof entry.mode === 'string' && entry.mode.length <= 100 ? entry.mode : undefined;
+      if ((!text.trim() && !modelId && !variant && !mode) || text.length > 200_000) return;
       const draft: StoredComposerDraft = {
         text,
         updatedAt: typeof entry.updatedAt === 'number' && entry.updatedAt > 0 ? entry.updatedAt : Date.now(),
       };
-      if (typeof entry.modelId === 'string' && entry.modelId.length <= 300) draft.modelId = entry.modelId;
-      if (typeof entry.variant === 'string' && entry.variant.length <= 100) draft.variant = entry.variant;
-      if (typeof entry.mode === 'string' && entry.mode.length <= 100) draft.mode = entry.mode;
+      if (modelId) draft.modelId = modelId;
+      if (variant) draft.variant = variant;
+      if (mode) draft.mode = mode;
       drafts[key] = draft;
     });
   return drafts;

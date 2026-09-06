@@ -31,7 +31,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/components/ChatView.tsx` — owns the transcript shell, queued-message list, and composer.
   Text, model, reasoning variant, agent mode, attachments, and reply context are kept per session;
   the one-line textarea grows to a capped height and failed sends restore the draft. Draft text and
-  model/agent choices persist across restarts, while attachments and reply context remain in-memory.
+  model/agent choices persist across restarts (including choice-only drafts), while attachments and
+  reply context remain in-memory.
 - `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.
