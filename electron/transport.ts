@@ -52,6 +52,7 @@ export const resolveApiUrl = (baseValue: string, apiPath: unknown): string | nul
     typeof apiPath !== 'string' ||
     !/^\/api(?:[/?]|$)/.test(apiPath) ||
     apiPath.startsWith('//') ||
+    // eslint-disable-next-line no-control-regex -- rejecting control characters is the point
     /[\\\u0000-\u001f\u007f]/.test(apiPath)
   ) {
     return null;

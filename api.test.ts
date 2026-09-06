@@ -12,7 +12,6 @@ import {
   loadModels,
   loadProjects,
   loadQuestions,
-  loadSessionPreview,
   loadSessions,
   loadScheduledIdentityData,
   mergePolledSessions,
@@ -126,12 +125,12 @@ describe('session loading', () => {
     expect(paths[1]).toContain('cursor=801');
   });
 
-  test('distinguishes a failed preview from a successful empty preview', async () => {
+  test('distinguishes a failed message load from a successful empty transcript', async () => {
     setRequest(async () => ({ ok: false, status: 503, data: null }));
-    expect(await loadSessionPreview('local', 'session')).toBeNull();
+    await expect(loadMessages('local', 'session')).rejects.toThrow();
 
     setRequest(async () => ({ ok: true, status: 200, data: [] }));
-    expect(await loadSessionPreview('local', 'session')).toBe('');
+    expect(await loadMessages('local', 'session')).toEqual([]);
   });
 
   test('normalizes model and timing metadata for user and assistant messages', async () => {

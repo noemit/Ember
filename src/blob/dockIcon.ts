@@ -11,9 +11,7 @@ type BlobComponent = React.ComponentType<{
 }>;
 
 const loadBlobComponent = async (style: BlobStyle): Promise<BlobComponent> => {
-  if (style === 'gem') return (await import('./GemBlob')).default;
   if (style === 'glyph') return (await import('./GlyphBlob')).default;
-  if (style === 'critter') return (await import('./CritterBlob')).default;
   return (await import('./GrokBlob')).default;
 };
 
@@ -84,9 +82,9 @@ export const renderDockIcon = async (
   const offset = (CANVAS - blobSize) / 2;
   ctx.drawImage(image, offset, offset, blobSize, blobSize);
 
-  // Grok/gem/glyph show state through motion, which a still image loses; give the tile a
-  // corner dot instead. Critters carry their own ring and badge, and glyphs their own error dot.
-  const hasOwnBadge = style === 'critter' || (style === 'glyph' && state === 'error');
+  // Blobs show state through motion, which a still image loses; give the tile a corner dot
+  // instead. Glyphs already paint their own error dot.
+  const hasOwnBadge = style === 'glyph' && state === 'error';
   if (!hasOwnBadge && state !== 'idle') {
     const r = TILE * 0.075;
     const cx = INSET + TILE - r * 1.6;

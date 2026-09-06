@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 type ApiResponse = { ok: boolean; status: number; data: unknown };
 
-type BlobStyle = 'gem' | 'grok' | 'glyph' | 'critter';
+type BlobStyle = 'grok' | 'glyph';
 type InstanceDefaults = {
   directory?: string;
   agent?: string;

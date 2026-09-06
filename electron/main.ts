@@ -50,9 +50,9 @@ type Instance = {
   attachable: boolean;
 };
 
-type BlobStyle = 'gem' | 'grok' | 'glyph' | 'critter';
+type BlobStyle = 'grok' | 'glyph';
 
-const BLOB_STYLES: BlobStyle[] = ['gem', 'grok', 'glyph', 'critter'];
+const BLOB_STYLES: BlobStyle[] = ['grok', 'glyph'];
 const isBlobStyle = (value: unknown): value is BlobStyle =>
   typeof value === 'string' && (BLOB_STYLES as string[]).includes(value);
 
@@ -506,7 +506,9 @@ ipcMain.handle('ember:open', async (event, args: { target?: unknown }): Promise<
       await shell.openExternal(external.toString());
       return true;
     }
-  } catch {}
+  } catch {
+    // Not a URL; fall through and treat it as a local path.
+  }
 
   const resolved = target.startsWith('~') ? path.join(os.homedir(), target.slice(1)) : target;
   if (!path.isAbsolute(resolved) || !fs.existsSync(resolved)) return false;

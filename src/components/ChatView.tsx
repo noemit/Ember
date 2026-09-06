@@ -205,7 +205,6 @@ type Props = {
   onQuestion: (request: QuestionRequest, answers: QuestionAnswers | null) => Promise<boolean>;
 };
 
-const modelKey = (model: ModelOption) => `${model.providerID}/${model.modelID}`;
 
 const messageContextText = (message: ChatMessage): string =>
   message.text.trim() ||
@@ -331,14 +330,14 @@ const NewSessionSetup = ({
   const [modelPickerOpen, setModelPickerOpen] = React.useState(false);
   const [modelPickerActivated, setModelPickerActivated] = React.useState(false);
   const folderRef = React.useRef<HTMLInputElement>(null);
-  const selectedModelOption = models.find((entry) => modelKey(entry) === selectedModel);
-  const defaultModelOption = defaultModelId ? models.find((entry) => modelKey(entry) === defaultModelId) : undefined;
+  const selectedModelOption = models.find((entry) => modelRefKey(entry) === selectedModel);
+  const defaultModelOption = defaultModelId ? models.find((entry) => modelRefKey(entry) === defaultModelId) : undefined;
   const selectedVariantOptions = selectedModelOption?.details.variants ?? [];
 
   const create = async () => {
     if (!directory.trim() || creating) return;
     setCreating(true);
-    const model = models.find((entry) => modelKey(entry) === selectedModel);
+    const model = models.find((entry) => modelRefKey(entry) === selectedModel);
     const created = await onCreate({
       instanceId,
       directory: directory.trim(),
@@ -451,7 +450,7 @@ const NewSessionSetup = ({
                   collapseProviders
                   onSelect={(next) => {
                     setSelectedModel(next);
-                    const nextModel = models.find((entry) => modelKey(entry) === next);
+                    const nextModel = models.find((entry) => modelRefKey(entry) === next);
                     if (selectedVariant && !nextModel?.details.variants.includes(selectedVariant)) {
                       setSelectedVariant('');
                     }
@@ -610,12 +609,14 @@ export default function ChatView({
       }
     });
     const restored = composerKey ? composerDraftsRef.current.get(composerKey) : undefined;
+    // Only fill an untouched composer; the current values are read once, on hydration.
     if (restored && !text && attachments.length === 0 && !replyContext) {
       setText(restored.text);
       setModelId(restored.modelId);
       setVariant(restored.variant);
       setMode(restored.mode);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot hydration, guarded by draftsHydratedRef
   }, [composerDraftsHydrated, savedComposerDrafts]);
 
   const snapshotComposerDrafts = () =>
@@ -690,12 +691,15 @@ export default function ChatView({
   };
 
   React.useEffect(() => {
-    if (!session) return;
+    if (!composerKey) return;
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, [composerKey]);
 
+  // Runs exactly when the open session changes: stash the outgoing composer under the previous
+  // key and load the incoming one. It must read the *current* text/attachments/etc. without
+  // re-running when they change, so those are intentionally not dependencies.
   React.useLayoutEffect(() => {
     const previousKey = previousComposerKeyRef.current;
     if (previousKey && previousKey !== composerKey) {
@@ -739,6 +743,7 @@ export default function ChatView({
     setAttachmentError(null);
     setReplyContext(next.replyContext);
     createdModelRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above the effect
   }, [composerKey]);
 
   React.useEffect(() => {
@@ -752,13 +757,13 @@ export default function ChatView({
     setContextOpen(false);
     setFocusMessageId(null);
     setQueueModelPickerItemId(null);
-    if (!session) return;
+    if (!composerKey) return;
     const frame = window.requestAnimationFrame(() => textareaRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [composerKey]);
 
-  const model = models.find((entry) => modelKey(entry) === modelId);
-  const defaultModel = defaultModelId ? models.find((entry) => modelKey(entry) === defaultModelId) : undefined;
+  const model = models.find((entry) => modelRefKey(entry) === modelId);
+  const defaultModel = defaultModelId ? models.find((entry) => modelRefKey(entry) === defaultModelId) : undefined;
   const variantModel = model ?? (modelId === DEFAULT_MODEL ? defaultModel : undefined);
   const modelButtonLabel = model
     ? `${model.details.providerName} / ${model.details.name}${modelId === defaultModelId ? ' (Default)' : ''}`
@@ -1137,7 +1142,7 @@ export default function ChatView({
                   defaultModelId={defaultModelId}
                   collapseProviders
                   onSelect={(next) => {
-                    const nextModel = models.find((entry) => modelKey(entry) === next);
+                    const nextModel = models.find((entry) => modelRefKey(entry) === next);
                     const itemId = queueModelPickerItem.id;
                     setQueueModelPickerItemId(null);
                     if (nextModel) void runQueueAction(itemId, () => onQueuedModelChange(itemId, nextModel));
@@ -1239,7 +1244,7 @@ export default function ChatView({
                     defaultModelId={defaultModelId}
                     collapseProviders
                     onSelect={(next) => {
-                      const nextModel = models.find((entry) => modelKey(entry) === next);
+                      const nextModel = models.find((entry) => modelRefKey(entry) === next);
                       const nextVariants =
                         nextModel?.details.variants ??
                         (next === DEFAULT_MODEL ? defaultModel?.details.variants ?? [] : []);

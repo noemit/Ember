@@ -3,7 +3,7 @@ import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { GLYPH_COLORS } from '../blob/contrast';
 import { GLYPHS } from '../blob/glyphs';
-import { GROK_COLORS, GROK_SHAPES } from '../blob/grok';
+import { GROK_SHAPES } from '../blob/grok';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {

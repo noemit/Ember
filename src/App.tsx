@@ -31,7 +31,6 @@ import {
   loadQuestions,
   loadSessionStates,
   loadModels,
-  loadSessions,
   loadScheduledIdentityData,
   mergePolledSessions,
   previewOf,
@@ -48,6 +47,7 @@ import {
   type PromptInput,
   type QueueMessageInput,
 } from './api';
+import { useStableCallback } from '@/lib/useStableCallback';
 import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
 import type {
   AvatarIdentity,
@@ -159,6 +159,17 @@ const messageSignature = (message: ChatMessage): string =>
 const sameMessages = (a: ChatMessage[], b: ChatMessage[]): boolean =>
   a.length === b.length && a.every((m, i) => messageSignature(m) === messageSignature(b[i]));
 
+const forSession = <T extends { instanceId: string; sessionId: string }>(
+  list: T[],
+  selected: SessionRef | null
+): T[] =>
+  selected
+    ? list.filter(
+        (request) =>
+          request.instanceId === selected.instanceId && request.sessionId === selected.sessionId
+      )
+    : [];
+
 const sameIdentity = (a: AvatarIdentity, b: AvatarIdentity): boolean =>
   a.sessionKey === b.sessionKey &&
   a.projectKey === b.projectKey &&
@@ -193,7 +204,9 @@ const copyText = async (text: string): Promise<boolean> => {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch {}
+  } catch {
+    // Clipboard API refused (no focus, permissions); fall back to execCommand below.
+  }
   const textarea = document.createElement('textarea');
   textarea.value = text;
   textarea.style.position = 'fixed';
@@ -507,10 +520,12 @@ export default function App() {
     avatarIdentitiesRef.current = next;
     return next;
   }, [sessionsByInstance, projectsByInstance, settings.scheduledSessionBindings, settings.avatarOverrides, allocatedProjectColors]);
-  const selectedIdentity = selectedKey
-    ? avatarIdentities[selectedKey] ?? seedIdentity(selectedKey)
-    : seedIdentity('');
-  const selectedIdentitySignature = JSON.stringify(selectedIdentity);
+  // avatarIdentities keeps stable references, and the fallback is memoized on the key, so this
+  // is safe to use directly as an effect dependency.
+  const selectedIdentity = React.useMemo(
+    () => (selectedKey ? avatarIdentities[selectedKey] ?? seedIdentity(selectedKey) : seedIdentity('')),
+    [selectedKey, avatarIdentities]
+  );
   const avatarPickerIdentity = avatarPickerSession
     ? avatarIdentities[sessionKey(avatarPickerSession)] ??
       resolveAvatarIdentity(
@@ -578,9 +593,9 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedKey, selectedIdentitySignature, selectedState, settings.blobStyle, settings.theme]);
+  }, [selectedKey, selectedIdentity, selectedState, settings.blobStyle, settings.theme]);
 
-  const refreshInstances = React.useCallback(async () => {
+  const refreshInstances = React.useCallback(async function refreshInstances() {
     setRefreshing(true);
     showActionError(null);
     try {
@@ -652,7 +667,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
   }, [readyKey]);
 
   // Sessions across every connected instance, refreshed on an interval so new
@@ -694,7 +709,7 @@ export default function App() {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
   }, [readyKey]);
 
   React.useEffect(() => {
@@ -731,7 +746,7 @@ export default function App() {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
   }, [readyKey, selectedKey]);
 
   // Read through refs so this effect only re-runs when the session list changes. Depending on
@@ -1499,6 +1514,9 @@ export default function App() {
     }
   };
 
+  // handlePermission is redefined every render; go through a stable wrapper so this effect
+  // only re-runs when the permission list or the selection actually changes.
+  const autoReplyPermission = useStableCallback(handlePermission);
   React.useEffect(() => {
     if (!bypass || !selected) return;
     permissions
@@ -1510,9 +1528,9 @@ export default function App() {
         const key = `${request.instanceId}:${request.id}`;
         if (bypassReplyIds.current.has(key)) return;
         bypassReplyIds.current.add(key);
-        void handlePermission(request, 'once').finally(() => bypassReplyIds.current.delete(key));
+        void autoReplyPermission(request, 'once').finally(() => bypassReplyIds.current.delete(key));
       });
-  }, [bypass, permissions, selected]);
+  }, [bypass, permissions, selected, autoReplyPermission]);
 
   const sessionDirectory = (instanceId: string, sessionId: string) =>
     (sessionsByInstance[instanceId] ?? []).find((session) => session.id === sessionId)?.directory;
@@ -1616,7 +1634,9 @@ export default function App() {
           if (settingsRevision.current === revision) {
             setSettings({ ...DEFAULT_SETTINGS, ...stored });
           }
-        } catch {}
+        } catch {
+          // The save already failed and was reported; keep the optimistic value if we can't re-read.
+        }
       });
   };
 
@@ -1634,7 +1654,7 @@ export default function App() {
     ) {
       handleSettings({ projectColorAssignments: allocatedProjectColors });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSettings is recreated per render; it only needs the compared values
   }, [projectsByInstance, allocatedProjectColors, settings.projectColorAssignments]);
 
   React.useEffect(() => {
@@ -1678,7 +1698,7 @@ export default function App() {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
   }, [readyKey, projectsByInstance]);
 
   const handleTogglePin = (message: ChatMessage) => {
@@ -1755,17 +1775,8 @@ export default function App() {
     () => recentModelKeys(modelInstanceSessions ?? []),
     [modelInstanceSessions]
   );
-  const forSelected = <T extends { instanceId: string; sessionId: string }>(list: T[]): T[] =>
-    selected
-      ? list.filter(
-          (request) =>
-            request.instanceId === selected.instanceId && request.sessionId === selected.sessionId
-        )
-      : [];
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const selectedPermissions = React.useMemo(() => forSelected(permissions), [permissions, selected]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const selectedQuestions = React.useMemo(() => forSelected(questions), [questions, selected]);
+  const selectedPermissions = React.useMemo(() => forSession(permissions, selected), [permissions, selected]);
+  const selectedQuestions = React.useMemo(() => forSession(questions, selected), [questions, selected]);
 
   React.useEffect(() => {
     if (!selectedKey) {

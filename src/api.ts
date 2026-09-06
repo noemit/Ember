@@ -854,18 +854,6 @@ export const previewOf = (messages: ChatMessage[]): string => {
   return stripMarkdown(text).replace(/\s+/g, ' ').trim().slice(0, 160);
 };
 
-export const loadSessionPreview = async (
-  instanceId: string,
-  sessionId: string,
-  directory?: string
-): Promise<string | null> => {
-  try {
-    return previewOf(await loadMessages(instanceId, sessionId, directory));
-  } catch {
-    return null;
-  }
-};
-
 /** `null` means the request failed; callers keep whatever they already had. */
 export const loadModels = async (instanceId: string): Promise<ModelList | null> => {
   const response = await window.ember.request(instanceId, 'GET', '/api/provider');
@@ -909,17 +897,15 @@ export const loadModels = async (instanceId: string): Promise<ModelList | null> 
   const defaults = asRecord(root.default);
   const pairProvider = typeof defaults.providerID === 'string' ? defaults.providerID : '';
   const pairModel = typeof defaults.modelID === 'string' ? defaults.modelID : '';
-  let defaultModelId: string | null = null;
-  if (pairProvider && pairModel) {
-    defaultModelId = `${pairProvider}/${pairModel}`;
-  } else {
+  const defaultModelId = (() => {
+    if (pairProvider && pairModel) return `${pairProvider}/${pairModel}`;
     const defaultPair = Object.entries(defaults).find(
       ([provider, modelID]) =>
         typeof modelID === 'string' &&
         models.some((model) => model.providerID === provider && model.modelID === modelID)
     );
-    defaultModelId = defaultPair ? `${defaultPair[0]}/${defaultPair[1]}` : null;
-  }
+    return defaultPair ? `${defaultPair[0]}/${defaultPair[1]}` : null;
+  })();
 
   return { models, defaultModelId };
 };

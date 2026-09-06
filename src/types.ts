@@ -79,7 +79,7 @@ export type BallState = 'idle' | 'active' | 'needs-input' | 'error';
 /** Where the open session's transcript is: first fetch in flight, failed (poll keeps retrying), or loaded. */
 export type MessagesStatus = 'loading' | 'error' | 'ready';
 
-export type BlobStyle = 'gem' | 'grok' | 'glyph' | 'critter';
+export type BlobStyle = 'grok' | 'glyph';
 
 export type AvatarOverride = {
   colorIndex?: number;

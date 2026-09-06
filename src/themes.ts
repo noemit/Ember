@@ -5,7 +5,6 @@
  * so chat remains calm while the accent stays available for interaction states.
  */
 import { glyphPaletteFor, instanceMarkerPaletteFor } from './blob/contrast';
-import { critterPaletteFor } from './blob/critter';
 
 export type ThemePalette = {
   bg: string;
@@ -111,13 +110,6 @@ const toCssVars = (palette: ThemePalette): Record<string, string> => ({
   ),
   ...Object.fromEntries(
     instanceMarkerPaletteFor([palette.panel, palette.elev, palette.bg]).map((color, index) => [`--instance-marker-${index}`, color])
-  ),
-  ...Object.fromEntries(
-    critterPaletteFor([palette.panel, palette.elev, palette.bg]).flatMap(({ fill, accent, ink }, index) => [
-      [`--critter-${index}`, fill],
-      [`--critter-${index}-accent`, accent],
-      [`--critter-${index}-ink`, ink],
-    ])
   ),
   '--background': palette.bg,
   '--foreground': palette.text,

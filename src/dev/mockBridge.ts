@@ -199,7 +199,7 @@ const questions: Record<string, MockQuestion[]> = {
           question: 'Which blob style should be the default?',
           options: [
             { label: 'Buddy (flat)', description: 'Solid colour, softer shapes.' },
-            { label: 'Gem (faceted)', description: 'Low-poly look with highlights.' },
+            { label: 'Glyph (icons)', description: 'Hand-drawn icons on a colour disc.' },
           ],
         },
         {

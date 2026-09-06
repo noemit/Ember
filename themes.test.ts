@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { blobColor } from './src/blob/color';
 import { contrastRatio, GLYPH_COLORS, glyphPaletteFor, instanceMarkerPaletteFor } from './src/blob/contrast';
-import { deriveCritter } from './src/blob/CritterBlob';
 import { allocateProjectColors, hashString, mulberry32, resolveAvatarIdentity } from './src/blob/seed';
 import { GROK_COLORS } from './src/blob/grok';
 import { THEMES } from './src/themes';
@@ -116,11 +115,5 @@ describe('blob colours', () => {
 
     expect(identity.colorIndex).toBe(2);
     expect(identity.shapeName).toBe('cloud');
-  });
-
-  test('keeps the lightweight critter colour selector in sync with the renderer', () => {
-    for (const seed of ['alpha', 'beta', 'gamma', 'delta', 'epsilon']) {
-      expect(blobColor('critter', seed)).toBe(`var(--critter-${deriveCritter(seed).colorIndex})`);
-    }
   });
 });

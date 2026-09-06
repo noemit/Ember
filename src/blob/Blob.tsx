@@ -3,9 +3,8 @@ import GrokBlob from './GrokBlob';
 import { seedIdentity } from './seed';
 import type { AvatarIdentity, BallState, BlobStyle } from '../types';
 
-const GemBlob = React.lazy(() => import('./GemBlob'));
+// Glyph pulls in the generated icon table, so it's split out of the main bundle.
 const GlyphBlob = React.lazy(() => import('./GlyphBlob'));
-const CritterBlob = React.lazy(() => import('./CritterBlob'));
 
 type Props = {
   style: BlobStyle;
@@ -25,7 +24,6 @@ export default function Blob({ style, ...rest }: Props) {
   );
   const props = { ...rest, identity };
   if (style === 'grok') return <GrokBlob {...props} />;
-  const Variant = style === 'gem' ? GemBlob : style === 'glyph' ? GlyphBlob : CritterBlob;
   const size = rest.size ?? 30;
   return (
     <React.Suspense
@@ -37,7 +35,7 @@ export default function Blob({ style, ...rest }: Props) {
         />
       }
     >
-      <Variant {...props} />
+      <GlyphBlob {...props} />
     </React.Suspense>
   );
 }
