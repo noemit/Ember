@@ -46,6 +46,7 @@ describe('instance transport validation', () => {
     expect(normalizeApiMethod('get')).toBe('GET');
     expect(normalizeApiMethod('POST')).toBe('POST');
     expect(normalizeApiMethod('patch')).toBe('PATCH');
+    expect(normalizeApiMethod('put')).toBe('PUT');
     expect(normalizeApiMethod('DELETE')).toBe('DELETE');
     expect(normalizeApiMethod('TRACE')).toBeNull();
   });

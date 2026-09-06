@@ -90,7 +90,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   carry `archived: 0`. Archiving offers undo through the local notice toast.
 - Busy-session queueing uses OpenChamber's server-owned queue: `GET /api/message-queue`, enqueue with
   `POST /api/message-queue/sessions/:id/items` `{ directory, item }`, remove with
-  `DELETE /api/message-queue/sessions/:id/items/:itemId`, and take the full payload for immediate
+  `DELETE /api/message-queue/sessions/:id/items/:itemId`, reorder with
+  `PUT /api/message-queue/sessions/:id/order` `{ itemIds }`, and take the full payload for immediate
   steering with `POST /api/message-queue/sessions/:id/items/:itemId/take`. Queue items require a
   concrete `sendConfig` (`providerID`, `modelID`, optional `agent`/`variant`); Ember resolves the
   instance default before queueing. The server dispatches items once the session is idle, while

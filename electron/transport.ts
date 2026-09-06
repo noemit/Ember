@@ -1,8 +1,8 @@
-const API_METHODS = new Set(['GET', 'POST', 'PATCH', 'DELETE']);
+const API_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const DEFAULT_LOCAL_PORT = 57123;
 
-export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
 const parseHttpUrl = (value: string): URL | null => {
   try {

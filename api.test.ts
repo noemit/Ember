@@ -18,6 +18,7 @@ import {
   mergePolledSessions,
   reconcilePolledMessages,
   removeQueuedMessage,
+  reorderQueuedMessages,
   replyPermission,
   replyQuestion,
   sendPrompt,
@@ -664,6 +665,54 @@ describe('message queue', () => {
       context: [expect.objectContaining({ kind: 'context', text: 'Diff context', instructions: 'Read this first' })],
       sendConfig: expect.objectContaining({ agent: 'build', variant: 'high' }),
     }));
+  });
+
+  test('reorders queued messages through the server queue endpoint', async () => {
+    let requestMethod = '';
+    let requestPath = '';
+    let requestBody: unknown;
+    setRequest(async (_instanceId, method, path, body) => {
+      requestMethod = method;
+      requestPath = path;
+      requestBody = body;
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          revision: 11,
+          session: {
+            sessionId: 'ses_1',
+            directory: '/workspace/ember',
+            sendingId: null,
+            items: [
+              {
+                id: 'queued-2',
+                createdAt: 101,
+                content: 'Second',
+                text: 'Second',
+                attachments: [],
+                sendConfig: { providerID: 'anthropic', modelID: 'claude-sonnet' },
+              },
+              {
+                id: 'queued-1',
+                createdAt: 100,
+                content: 'First',
+                text: 'First',
+                attachments: [],
+                sendConfig: { providerID: 'anthropic', modelID: 'claude-sonnet' },
+              },
+            ],
+          },
+        },
+      };
+    });
+
+    const response = await reorderQueuedMessages('local', 'ses_1', ['queued-2', 'queued-1']);
+    expect(response.ok).toBe(true);
+    expect(response.data?.session.items.map((item) => item.id)).toEqual(['queued-2', 'queued-1']);
+    expect(requestMethod).toBe('PUT');
+    expect(requestPath).toBe('/api/message-queue/sessions/ses_1/order');
+    expect(requestBody).toEqual({ itemIds: ['queued-2', 'queued-1'] });
   });
 });
 

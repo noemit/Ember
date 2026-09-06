@@ -1034,6 +1034,20 @@ export const takeQueuedMessage = async (
   return { ...response, data: toMessageQueueTakeMutation(response.data) };
 };
 
+export const reorderQueuedMessages = async (
+  instanceId: string,
+  sessionId: string,
+  itemIds: string[]
+): Promise<{ ok: boolean; status: number; data: MessageQueueMutation | null }> => {
+  const response = await window.ember.request(
+    instanceId,
+    'PUT',
+    `/api/message-queue/sessions/${encodeURIComponent(sessionId)}/order`,
+    { itemIds }
+  );
+  return { ...response, data: toMessageQueueMutation(response.data) };
+};
+
 export const sendPrompt = async (
   instanceId: string,
   sessionId: string,

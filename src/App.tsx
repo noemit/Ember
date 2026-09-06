@@ -39,6 +39,7 @@ import {
   reconcilePolledMessages,
   rejectQuestion,
   removeQueuedMessage,
+  reorderQueuedMessages,
   replyPermission,
   replyQuestion,
   sendPrompt,
@@ -1037,11 +1038,41 @@ export default function App() {
   const handleRemoveQueuedMessage = async (itemId: string): Promise<boolean> => {
     if (!selected) return false;
     showActionError(null);
+    const previousQueue = selectedQueue;
+    if (previousQueue) {
+      const nextItems = previousQueue.items.filter((item) => item.id !== itemId);
+      setQueuesByInstance((prev) => {
+        const existing = prev[selected.instanceId] ?? [];
+        const without = existing.filter((queue) => queue.sessionId !== selected.sessionId);
+        return {
+          ...prev,
+          [selected.instanceId]: nextItems.length || previousQueue.sendingId
+            ? [{ ...previousQueue, items: nextItems }, ...without]
+            : without,
+        };
+      });
+    }
+
+    const restoreQueue = () => {
+      if (!previousQueue) return;
+      setQueuesByInstance((prev) => {
+        const existing = prev[selected.instanceId] ?? [];
+        return {
+          ...prev,
+          [selected.instanceId]: [
+            previousQueue,
+            ...existing.filter((queue) => queue.sessionId !== previousQueue.sessionId),
+          ],
+        };
+      });
+    };
+
     try {
       const removed = await removeQueuedMessage(selected.instanceId, selected.sessionId, itemId);
-      if (!removed.ok) {
+      if (!removed.ok || !removed.data) {
+        restoreQueue();
         showActionError(
-          removed.status === 409 ? 'That queued message is already being sent.' : 'Could not remove the queued message.',
+          removed.status === 409 ? 'That queued message is already being sent.' : 'Could not cancel the queued message.',
           removed.status === 409 ? undefined : () => void handleRemoveQueuedMessage(itemId)
         );
         return false;
@@ -1049,10 +1080,67 @@ export default function App() {
       applyQueueMutation(selected.instanceId, removed.data);
       return true;
     } catch (err) {
-      console.error('Remove queued message failed', err);
+      console.error('Cancel queued message failed', err);
+      restoreQueue();
       showActionError(
-        err instanceof Error ? err.message : 'Could not remove the queued message.',
+        err instanceof Error ? err.message : 'Could not cancel the queued message.',
         () => void handleRemoveQueuedMessage(itemId)
+      );
+      return false;
+    }
+  };
+
+  const handleMoveQueuedMessage = async (itemId: string, direction: -1 | 1): Promise<boolean> => {
+    if (!selected || !selectedQueue || selectedQueue.sendingId) return false;
+    showActionError(null);
+    const index = selectedQueue.items.findIndex((item) => item.id === itemId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= selectedQueue.items.length) return false;
+
+    const previousQueue = selectedQueue;
+    const items = [...selectedQueue.items];
+    [items[index], items[target]] = [items[target], items[index]];
+    const nextQueue = { ...selectedQueue, items };
+    setQueuesByInstance((prev) => ({
+      ...prev,
+      [selected.instanceId]: [
+        nextQueue,
+        ...(prev[selected.instanceId] ?? []).filter((queue) => queue.sessionId !== selected.sessionId),
+      ],
+    }));
+
+    const restoreQueue = () => {
+      setQueuesByInstance((prev) => ({
+        ...prev,
+        [selected.instanceId]: [
+          previousQueue,
+          ...(prev[selected.instanceId] ?? []).filter((queue) => queue.sessionId !== selected.sessionId),
+        ],
+      }));
+    };
+
+    try {
+      const reordered = await reorderQueuedMessages(
+        selected.instanceId,
+        selected.sessionId,
+        items.map((item) => item.id)
+      );
+      if (!reordered.ok || !reordered.data) {
+        restoreQueue();
+        showActionError(
+          'Could not reorder the queued messages.',
+          () => void handleMoveQueuedMessage(itemId, direction)
+        );
+        return false;
+      }
+      applyQueueMutation(selected.instanceId, reordered.data);
+      return true;
+    } catch (err) {
+      console.error('Reorder queued messages failed', err);
+      restoreQueue();
+      showActionError(
+        err instanceof Error ? err.message : 'Could not reorder the queued messages.',
+        () => void handleMoveQueuedMessage(itemId, direction)
       );
       return false;
     }
@@ -1607,6 +1695,7 @@ export default function App() {
               onSend={handleSend}
               onQueue={handleQueueMessage}
               onSendQueued={handleSendQueuedMessage}
+              onMoveQueued={handleMoveQueuedMessage}
               onRemoveQueued={handleRemoveQueuedMessage}
               onReload={() => {
                 if (selectedSession) void handleReloadSession(selectedSession);

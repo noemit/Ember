@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Check, ChevronDown, FilePenLine, ListOrdered, Loader2, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, ChevronUp, FilePenLine, ListOrdered, Loader2, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -194,6 +194,7 @@ type Props = {
   onSend: (input: PromptInput) => Promise<boolean>;
   onQueue: (input: PromptInput) => Promise<boolean>;
   onSendQueued: (itemId: string) => Promise<boolean>;
+  onMoveQueued: (itemId: string, direction: -1 | 1) => Promise<boolean>;
   onRemoveQueued: (itemId: string) => Promise<boolean>;
   onReload: () => void;
   onAbort: () => void;
@@ -544,6 +545,7 @@ export default function ChatView({
   onSend,
   onQueue,
   onSendQueued,
+  onMoveQueued,
   onRemoveQueued,
   onReload,
   onAbort,
@@ -957,8 +959,9 @@ export default function ChatView({
                   </span>
                 </div>
                 <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
-                  {queueItems.map((item) => {
+                  {queueItems.map((item, index) => {
                     const sendingItem = queue?.sendingId === item.id;
+                    const reorderLocked = Boolean(queue?.sendingId);
                     const preview = item.text.trim() || item.content.trim() ||
                       `${item.attachments.length} attachment${item.attachments.length === 1 ? '' : 's'}`;
                     return (
@@ -977,33 +980,54 @@ export default function ChatView({
                             {item.attachments.length} file{item.attachments.length === 1 ? '' : 's'}
                           </span>
                         ) : null}
-                        <button
-                          type="button"
-                          aria-disabled={sendingItem}
-                          onClick={() => {
-                            if (!sendingItem) void onSendQueued(item.id);
-                          }}
-                          aria-label={sendingItem
-                            ? `Queued message is being sent: ${preview.slice(0, 60)}`
-                            : `Send queued message now: ${preview.slice(0, 60)}`}
-                          title="Send now and steer the current turn"
-                          className="flex-none rounded p-0.5 text-muted-foreground hover:text-highlight aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
-                        >
-                          <ArrowUp className="size-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-disabled={sendingItem}
-                          onClick={() => {
-                            if (!sendingItem) void onRemoveQueued(item.id);
-                          }}
-                          aria-label={sendingItem
-                            ? `Queued message is being sent: ${preview.slice(0, 60)}`
-                            : `Remove queued message: ${preview.slice(0, 60)}`}
-                          className="flex-none rounded p-0.5 text-muted-foreground hover:text-destructive aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
-                        >
-                          <X className="size-3.5" />
-                        </button>
+                        <div className="flex flex-none items-center gap-0.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={reorderLocked || index === 0}
+                            onClick={() => void onMoveQueued(item.id, -1)}
+                            aria-label={`Move queued message up: ${preview.slice(0, 60)}`}
+                            title="Move up"
+                          >
+                            <ChevronUp />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={reorderLocked || index === queueItems.length - 1}
+                            onClick={() => void onMoveQueued(item.id, 1)}
+                            aria-label={`Move queued message down: ${preview.slice(0, 60)}`}
+                            title="Move down"
+                          >
+                            <ChevronDown />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            disabled={sendingItem}
+                            onClick={() => void onSendQueued(item.id)}
+                            aria-label={`Send queued message now: ${preview.slice(0, 60)}`}
+                            title="Send now and steer the current turn"
+                            className="px-1.5 text-[11px] text-muted-foreground hover:text-highlight"
+                          >
+                            Send now
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            disabled={sendingItem}
+                            onClick={() => void onRemoveQueued(item.id)}
+                            aria-label={`Cancel queued message: ${preview.slice(0, 60)}`}
+                            title={sendingItem ? 'Cannot cancel while this message is being sent' : 'Cancel queued message'}
+                            className="px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
                       </li>
                     );
                   })}

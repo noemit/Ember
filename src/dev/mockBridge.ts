@@ -410,6 +410,20 @@ const bridge: EmberBridge = {
       queueRevision += 1;
       return delay(ok({ ...queueMutation(instanceId, sessionId), item }));
     }
+    const queueOrderMatch = url.pathname.match(/^\/api\/message-queue\/sessions\/([^/]+)\/order$/);
+    if (queueOrderMatch && method === 'PUT') {
+      const sessionId = decodeURIComponent(queueOrderMatch[1]);
+      const items = queuedMessages[instanceId]?.[sessionId] ?? [];
+      const itemIds = (body as { itemIds?: string[] })?.itemIds ?? [];
+      const byId = new Map(items.map((item) => [item.id, item]));
+      if (itemIds.length !== items.length || itemIds.some((id) => !byId.has(id))) {
+        return { ok: false, status: 400, data: null };
+      }
+      queuedMessages[instanceId] ??= {};
+      queuedMessages[instanceId][sessionId] = itemIds.map((id) => byId.get(id)!);
+      queueRevision += 1;
+      return delay(ok(queueMutation(instanceId, sessionId)));
+    }
     if (path === '/api/config/settings') return delay(ok({ projects: projects[instanceId] ?? [] }));
     const scheduledMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/scheduled-tasks$/);
     if (scheduledMatch && method === 'GET') {

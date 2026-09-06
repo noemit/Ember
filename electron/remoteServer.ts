@@ -178,7 +178,7 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
         if (!input || typeof input !== 'object') return json(response, 400, { error: 'Invalid request' });
         const value = input as Record<string, unknown>;
         const method = typeof value.method === 'string' ? value.method.toUpperCase() : '';
-        if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(method)) return json(response, 400, { error: 'Invalid API method' });
+        if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return json(response, 400, { error: 'Invalid API method' });
         return json(response, 200, await handlers.request(String(value.instanceId ?? ''), method as ApiMethod, value.path, value.body));
       }
       if (request.method !== 'GET' && request.method !== 'HEAD') return json(response, 405, { error: 'Method not allowed' });
