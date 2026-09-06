@@ -677,7 +677,7 @@ export default function ChatView({
     return () => window.clearInterval(timer);
   }, [composerKey]);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const previousKey = previousComposerKeyRef.current;
     if (previousKey && previousKey !== composerKey) {
       if (
@@ -874,7 +874,7 @@ export default function ChatView({
   return (
     <main className="relative flex min-w-0 flex-1 overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout" initial={false}>
         {session ? (
           <motion.div
             key={`${session.instanceId}:${session.id}`}

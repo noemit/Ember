@@ -208,8 +208,11 @@ export default function App() {
   const [previewVersions, setPreviewVersions] = React.useState<Record<string, number | undefined>>({});
   const [selected, setSelected] = React.useState<SessionRef | null>(null);
   const [newSessionInstanceId, setNewSessionInstanceId] = React.useState<string | null>(null);
-  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
-  const [messagesStatus, setMessagesStatus] = React.useState<MessagesStatus>('ready');
+  const [transcript, setTranscript] = React.useState<{
+    key: string | null;
+    messages: ChatMessage[];
+    status: MessagesStatus;
+  }>({ key: null, messages: [], status: 'ready' });
   const [modelsByInstance, setModelsByInstance] = React.useState<Record<string, ModelList>>({});
   const [scheduledTaskNames, setScheduledTaskNames] = React.useState<Record<string, string>>({});
   const [settings, setSettings] = React.useState<EmberSettings>(DEFAULT_SETTINGS);
@@ -339,7 +342,11 @@ export default function App() {
   ) => {
     const next = updater(messageCacheRef.current.get(key) ?? []);
     cacheMessages(key, next);
-    if (selectedKeyRef.current === key) setMessages(next);
+    if (selectedKeyRef.current === key) {
+      setTranscript((current) =>
+        current.key === key ? { key, messages: next, status: 'ready' } : current
+      );
+    }
   };
 
   const readyIds = React.useMemo(
@@ -395,6 +402,14 @@ export default function App() {
   }, [statesByInstance, permissions, questions]);
 
   const selectedKey = selected ? sessionKey(selected) : null;
+  const cachedTranscript = selectedKey ? messageCacheRef.current.get(selectedKey) : undefined;
+  const transcriptMatchesSelection = Boolean(selectedKey && transcript.key === selectedKey);
+  const messages = transcriptMatchesSelection ? transcript.messages : cachedTranscript ?? [];
+  const messagesStatus: MessagesStatus = transcriptMatchesSelection
+    ? transcript.status
+    : cachedTranscript
+      ? 'ready'
+      : 'loading';
   React.useEffect(() => {
     setActionErrorRetry(null);
   }, [selectedKey]);
@@ -708,16 +723,16 @@ export default function App() {
   // Messages for the open session, kept fresh while the agent is working.
   React.useEffect(() => {
     if (!selected) {
-      setMessages([]);
-      setMessagesStatus('ready');
+      setTranscript({ key: null, messages: [], status: 'ready' });
       return;
     }
     const key = sessionKey(selected);
     const cached = messageCacheRef.current.get(key);
-    setMessages(cached ?? []);
-    // A warmed cache renders immediately; without one the transcript says "loading",
-    // not "thinking", while the first remote response is in flight.
-    setMessagesStatus(cached ? 'ready' : 'loading');
+    setTranscript({
+      key,
+      messages: cached ?? [],
+      status: cached ? 'ready' : 'loading',
+    });
     let cancelled = false;
     let timer: number | undefined;
 
@@ -729,13 +744,13 @@ export default function App() {
           selectedSessionRef.current?.directory
         );
         if (cancelled) return;
-        setMessages((prev) => {
-          const merged = reconcilePolledMessages(prev, next, pendingOptimisticIds.current);
-          const result = sameMessages(prev, merged) ? prev : merged;
+        setTranscript((current) => {
+          if (current.key !== key) return current;
+          const merged = reconcilePolledMessages(current.messages, next, pendingOptimisticIds.current);
+          const result = sameMessages(current.messages, merged) ? current.messages : merged;
           cacheMessages(key, result);
-          return result;
+          return { key, messages: result, status: 'ready' };
         });
-        setMessagesStatus('ready');
         const preview = previewOf(next);
         if (preview) {
           setPreviews((prev) => (prev[key] === preview ? prev : { ...prev, [key]: preview }));
@@ -743,7 +758,11 @@ export default function App() {
       } catch (err) {
         if (cancelled) return;
         console.error('Failed to load messages', err);
-        setMessagesStatus((prev) => (prev === 'ready' ? prev : 'error'));
+        setTranscript((current) =>
+          current.key === key && current.status !== 'ready'
+            ? { ...current, status: 'error' }
+            : current
+        );
       } finally {
         if (!cancelled) timer = window.setTimeout(() => void load(), STATE_POLL_MS);
       }
@@ -885,7 +904,11 @@ export default function App() {
       const next = await loadMessages(instanceId, sessionId, directory);
       const preview = previewOf(next);
       cacheMessages(key, next);
-      if (selectedKeyRef.current === key) setMessages(next);
+      if (selectedKeyRef.current === key) {
+        setTranscript((current) =>
+          current.key === key ? { key, messages: next, status: 'ready' } : current
+        );
+      }
       setPreviews((prev) => ({ ...prev, [key]: preview }));
       setPreviewVersions((prev) => ({ ...prev, [key]: updated }));
       return true;
@@ -1299,13 +1322,16 @@ export default function App() {
       );
       cacheMessages(key, merged);
       if (selectedKeyRef.current === key) {
-        setMessages(merged);
-        setMessagesStatus('ready');
+        setTranscript((current) =>
+          current.key === key ? { key, messages: merged, status: 'ready' } : current
+        );
       }
       const preview = previewOf(messageResult.value);
       setPreviews((current) => ({ ...current, [key]: preview }));
     } else if (selectedKeyRef.current === key) {
-      setMessagesStatus('error');
+      setTranscript((current) =>
+        current.key === key ? { ...current, status: 'error' } : current
+      );
     }
     if (stateResult.status === 'fulfilled' && stateResult.value) {
       setStatesByInstance((current) => ({ ...current, [session.instanceId]: stateResult.value! }));
@@ -1476,7 +1502,15 @@ export default function App() {
       );
       cacheMessages(key, next);
       if (selectedKeyRef.current === key) {
-        setMessages((prev) => (sameMessages(prev, next) ? prev : next));
+        setTranscript((current) =>
+          current.key === key
+            ? {
+                key,
+                messages: sameMessages(current.messages, next) ? current.messages : next,
+                status: 'ready',
+              }
+            : current
+        );
       }
     } catch (err) {
       console.error('Abort refresh failed', err);

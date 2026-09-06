@@ -26,8 +26,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/App.tsx` — owns all state: instances, per-instance sessions/states/models/queues, selection,
   command-palette data, undo/retry notices, and polite screen-reader status announcements. Sessions
   are keyed by `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances. A bounded
-  in-memory message cache is warmed by sidebar preview loads so switching back to a session renders
-  its last known transcript while the fresh fetch runs.
+  in-memory message cache is warmed by sidebar preview loads; transcript state is keyed by session so
+  switching renders the selected session's cached transcript before the first paint while the fresh
+  fetch runs.
 - `src/components/ChatView.tsx` — owns the transcript shell, queued-message list, and composer.
   Text, model, reasoning variant, agent mode, attachments, and reply context are kept per session;
   the one-line textarea grows to a capped height and failed sends restore the draft. Draft text and
