@@ -1,16 +1,15 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Check, ChevronDown, ChevronUp, FilePenLine, ListOrdered, Loader2, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, FilePenLine, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelList, PromptInput } from '../api';
+import { ModelPickerFallback } from './ModelPickerFallback';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Toggle } from '@/components/ui/toggle';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -37,7 +36,6 @@ import type {
   PermissionRequest,
   QuestionAnswers,
   QuestionRequest,
-  QueuedMessage,
   Session,
   SessionNote,
   StoredComposerDraft,
@@ -47,108 +45,8 @@ const loadModelPicker = () => import('./ModelPicker');
 const ModelPicker = React.lazy(loadModelPicker);
 const Transcript = React.lazy(() => import('./Transcript'));
 const SessionContextPanel = React.lazy(() => import('./SessionContextPanel'));
-
-const ModelPickerFallback = () => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="status">
-    <span className="rounded-lg border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-lg">
-      Loading models…
-    </span>
-  </div>
-);
-
-type ProjectPickerProps = {
-  projects: Project[];
-  value: string;
-  onSelect: (directory: string) => void;
-};
-
-const ProjectPicker = ({ projects, value, onSelect }: ProjectPickerProps) => {
-  const [open, setOpen] = React.useState(false);
-  const [query, setQuery] = React.useState('');
-  const selectableProjects = React.useMemo(
-    () => projects.filter((project): project is Project & { path: string } => Boolean(project.path)),
-    [projects]
-  );
-  const selected = selectableProjects.find((project) => project.path === value) ?? null;
-  const filtered = React.useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return selectableProjects;
-    return selectableProjects.filter((project) =>
-      [project.name, project.path].some((part) => part.toLowerCase().includes(needle))
-    );
-  }, [selectableProjects, query]);
-
-  React.useEffect(() => {
-    if (open) setQuery('');
-  }, [open]);
-
-  return (
-    <>
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full justify-between px-3 font-normal"
-        onClick={() => setOpen(true)}
-        aria-label="New agent project"
-      >
-        <span className="truncate">{selected?.name ?? 'Custom folder'}</span>
-        <ChevronDown className="size-4 text-muted-foreground" />
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-[calc(100vw-1rem)] max-w-[460px] p-0" showCloseButton={false}>
-          <DialogTitle className="sr-only">Choose a project</DialogTitle>
-          <div className="border-b p-2.5">
-            <Input
-              autoFocus
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Type a project name or folder…"
-              aria-label="Filter projects"
-              className="h-9 text-xs shadow-none"
-            />
-          </div>
-          <div className="max-h-[320px] overflow-y-auto p-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                onSelect('');
-                setOpen(false);
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12.5px] text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <span className="flex-1">Custom folder</span>
-              {!selected ? <Check className="size-3.5 text-highlight" /> : null}
-            </button>
-            {filtered.map((project) => (
-              <button
-                key={project.id}
-                type="button"
-                onClick={() => {
-                  onSelect(project.path);
-                  setOpen(false);
-                }}
-                className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-[12.5px] hover:bg-muted"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{project.name}</span>
-                  {project.path ? (
-                    <span className="block truncate text-[11px] text-muted-foreground">{project.path}</span>
-                  ) : null}
-                </span>
-                {project.path === value ? <Check className="mt-0.5 size-3.5 text-highlight" /> : null}
-              </button>
-            ))}
-            {filtered.length === 0 ? (
-              <p className="px-3 py-8 text-center text-xs text-muted-foreground">
-                No projects match “{query.trim()}”.
-              </p>
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-};
+const NewSessionSetup = React.lazy(() => import('./NewSessionSetup'));
+const QueuedMessageList = React.lazy(() => import('./QueuedMessageList'));
 
 const TranscriptFallback = () => (
   <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground" role="status">
@@ -296,221 +194,6 @@ const readAttachment = (file: File): Promise<FileAttachment> =>
     reader.readAsDataURL(file);
   });
 
-const NewSessionSetup = ({
-  instanceId,
-  instances,
-  projects,
-  models,
-  recentModels,
-  defaultModelId,
-  defaults,
-  onInstanceChange,
-  onCreate,
-  onCancel,
-}: {
-  instanceId: string;
-  instances: Instance[];
-  projects: Project[];
-  models: ModelOption[];
-  recentModels: string[];
-  defaultModelId: string | null;
-  defaults: InstanceDefaults;
-  onInstanceChange: (instanceId: string) => void;
-  onCreate: (options: NewSessionOptions) => Promise<boolean>;
-  onCancel: () => void;
-}) => {
-  const [directory, setDirectory] = React.useState(defaults.directory ?? '');
-  const [agent, setAgent] = React.useState<AgentMode>(defaults.agent ?? 'build');
-  const [selectedModel, setSelectedModel] = React.useState(
-    defaults.model ? modelRefKey(defaults.model) : DEFAULT_MODEL
-  );
-  const [selectedVariant, setSelectedVariant] = React.useState(defaults.variant ?? defaults.model?.variant ?? '');
-  const [bypass, setBypass] = React.useState(defaults.bypass === true);
-  const [creating, setCreating] = React.useState(false);
-  const [modelPickerOpen, setModelPickerOpen] = React.useState(false);
-  const [modelPickerActivated, setModelPickerActivated] = React.useState(false);
-  const folderRef = React.useRef<HTMLInputElement>(null);
-  const selectedModelOption = models.find((entry) => modelRefKey(entry) === selectedModel);
-  const defaultModelOption = defaultModelId ? models.find((entry) => modelRefKey(entry) === defaultModelId) : undefined;
-  const selectedVariantOptions = selectedModelOption?.details.variants ?? [];
-
-  const create = async () => {
-    if (!directory.trim() || creating) return;
-    setCreating(true);
-    const model = models.find((entry) => modelRefKey(entry) === selectedModel);
-    const created = await onCreate({
-      instanceId,
-      directory: directory.trim(),
-      agent,
-      model: model ? { providerID: model.providerID, modelID: model.modelID } : undefined,
-      variant:
-        model && selectedVariant && model.details.variants.includes(selectedVariant)
-          ? selectedVariant
-          : undefined,
-      bypass,
-    });
-    if (!created) setCreating(false);
-  };
-
-  return (
-    <div className="w-[calc(100%-1.5rem)] max-w-[560px] rounded-xl border bg-card p-4 text-foreground shadow-sm sm:p-5">
-      <div className="mb-5 flex flex-col gap-1">
-        <h2 className="text-base font-semibold">Start a new agent</h2>
-        <p className="text-xs text-muted-foreground">
-          Choose where and how it should run. The session is created only after you confirm.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">Instance</span>
-            <Select value={instanceId} onValueChange={onInstanceChange}>
-              <SelectTrigger aria-label="New agent instance">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {instances.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    {candidate.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">Project</span>
-            <ProjectPicker
-              projects={projects}
-              value={directory}
-              onSelect={(nextDirectory) => {
-                setDirectory(nextDirectory);
-                if (!nextDirectory) window.requestAnimationFrame(() => folderRef.current?.focus());
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium">Folder</span>
-          <Input
-            ref={folderRef}
-            value={directory}
-            onChange={(event) => setDirectory(event.target.value)}
-            placeholder="Choose a project or enter a folder path"
-            aria-label="New agent folder"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">Agent</span>
-            <Select value={agent} onValueChange={setAgent}>
-              <SelectTrigger aria-label="New agent type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="build">Build</SelectItem>
-                <SelectItem value="plan">Plan</SelectItem>
-                {agent !== 'build' && agent !== 'plan' ? (
-                  <SelectItem value={agent}>{agent}</SelectItem>
-                ) : null}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">Model</span>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full justify-between px-3 font-normal"
-              onClick={() => {
-                setModelPickerActivated(true);
-                setModelPickerOpen(true);
-              }}
-              aria-label="Choose new agent model"
-            >
-              <span className="truncate">
-                {selectedModelOption
-                  ? `${selectedModelOption.details.providerName} / ${selectedModelOption.details.name}${selectedModel === defaultModelId ? ' (Default)' : ''}`
-                  : defaultModelOption
-                    ? `${defaultModelOption.details.providerName} / ${defaultModelOption.details.name} (Default)`
-                    : 'Server default'}
-              </span>
-              <ChevronDown className="size-4 text-muted-foreground" />
-            </Button>
-            {modelPickerActivated ? (
-              <React.Suspense fallback={<ModelPickerFallback />}>
-                <ModelPicker
-                  open={modelPickerOpen}
-                  models={models}
-                  recentModels={recentModels}
-                  value={selectedModel}
-                  defaultModelId={defaultModelId}
-                  collapseProviders
-                  onSelect={(next) => {
-                    setSelectedModel(next);
-                    const nextModel = models.find((entry) => modelRefKey(entry) === next);
-                    if (selectedVariant && !nextModel?.details.variants.includes(selectedVariant)) {
-                      setSelectedVariant('');
-                    }
-                  }}
-                  onOpenChange={setModelPickerOpen}
-                />
-              </React.Suspense>
-            ) : null}
-            {selectedVariantOptions.length ? (
-              <Select
-                value={selectedVariant || '__default'}
-                onValueChange={(value) => setSelectedVariant(value === '__default' ? '' : value)}
-              >
-                <SelectTrigger aria-label="New agent reasoning level" className="capitalize">
-                  <SelectValue placeholder="Reasoning" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__default">Reasoning: default</SelectItem>
-                  {selectedVariantOptions.map((option) => (
-                    <SelectItem key={option} value={option} className="capitalize">
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-          <div className="flex min-w-0 flex-col">
-            <span className="text-xs font-medium">Bypass permission prompts</span>
-            <span className="text-[11px] text-muted-foreground">Only while this session is selected.</span>
-          </div>
-          <Toggle
-            pressed={bypass}
-            onPressedChange={setBypass}
-            variant="outline"
-            size="sm"
-            className="data-[state=on]:border-warning/60 data-[state=on]:bg-warning/10 data-[state=on]:text-warning"
-          >
-            <ShieldCheck />
-            {bypass ? 'On' : 'Off'}
-          </Toggle>
-        </div>
-      </div>
-
-      <div className="mt-5 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel} disabled={creating}>
-          Cancel
-        </Button>
-        <Button onClick={() => void create()} disabled={!directory.trim() || creating}>
-          {creating ? <Loader2 className="animate-spin" /> : null}
-          Create agent
-        </Button>
-      </div>
-    </div>
-  );
-};
-
 export default function ChatView({
   session,
   instance,
@@ -564,18 +247,6 @@ export default function ChatView({
   const [variant, setVariant] = React.useState('');
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [pickerActivated, setPickerActivated] = React.useState(false);
-  const [queueModelPickerItemId, setQueueModelPickerItemId] = React.useState<string | null>(null);
-  // Queue mutations round-trip to the server; lock the row so a double-click can't fire two.
-  const [busyQueueItemId, setBusyQueueItemId] = React.useState<string | null>(null);
-  const runQueueAction = async (itemId: string, action: () => Promise<boolean>) => {
-    if (busyQueueItemId) return;
-    setBusyQueueItemId(itemId);
-    try {
-      await action();
-    } finally {
-      setBusyQueueItemId((current) => (current === itemId ? null : current));
-    }
-  };
   const [attachments, setAttachments] = React.useState<FileAttachment[]>([]);
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [replyContext, setReplyContext] = React.useState<ChatMessage | null>(null);
@@ -756,7 +427,6 @@ export default function ChatView({
   React.useEffect(() => {
     setContextOpen(false);
     setFocusMessageId(null);
-    setQueueModelPickerItemId(null);
     if (!composerKey) return;
     const frame = window.requestAnimationFrame(() => textareaRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
@@ -807,16 +477,6 @@ export default function ChatView({
   const canSend = Boolean(session) && (text.trim().length > 0 || attachments.length > 0);
   const queueItems = queue?.items ?? [];
   const shouldQueue = Boolean(session && (busy || queueItems.length > 0));
-  const queueModelPickerItem = queueItems.find((item) => item.id === queueModelPickerItemId) ?? null;
-  const queuedModelLabel = (item: QueuedMessage): string => {
-    const option = models.find(
-      (candidate) =>
-        candidate.providerID === item.sendConfig.providerID &&
-        candidate.modelID === item.sendConfig.modelID
-    );
-    const name = option?.details.name ?? item.sendConfig.modelID;
-    return item.sendConfig.variant ? `${name} · ${item.sendConfig.variant}` : name;
-  };
 
   const submit = () => {
     if (!canSend) return;
@@ -1000,18 +660,20 @@ export default function ChatView({
             transition={{ duration: 0.16 }}
           >
             {newSessionInstanceId && setupInstance ? (
-              <NewSessionSetup
-                instanceId={newSessionInstanceId}
-                instances={instances.filter((candidate) => candidate.attachable)}
-                projects={setupProjects}
-                models={setupModels}
-                recentModels={recentModels}
-                defaultModelId={setupDefaultModelId}
-                defaults={setupDefaults}
-                onInstanceChange={onNewSessionInstanceChange}
-                onCreate={createSessionFromSetup}
-                onCancel={onCancelNewSession}
-              />
+              <React.Suspense fallback={<TranscriptFallback />}>
+                <NewSessionSetup
+                  instanceId={newSessionInstanceId}
+                  instances={instances.filter((candidate) => candidate.attachable)}
+                  projects={setupProjects}
+                  models={setupModels}
+                  recentModels={recentModels}
+                  defaultModelId={setupDefaultModelId}
+                  defaults={setupDefaults}
+                  onInstanceChange={onNewSessionInstanceChange}
+                  onCreate={createSessionFromSetup}
+                  onCancel={onCancelNewSession}
+                />
+              </React.Suspense>
             ) : (
               <>
                 <div className="flex -space-x-3">
@@ -1029,130 +691,19 @@ export default function ChatView({
       {session ? (
         <div className="safe-composer flex-none border-t bg-card p-2.5 sm:p-3">
           <div className="mx-auto flex max-w-[760px] flex-col gap-2">
-            {queueItems.length ? (
-              <section
-                aria-label="Queued messages"
-                className="rounded-xl border bg-background/80 px-3 py-2 text-[11.5px] shadow-sm"
-              >
-                <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
-                  <ListOrdered className="size-3.5 text-highlight" />
-                  <span className="font-medium text-foreground">
-                    {queueItems.length} queued {queueItems.length === 1 ? 'message' : 'messages'}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    {queue?.sendingId ? 'Sending the next one…' : 'They send when this agent is idle.'}
-                  </span>
-                </div>
-                <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
-                  {queueItems.map((item, index) => {
-                    const sendingItem = queue?.sendingId === item.id;
-                    const busy = sendingItem || busyQueueItemId === item.id;
-                    const reorderLocked = Boolean(queue?.sendingId) || busyQueueItemId !== null;
-                    const preview = item.text.trim() || item.content.trim() ||
-                      `${item.attachments.length} attachment${item.attachments.length === 1 ? '' : 's'}`;
-                    return (
-                      <li
-                        key={item.id}
-                        className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5"
-                      >
-                        {busy ? (
-                          <Loader2 className="size-3 flex-none animate-spin text-highlight" />
-                        ) : (
-                          <span className="size-1.5 flex-none rounded-full bg-highlight" aria-hidden="true" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <span className="block truncate" title={preview}>{preview}</span>
-                          <button
-                            type="button"
-                            disabled={busy || models.length === 0}
-                            onClick={() => setQueueModelPickerItemId(item.id)}
-                            aria-label={`Change model for queued message: ${preview.slice(0, 60)}`}
-                            title="Change queued message model"
-                            className="mt-0.5 block max-w-full truncate rounded text-[10.5px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {queuedModelLabel(item)}
-                          </button>
-                        </div>
-                        {item.attachments.length ? (
-                          <span className="flex-none rounded bg-background px-1 py-0.5 text-[10px] text-muted-foreground">
-                            {item.attachments.length} file{item.attachments.length === 1 ? '' : 's'}
-                          </span>
-                        ) : null}
-                        <div className="flex flex-none items-center gap-0.5">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            disabled={reorderLocked || index === 0}
-                            onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, -1))}
-                            aria-label={`Move queued message up: ${preview.slice(0, 60)}`}
-                            title="Move up"
-                          >
-                            <ChevronUp />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            disabled={reorderLocked || index === queueItems.length - 1}
-                            onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, 1))}
-                            aria-label={`Move queued message down: ${preview.slice(0, 60)}`}
-                            title="Move down"
-                          >
-                            <ChevronDown />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="xs"
-                            disabled={busy}
-                            onClick={() => void runQueueAction(item.id, () => onSendQueued(item.id))}
-                            aria-label={`Send queued message now: ${preview.slice(0, 60)}`}
-                            title="Send now and steer the current turn"
-                            className="px-1.5 text-[11px] text-muted-foreground hover:text-highlight"
-                          >
-                            Send now
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="xs"
-                            disabled={busy}
-                            onClick={() => void runQueueAction(item.id, () => onRemoveQueued(item.id))}
-                            aria-label={`Cancel queued message: ${preview.slice(0, 60)}`}
-                            title={sendingItem ? 'Cannot cancel while this message is being sent' : 'Cancel queued message'}
-                            className="px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </section>
-            ) : null}
-            {queueModelPickerItem ? (
-              <React.Suspense fallback={<ModelPickerFallback />}>
-                <ModelPicker
-                  open
-                  models={models}
-                  recentModels={recentModels}
-                  value={modelRefKey(queueModelPickerItem.sendConfig)}
-                  defaultModelId={defaultModelId}
-                  collapseProviders
-                  onSelect={(next) => {
-                    const nextModel = models.find((entry) => modelRefKey(entry) === next);
-                    const itemId = queueModelPickerItem.id;
-                    setQueueModelPickerItemId(null);
-                    if (nextModel) void runQueueAction(itemId, () => onQueuedModelChange(itemId, nextModel));
-                  }}
-                  onOpenChange={(open) => {
-                    if (!open) setQueueModelPickerItemId(null);
-                  }}
-                />
-              </React.Suspense>
-            ) : null}
+            <React.Suspense fallback={null}>
+              <QueuedMessageList
+                key={composerKey ?? 'none'}
+                queue={queue}
+                models={models}
+                recentModels={recentModels}
+                defaultModelId={defaultModelId}
+                onSendQueued={onSendQueued}
+                onQueuedModelChange={onQueuedModelChange}
+                onMoveQueued={onMoveQueued}
+                onRemoveQueued={onRemoveQueued}
+              />
+            </React.Suspense>
             <motion.div
               layout
             className={cn(
