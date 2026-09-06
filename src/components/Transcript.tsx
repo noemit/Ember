@@ -676,7 +676,8 @@ export default function Transcript({
         : runningTool?.type === 'tool'
           ? `Running ${runningTool.call.tool}`
           : 'Thinking';
-  const activity = activityLabel
+  const waitingOnHistory = messages.length === 0 && messagesStatus !== 'ready';
+  const activity = activityLabel && !waitingOnHistory
     ? `${activityLabel}${activeSince ? ` · ${formatElapsed(activityNow - activeSince)}` : ''}`
     : null;
 

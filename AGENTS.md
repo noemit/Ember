@@ -25,7 +25,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   hashed password and uses an HttpOnly session cookie.
 - `src/App.tsx` — owns all state: instances, per-instance sessions/states/models/queues, selection,
   command-palette data, undo/retry notices, and polite screen-reader status announcements. Sessions
-  are keyed by `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances.
+  are keyed by `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances. A bounded
+  in-memory message cache is warmed by sidebar preview loads so switching back to a session renders
+  its last known transcript while the fresh fetch runs.
 - `src/components/ChatView.tsx` — owns the transcript shell, queued-message list, and composer.
   Text, model, reasoning variant, agent mode, attachments, and reply context are kept per session;
   the one-line textarea grows to a capped height and failed sends restore the draft. Draft text and
@@ -63,8 +65,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   sets the tab favicon instead. `blob/color.ts` exposes `blobColor(style, seed)` for UI that
   wants the blob's dominant colour (the transcript's activity dot uses it).
 - `src/components/Transcript.tsx` — message list: text bubbles, expandable tool rows (input/
-  output/diff), collapsed reasoning, file parts, permission + question cards, live activity line,
-  pin-to-bottom scrolling (ResizeObserver + `scrollend`), and message jump/highlight support.
+  output/diff), collapsed reasoning, file parts, permission + question cards, live activity line
+  (suppressed until initial history resolves), pin-to-bottom scrolling (ResizeObserver +
+  `scrollend`), and message jump/highlight support.
 - `src/components/SessionContextPanel.tsx` — persistent notes/pins side panel. Notes are keyed by
   session, stored in Ember settings as up to 100 selectable text entries, and selected notes append
   to the composer without replacing its draft; deleting a note offers undo. Pin actions jump, reply,

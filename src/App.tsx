@@ -31,7 +31,6 @@ import {
   loadQuestions,
   loadSessionStates,
   loadModels,
-  loadSessionPreview,
   loadSessions,
   loadScheduledIdentityData,
   mergePolledSessions,
@@ -285,6 +284,7 @@ export default function App() {
   const pendingOptimisticIds = React.useRef(new Set<string>());
   const bypassReplyIds = React.useRef(new Set<string>());
   const settingsRevision = React.useRef(0);
+  const messageCacheRef = React.useRef(new Map<string, ChatMessage[]>());
   const scheduledBindingsRef = React.useRef<Record<string, string>>({});
   const settingsRef = React.useRef(settings);
   settingsRef.current = settings;
@@ -320,6 +320,26 @@ export default function App() {
     },
     []
   );
+
+  const cacheMessages = (key: string, messagesForSession: ChatMessage[]) => {
+    const cache = messageCacheRef.current;
+    cache.delete(key);
+    cache.set(key, messagesForSession);
+    while (cache.size > 20) {
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      cache.delete(oldest);
+    }
+  };
+
+  const updateCachedMessages = (
+    key: string,
+    updater: (messagesForSession: ChatMessage[]) => ChatMessage[]
+  ) => {
+    const next = updater(messageCacheRef.current.get(key) ?? []);
+    cacheMessages(key, next);
+    if (selectedKeyRef.current === key) setMessages(next);
+  };
 
   const readyIds = React.useMemo(
     () => instances.filter((instance) => instance.attachable).map((instance) => instance.id),
@@ -654,11 +674,10 @@ export default function App() {
         while (cursor < targets.length) {
           const session = targets[cursor];
           cursor += 1;
-          entries.push([
-            sessionKey(session),
-            await loadSessionPreview(session.instanceId, session.id, session.directory),
-            session.updated,
-          ]);
+          const key = sessionKey(session);
+          const loaded = await loadMessages(session.instanceId, session.id, session.directory).catch(() => null);
+          if (loaded) cacheMessages(key, loaded);
+          entries.push([key, loaded ? previewOf(loaded) : null, session.updated]);
         }
       };
       await Promise.all(
@@ -692,13 +711,14 @@ export default function App() {
       setMessagesStatus('ready');
       return;
     }
-    setMessages([]);
-    // Until the first response lands the transcript says "loading", not "no messages" —
-    // remote instances can take many seconds, and a failed first attempt is retried by the poll.
-    setMessagesStatus('loading');
+    const key = sessionKey(selected);
+    const cached = messageCacheRef.current.get(key);
+    setMessages(cached ?? []);
+    // A warmed cache renders immediately; without one the transcript says "loading",
+    // not "thinking", while the first remote response is in flight.
+    setMessagesStatus(cached ? 'ready' : 'loading');
     let cancelled = false;
     let timer: number | undefined;
-    const key = sessionKey(selected);
 
     const load = async () => {
       try {
@@ -710,7 +730,9 @@ export default function App() {
         if (cancelled) return;
         setMessages((prev) => {
           const merged = reconcilePolledMessages(prev, next, pendingOptimisticIds.current);
-          return sameMessages(prev, merged) ? prev : merged;
+          const result = sameMessages(prev, merged) ? prev : merged;
+          cacheMessages(key, result);
+          return result;
         });
         setMessagesStatus('ready');
         const preview = previewOf(next);
@@ -826,11 +848,11 @@ export default function App() {
       completed: true,
     };
     pendingOptimisticIds.current.add(optimisticId);
-    setMessages((prev) => [...prev, optimistic]);
+    updateCachedMessages(key, (prev) => [...prev, optimistic]);
     setSendingKeys((prev) => new Set(prev).add(key));
 
     const removeOptimistic = () =>
-      setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
+      updateCachedMessages(key, (prev) => prev.filter((message) => message.id !== optimisticId));
     let accepted = false;
 
     try {
@@ -861,6 +883,7 @@ export default function App() {
       }));
       const next = await loadMessages(instanceId, sessionId, directory);
       const preview = previewOf(next);
+      cacheMessages(key, next);
       if (selectedKeyRef.current === key) setMessages(next);
       setPreviews((prev) => ({ ...prev, [key]: preview }));
       setPreviewVersions((prev) => ({ ...prev, [key]: updated }));
@@ -1167,10 +1190,14 @@ export default function App() {
       );
     }
     if (messageResult.status === 'fulfilled') {
+      const merged = reconcilePolledMessages(
+        messageCacheRef.current.get(key) ?? [],
+        messageResult.value,
+        pendingOptimisticIds.current
+      );
+      cacheMessages(key, merged);
       if (selectedKeyRef.current === key) {
-        setMessages((current) =>
-          reconcilePolledMessages(current, messageResult.value, pendingOptimisticIds.current)
-        );
+        setMessages(merged);
         setMessagesStatus('ready');
       }
       const preview = previewOf(messageResult.value);
@@ -1345,6 +1372,7 @@ export default function App() {
         selectedSession.id,
         selectedSession.directory
       );
+      cacheMessages(key, next);
       if (selectedKeyRef.current === key) {
         setMessages((prev) => (sameMessages(prev, next) ? prev : next));
       }
