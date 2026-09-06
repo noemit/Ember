@@ -46,6 +46,7 @@ import {
   takeQueuedMessage,
   type ModelList,
   type PromptInput,
+  type QueueMessageInput,
 } from './api';
 import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
 import type {
@@ -993,6 +994,23 @@ export default function App() {
     };
   };
 
+  const queuedMessageInput = (
+    instanceId: string,
+    item: QueuedMessage,
+    model: ModelOption = queuedMessageModel(instanceId, item),
+    variant: string | undefined = item.sendConfig.variant
+  ): QueueMessageInput => ({
+    text: item.text || item.content,
+    model,
+    mode: item.sendConfig.agent,
+    variant,
+    attachments: item.attachments.flatMap((file) =>
+      file.dataUrl ? [{ filename: file.filename, mime: file.mimeType, url: file.dataUrl }] : []
+    ),
+    queuedContext: item.context,
+    agentMention: item.agentMention,
+  });
+
   const handleSendQueuedMessage = async (itemId: string): Promise<boolean> => {
     if (!selected) return false;
     showActionError(null);
@@ -1021,17 +1039,7 @@ export default function App() {
       }
       applyQueueMutation(instanceId, taken.data);
       const item = taken.data.item;
-      input = {
-        text: item.text || item.content,
-        model: queuedMessageModel(instanceId, item),
-        mode: item.sendConfig.agent,
-        variant: item.sendConfig.variant,
-        attachments: item.attachments.flatMap((file) =>
-          file.dataUrl ? [{ filename: file.filename, mime: file.mimeType, url: file.dataUrl }] : []
-        ),
-        queuedContext: item.context,
-        agentMention: item.agentMention,
-      };
+      input = queuedMessageInput(instanceId, item);
       const sent = await handleSend(input);
       if (sent) return true;
 
@@ -1053,6 +1061,100 @@ export default function App() {
       showActionError(
         err instanceof Error ? err.message : 'Could not send the queued message now.',
         input ? () => void handleSend(input!) : () => void handleSendQueuedMessage(itemId)
+      );
+      return false;
+    }
+  };
+
+  const handleQueuedModelChange = async (itemId: string, nextModel: ModelOption): Promise<boolean> => {
+    if (!selected || !selectedQueue) return false;
+    showActionError(null);
+    const { instanceId, sessionId } = selected;
+    const directory = selectedSession?.directory;
+    const originalIndex = selectedQueue.items.findIndex((item) => item.id === itemId);
+    if (!directory || originalIndex < 0) return false;
+    const queuedItem = selectedQueue.items[originalIndex];
+    if (
+      queuedItem.sendConfig.providerID === nextModel.providerID &&
+      queuedItem.sendConfig.modelID === nextModel.modelID
+    ) return true;
+    if (selectedQueue.sendingId) {
+      showActionError('Wait until the current queued message finishes sending before changing models.');
+      return false;
+    }
+
+    let takenItem: QueuedMessage | null = null;
+    try {
+      const taken = await takeQueuedMessage(instanceId, sessionId, itemId);
+      if (!taken.ok || !taken.data) {
+        showActionError(
+          taken.status === 409
+            ? 'That queued message is already being sent.'
+            : taken.status === 404
+              ? 'That queued message is no longer available.'
+              : 'Could not take the queued message.'
+        );
+        return false;
+      }
+      applyQueueMutation(instanceId, taken.data);
+      takenItem = taken.data.item;
+
+      const nextVariant = takenItem.sendConfig.variant &&
+        nextModel.details.variants.includes(takenItem.sendConfig.variant)
+        ? takenItem.sendConfig.variant
+        : undefined;
+      const changedInput = queuedMessageInput(instanceId, takenItem, nextModel, nextVariant);
+      const changed = await enqueueMessage(instanceId, sessionId, directory, changedInput);
+      if (!changed.ok || !changed.data) {
+        const restored = await enqueueMessage(
+          instanceId,
+          sessionId,
+          directory,
+          queuedMessageInput(instanceId, takenItem)
+        );
+        if (restored.ok && restored.data) applyQueueMutation(instanceId, restored.data);
+        showActionError(
+          restored.ok
+            ? 'Could not change the queued message model; it was returned to the queue.'
+            : 'Could not change the queued message model or return it to the queue.'
+        );
+        return false;
+      }
+      applyQueueMutation(instanceId, changed.data);
+
+      const newItemId =
+        changed.data.itemId ??
+        changed.data.session.items[changed.data.session.items.length - 1]?.id;
+      if (newItemId) {
+        const currentIds = changed.data.session.items.map((item) => item.id);
+        const withoutNew = currentIds.filter((id) => id !== newItemId);
+        const orderedIds = [...withoutNew];
+        orderedIds.splice(Math.min(originalIndex, orderedIds.length), 0, newItemId);
+        if (orderedIds.join('\u0000') !== currentIds.join('\u0000')) {
+          const reordered = await reorderQueuedMessages(instanceId, sessionId, orderedIds);
+          if (reordered.ok && reordered.data) applyQueueMutation(instanceId, reordered.data);
+          else showActionError('Model changed, but the queued message moved to the end.');
+        }
+      }
+      return true;
+    } catch (err) {
+      console.error('Change queued message model failed', err);
+      if (takenItem) {
+        try {
+          const restored = await enqueueMessage(
+            instanceId,
+            sessionId,
+            directory,
+            queuedMessageInput(instanceId, takenItem)
+          );
+          if (restored.ok && restored.data) applyQueueMutation(instanceId, restored.data);
+        } catch (restoreError) {
+          console.error('Could not restore queued message', restoreError);
+        }
+      }
+      showActionError(
+        err instanceof Error ? err.message : 'Could not change the queued message model.',
+        takenItem ? undefined : () => void handleQueuedModelChange(itemId, nextModel)
       );
       return false;
     }
@@ -1727,6 +1829,7 @@ export default function App() {
               onSend={handleSend}
               onQueue={handleQueueMessage}
               onSendQueued={handleSendQueuedMessage}
+              onQueuedModelChange={handleQueuedModelChange}
               onMoveQueued={handleMoveQueuedMessage}
               onRemoveQueued={handleRemoveQueuedMessage}
               onReload={() => {

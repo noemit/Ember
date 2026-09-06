@@ -98,9 +98,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `PUT /api/message-queue/sessions/:id/order` `{ itemIds }`, and take the full payload for immediate
   steering with `POST /api/message-queue/sessions/:id/items/:itemId/take`. Queue items require a
   concrete `sendConfig` (`providerID`, `modelID`, optional `agent`/`variant`); Ember resolves the
-  instance default before queueing. The server dispatches items once the session is idle, while
-  Ember's per-item send-now action takes the item and sends it directly so it can steer the active
-  turn.
+  instance default before queueing. Each row shows its assigned model/variant and can change it by
+  taking the full item, re-enqueueing with the new `sendConfig`, then restoring its order. The
+  server dispatches items once the session is idle, while Ember's per-item send-now action takes
+  the item and sends it directly so it can steer the active turn.
 - "Recent" models in the composer are derived from the instance's own sessions (`session.model`
   from the list endpoint, newest `time.updated` first) — nothing is stored on the Ember side.
 - Permissions: `GET /api/permission` lists pending requests; Ember merges the global response with

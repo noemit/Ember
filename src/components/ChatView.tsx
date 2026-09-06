@@ -37,6 +37,7 @@ import type {
   PermissionRequest,
   QuestionAnswers,
   QuestionRequest,
+  QueuedMessage,
   Session,
   SessionNote,
   StoredComposerDraft,
@@ -195,6 +196,7 @@ type Props = {
   onSend: (input: PromptInput) => Promise<boolean>;
   onQueue: (input: PromptInput) => Promise<boolean>;
   onSendQueued: (itemId: string) => Promise<boolean>;
+  onQueuedModelChange: (itemId: string, model: ModelOption) => Promise<boolean>;
   onMoveQueued: (itemId: string, direction: -1 | 1) => Promise<boolean>;
   onRemoveQueued: (itemId: string) => Promise<boolean>;
   onReload: () => void;
@@ -549,6 +551,7 @@ export default function ChatView({
   onSend,
   onQueue,
   onSendQueued,
+  onQueuedModelChange,
   onMoveQueued,
   onRemoveQueued,
   onReload,
@@ -562,6 +565,7 @@ export default function ChatView({
   const [variant, setVariant] = React.useState('');
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [pickerActivated, setPickerActivated] = React.useState(false);
+  const [queueModelPickerItemId, setQueueModelPickerItemId] = React.useState<string | null>(null);
   const [attachments, setAttachments] = React.useState<FileAttachment[]>([]);
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [replyContext, setReplyContext] = React.useState<ChatMessage | null>(null);
@@ -728,6 +732,7 @@ export default function ChatView({
   React.useEffect(() => {
     setContextOpen(false);
     setFocusMessageId(null);
+    setQueueModelPickerItemId(null);
     if (!session) return;
     const frame = window.requestAnimationFrame(() => textareaRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
@@ -778,6 +783,16 @@ export default function ChatView({
   const canSend = Boolean(session) && (text.trim().length > 0 || attachments.length > 0);
   const queueItems = queue?.items ?? [];
   const shouldQueue = Boolean(session && (busy || queueItems.length > 0));
+  const queueModelPickerItem = queueItems.find((item) => item.id === queueModelPickerItemId) ?? null;
+  const queuedModelLabel = (item: QueuedMessage): string => {
+    const option = models.find(
+      (candidate) =>
+        candidate.providerID === item.sendConfig.providerID &&
+        candidate.modelID === item.sendConfig.modelID
+    );
+    const name = option?.details.name ?? item.sendConfig.modelID;
+    return item.sendConfig.variant ? `${name} · ${item.sendConfig.variant}` : name;
+  };
 
   const submit = () => {
     if (!canSend) return;
@@ -1020,7 +1035,19 @@ export default function ChatView({
                         ) : (
                           <span className="size-1.5 flex-none rounded-full bg-highlight" aria-hidden="true" />
                         )}
-                        <span className="min-w-0 flex-1 truncate" title={preview}>{preview}</span>
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate" title={preview}>{preview}</span>
+                          <button
+                            type="button"
+                            disabled={sendingItem || models.length === 0}
+                            onClick={() => setQueueModelPickerItemId(item.id)}
+                            aria-label={`Change model for queued message: ${preview.slice(0, 60)}`}
+                            title="Change queued message model"
+                            className="mt-0.5 block max-w-full truncate rounded text-[10.5px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {queuedModelLabel(item)}
+                          </button>
+                        </div>
                         {item.attachments.length ? (
                           <span className="flex-none rounded bg-background px-1 py-0.5 text-[10px] text-muted-foreground">
                             {item.attachments.length} file{item.attachments.length === 1 ? '' : 's'}
@@ -1079,6 +1106,27 @@ export default function ChatView({
                   })}
                 </ol>
               </section>
+            ) : null}
+            {queueModelPickerItem ? (
+              <React.Suspense fallback={<ModelPickerFallback />}>
+                <ModelPicker
+                  open
+                  models={models}
+                  recentModels={recentModels}
+                  value={modelRefKey(queueModelPickerItem.sendConfig)}
+                  defaultModelId={defaultModelId}
+                  collapseProviders
+                  onSelect={(next) => {
+                    const nextModel = models.find((entry) => modelKey(entry) === next);
+                    const itemId = queueModelPickerItem.id;
+                    setQueueModelPickerItemId(null);
+                    if (nextModel) void onQueuedModelChange(itemId, nextModel);
+                  }}
+                  onOpenChange={(open) => {
+                    if (!open) setQueueModelPickerItemId(null);
+                  }}
+                />
+              </React.Suspense>
             ) : null}
             <motion.div
               layout
