@@ -7,6 +7,7 @@ import type { ChatMessage, SessionNote } from '../types';
 type Section = 'notes' | 'pins';
 
 type Props = {
+  /** Expanded vs the collapsed icon strip. The column itself is always rendered. */
   open: boolean;
   sessionKey: string;
   sessionTitle: string;
@@ -15,6 +16,8 @@ type Props = {
   focusSection: Section;
   focusRequest: number;
   onClose: () => void;
+  /** Expand the column on a given section; the collapsed strip calls this. */
+  onOpen: (section: Section) => void;
   onNotesChange: (notes: SessionNote[]) => void;
   onDeleteNote: (note: SessionNote) => void;
   onInsertNotes: (text: string) => void;
@@ -48,6 +51,7 @@ export default function SessionContextPanel({
   focusSection,
   focusRequest,
   onClose,
+  onOpen,
   onNotesChange,
   onDeleteNote,
   onInsertNotes,
@@ -85,7 +89,36 @@ export default function SessionContextPanel({
     }
   }, [open, focusSection, focusRequest]);
 
-  if (!open) return null;
+  if (!open) {
+    return (
+      <aside
+        className="flex w-11 flex-none flex-col items-center gap-1 border-l bg-card py-2"
+        aria-label="Notes and pins"
+      >
+        <button
+          type="button"
+          onClick={() => onOpen('notes')}
+          aria-label="Open notes"
+          title="Notes"
+          className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <FilePenLine className="size-4" />
+        </button>
+        {pinnedMessages.length ? (
+          <button
+            type="button"
+            onClick={() => onOpen('pins')}
+            aria-label={`Open ${pinnedMessages.length} pinned ${pinnedMessages.length === 1 ? 'message' : 'messages'}`}
+            title="Pinned messages"
+            className="flex size-8 flex-col items-center justify-center gap-0.5 rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Pin className="size-4" />
+            <span className="text-[9px] leading-none tabular-nums">{pinnedMessages.length}</span>
+          </button>
+        ) : null}
+      </aside>
+    );
+  }
 
   const addNote = () => {
     const text = draft.trim();
@@ -127,7 +160,7 @@ export default function SessionContextPanel({
   };
 
   return (
-    <aside className="flex w-[clamp(240px,38vw,380px)] flex-none flex-col border-l bg-card">
+    <aside className="flex w-[min(50%,640px)] flex-none flex-col border-l bg-card">
       <header className="flex h-11 flex-none items-center gap-2 border-b px-3.5">
         <FilePenLine className="size-4 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">Notes</span>

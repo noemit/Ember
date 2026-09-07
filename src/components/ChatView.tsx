@@ -681,7 +681,7 @@ export default function ChatView({
 
       {session ? (
         <div className="safe-composer flex-none border-t bg-card p-2.5 sm:p-3">
-          <div className="mx-auto flex max-w-[760px] flex-col gap-2">
+          <div className="flex w-full flex-col gap-2">
             <React.Suspense fallback={null}>
               <QueuedMessageList
                 key={composerKey ?? 'none'}
@@ -945,6 +945,7 @@ export default function ChatView({
             focusSection={contextSection}
             focusRequest={contextRequest}
             onClose={() => setContextOpen(false)}
+            onOpen={openContext}
             onNotesChange={onSessionNotesChange}
             onDeleteNote={onDeleteNote}
             onInsertNotes={insertNotes}

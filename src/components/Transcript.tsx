@@ -844,7 +844,7 @@ export default function Transcript({
           aria-live="polite"
           aria-relevant="additions text"
           aria-busy={busy && !blocked}
-          className="mx-auto flex max-w-[760px] flex-col gap-2.5"
+          className="flex w-full flex-col gap-2.5"
         >
           <AnimatePresence initial={false}>
             {messages.map((message, index) => (
