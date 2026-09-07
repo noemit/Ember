@@ -58,6 +58,8 @@ type Props = {
   instance: Instance | null;
   instanceMarkerColor?: number;
   newSessionInstanceId: string | null;
+  /** Preselect for the new-agent folder field: recent session directory or last-opened project. */
+  newSessionSuggestedDirectory: string | null;
   instances: Instance[];
   projectsByInstance: Record<string, Project[]>;
   modelsByInstance: Record<string, ModelList>;
@@ -195,6 +197,7 @@ export default function ChatView({
   instance,
   instanceMarkerColor,
   newSessionInstanceId,
+  newSessionSuggestedDirectory,
   instances,
   projectsByInstance,
   modelsByInstance,
@@ -656,6 +659,7 @@ export default function ChatView({
                   recentModels={recentModels}
                   defaultModelId={setupDefaultModelId}
                   defaults={setupDefaults}
+                  suggestedDirectory={newSessionSuggestedDirectory}
                   onInstanceChange={onNewSessionInstanceChange}
                   onCreate={createSessionFromSetup}
                   onCancel={onCancelNewSession}

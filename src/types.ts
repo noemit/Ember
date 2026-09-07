@@ -15,6 +15,8 @@ export type Project = {
   id: string;
   name: string;
   path?: string;
+  /** Epoch ms the project was last opened in OpenChamber; used for new-session suggestions. */
+  lastOpenedAt?: number;
 };
 
 export type ModelRef = {

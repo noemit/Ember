@@ -1392,6 +1392,21 @@ export default function App() {
     });
   };
 
+  // Where a new agent should start: the directory of the most recently updated session on the
+  // instance (real recent work), then the project opened most recently in OpenChamber.
+  const newSessionSuggestedDirectory = React.useMemo(() => {
+    if (!newSessionInstanceId) return null;
+    const sessions = sessionsByInstance[newSessionInstanceId] ?? [];
+    const recentSession = sessions
+      .filter((session) => session.directory)
+      .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))[0]?.directory;
+    if (recentSession) return recentSession;
+    const recentProject = (projectsByInstance[newSessionInstanceId] ?? [])
+      .filter((project) => project.path && project.lastOpenedAt)
+      .sort((a, b) => (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0))[0]?.path;
+    return recentProject ?? null;
+  }, [newSessionInstanceId, sessionsByInstance, projectsByInstance]);
+
   const selectedModels = selected ? modelsByInstance[selected.instanceId] : undefined;
   const modelInstanceId = selected?.instanceId ?? newSessionInstanceId;
   const modelInstanceSessions = modelInstanceId ? sessionsByInstance[modelInstanceId] : undefined;
@@ -1531,6 +1546,7 @@ export default function App() {
               instance={selectedInstance}
               instanceMarkerColor={selected?.instanceId ? settings.instanceDefaults[selected.instanceId]?.markerColor : undefined}
               newSessionInstanceId={newSessionInstanceId}
+              newSessionSuggestedDirectory={newSessionSuggestedDirectory}
               instances={instances}
               projectsByInstance={projectsByInstance}
               modelsByInstance={modelsByInstance}

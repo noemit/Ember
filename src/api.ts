@@ -100,7 +100,8 @@ export const loadProjects = async (instanceId: string): Promise<Project[] | null
       const label = typeof item.label === 'string' && item.label ? item.label : undefined;
       const name = typeof item.name === 'string' && item.name ? item.name : undefined;
 
-      return { id, name: label ?? name ?? (path ? baseName(path) : id), path };
+      const lastOpenedAt = typeof item.lastOpenedAt === 'number' ? item.lastOpenedAt : undefined;
+      return { id, name: label ?? name ?? (path ? baseName(path) : id), path, lastOpenedAt };
     })
     .filter((project) => {
       if (!project.path) return true;

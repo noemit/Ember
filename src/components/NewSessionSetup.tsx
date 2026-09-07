@@ -125,6 +125,7 @@ export default function NewSessionSetup({
   recentModels,
   defaultModelId,
   defaults,
+  suggestedDirectory,
   onInstanceChange,
   onCreate,
   onCancel,
@@ -136,11 +137,26 @@ export default function NewSessionSetup({
   recentModels: string[];
   defaultModelId: string | null;
   defaults: InstanceDefaults;
+  /** Most recently used directory on this instance, or its last-opened project. */
+  suggestedDirectory: string | null;
   onInstanceChange: (instanceId: string) => void;
   onCreate: (options: NewSessionOptions) => Promise<boolean>;
   onCancel: () => void;
 }) {
-  const [directory, setDirectory] = React.useState(defaults.directory ?? '');
+  const [directory, setDirectory] = React.useState(defaults.directory ?? suggestedDirectory ?? '');
+  // Preselect a recent folder until the user picks one themselves; a saved default folder or
+  // a manual edit wins over the suggestion.
+  const directoryTouchedRef = React.useRef(Boolean(defaults.directory));
+  const directorySuggestion = defaults.directory ?? suggestedDirectory ?? '';
+  React.useEffect(() => {
+    // A different instance has its own default/recent folders; treat the field as untouched.
+    directoryTouchedRef.current = Boolean(defaults.directory);
+    setDirectory(directorySuggestion);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- instance switch re-seeds the folder
+  }, [instanceId]);
+  React.useEffect(() => {
+    if (!directoryTouchedRef.current) setDirectory(directorySuggestion);
+  }, [directorySuggestion]);
   const [selectedModel, setSelectedModel] = React.useState(
     defaults.model ? modelRefKey(defaults.model) : DEFAULT_MODEL
   );
@@ -203,6 +219,7 @@ export default function NewSessionSetup({
               projects={projects}
               value={directory}
               onSelect={(nextDirectory) => {
+                directoryTouchedRef.current = true;
                 setDirectory(nextDirectory);
                 if (!nextDirectory) window.requestAnimationFrame(() => folderRef.current?.focus());
               }}
@@ -215,7 +232,10 @@ export default function NewSessionSetup({
           <Input
             ref={folderRef}
             value={directory}
-            onChange={(event) => setDirectory(event.target.value)}
+            onChange={(event) => {
+              directoryTouchedRef.current = true;
+              setDirectory(event.target.value);
+            }}
             placeholder="Choose a project or enter a folder path"
             aria-label="New agent folder"
           />
