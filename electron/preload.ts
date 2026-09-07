@@ -16,6 +16,13 @@ const ember = {
     path: string,
     body?: unknown
   ): Promise<ApiResponse> => ipcRenderer.invoke('ember:api', { instanceId, method, path, body }),
+  /** Invalidation hints from the instances' event streams; the renderer refetches over REST. */
+  onEvent: (listener: (event: unknown) => void): (() => void) => {
+    const handler = (_event: unknown, payload: unknown) => listener(payload);
+    ipcRenderer.on('ember:event', handler);
+    return () => ipcRenderer.removeListener('ember:event', handler);
+  },
+  eventStatus: (): Promise<Record<string, boolean>> => ipcRenderer.invoke('ember:events:status'),
 };
 
 contextBridge.exposeInMainWorld('ember', ember);

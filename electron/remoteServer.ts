@@ -21,7 +21,13 @@ type Handlers = {
   setSettings: (patch: unknown) => unknown;
   request: (instanceId: string, method: ApiMethod, apiPath: unknown, body?: unknown) => Promise<ApiResponse>;
   verifyPassword: (password: string) => boolean;
+  /** Subscribe to invalidation hints; returns an unsubscribe. */
+  subscribeEvents: (listener: (event: unknown) => void) => () => void;
+  /** Current live status per instance, sent first so a fresh client knows what's streaming. */
+  eventStatus: () => Record<string, boolean>;
 };
+
+const SSE_HEARTBEAT_MS = 25_000;
 type Session = { expiresAt: number };
 type Attempt = { count: number; resetAt: number };
 
@@ -173,6 +179,27 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
       if (url.pathname === '/remote/instances' && request.method === 'GET') return json(response, 200, await handlers.listInstances());
       if (url.pathname === '/remote/settings' && request.method === 'GET') return json(response, 200, handlers.getSettings());
       if (url.pathname === '/remote/settings' && request.method === 'POST') return json(response, 200, handlers.setSettings(await readBody(request)));
+      if (url.pathname === '/remote/events' && request.method === 'GET') {
+        response.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        const write = (event: unknown) => response.write(`data: ${JSON.stringify(event)}\n\n`);
+        Object.entries(handlers.eventStatus()).forEach(([instanceId, connected]) =>
+          write({ instanceId, type: 'ember:stream-status', connected })
+        );
+        const unsubscribe = handlers.subscribeEvents(write);
+        const heartbeat = setInterval(() => response.write(':heartbeat\n\n'), SSE_HEARTBEAT_MS);
+        const cleanup = () => {
+          clearInterval(heartbeat);
+          unsubscribe();
+        };
+        request.on('close', cleanup);
+        response.on('error', cleanup);
+        return;
+      }
       if (url.pathname === '/remote/api' && request.method === 'POST') {
         const input = await readBody(request);
         if (!input || typeof input !== 'object') return json(response, 400, { error: 'Invalid request' });

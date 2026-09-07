@@ -15,6 +15,8 @@ import type { Instance, InstanceStatus } from '../types';
 type Props = {
   instances: Instance[];
   hidden: Set<string>;
+  /** Instances whose event stream is up; the rest fall back to fast polling. */
+  live: Record<string, boolean>;
   refreshing: boolean;
   onToggle: (instanceId: string) => void;
   onToggleNavigation: () => void;
@@ -48,6 +50,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform
 export default function InstanceBar({
   instances,
   hidden,
+  live,
   refreshing,
   onToggle,
   onToggleNavigation,
@@ -131,7 +134,11 @@ export default function InstanceBar({
                       {kindLabel[instance.kind]}
                       {instance.url ? ` · ${instance.url}` : ''}
                       {' · '}
-                      {statusLabel[instance.status]}
+                      {instance.status === 'ready'
+                        ? live[instance.id]
+                          ? 'live'
+                          : 'polling'
+                        : statusLabel[instance.status]}
                     </span>
                   </span>
                 </DropdownMenuCheckboxItem>

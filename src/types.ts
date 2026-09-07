@@ -320,6 +320,19 @@ export const SESSION_WINDOWS: Array<{ hours: number; label: string }> = [
   { hours: 0, label: 'All time' },
 ];
 
+/**
+ * An invalidation hint from an instance's event stream. Bodies are stripped in the main
+ * process; the renderer refetches what the hint points at. `ember:stream-status` is synthetic
+ * and says whether the instance's stream is live (so polling can back off).
+ */
+export type EmberEvent = {
+  instanceId: string;
+  type: string;
+  sessionId?: string;
+  directory?: string;
+  connected?: boolean;
+};
+
 export type EmberBridge = {
   listInstances(): Promise<unknown>;
   getSettings(): Promise<EmberSettings>;
@@ -334,6 +347,13 @@ export type EmberBridge = {
     path: string,
     body?: unknown
   ): Promise<{ ok: boolean; status: number; data: unknown }>;
+  /**
+   * Subscribe to invalidation hints; returns an unsubscribe. Bridges that can't stream (an
+   * older remote server) leave this undefined and the renderer stays on its polling cadence.
+   */
+  onEvent?(listener: (event: unknown) => void): () => void;
+  /** Live status per instance at subscribe time. */
+  eventStatus?(): Promise<Record<string, boolean>>;
 };
 
 declare global {

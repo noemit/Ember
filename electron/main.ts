@@ -20,6 +20,7 @@ import {
   type InstanceDefaults,
 } from './transport';
 import { startRemoteServer } from './remoteServer';
+import { EventStreamManager, type EmberEvent, type StreamStatus } from './eventStream';
 import { hashRemotePassword, verifyRemotePassword } from './remoteAuth';
 
 type StoredHost = {
@@ -294,7 +295,11 @@ const loadInstances = async (): Promise<Instance[]> => {
     })
   );
 
-  return candidates.map((candidate) => candidate.instance);
+  const instances = candidates.map((candidate) => candidate.instance);
+  // Every probe re-syncs the event streams, so an instance that comes online starts streaming
+  // and one that's removed from OpenChamber stops.
+  eventStreams.sync(instances.filter((instance) => instance.attachable).map((instance) => instance.id));
+  return instances;
 };
 
 const instanceTarget = (instanceId: string): { url: string; headers: Record<string, string> } | null => {
@@ -312,6 +317,29 @@ const instanceTarget = (instanceId: string): { url: string; headers: Record<stri
 
   return { url: rawUrl, headers: hostHeaders(host, root) };
 };
+
+/**
+ * Event hints fan out to every renderer window and to remote web clients. Bodies never
+ * cross this boundary; the renderer refetches over REST.
+ */
+type EventListener = (event: EmberEvent | { instanceId: string; type: 'ember:stream-status'; connected: boolean }) => void;
+const eventListeners = new Set<EventListener>();
+const subscribeEvents = (listener: EventListener): (() => void) => {
+  eventListeners.add(listener);
+  return () => eventListeners.delete(listener);
+};
+const broadcast: EventListener = (event) => {
+  eventListeners.forEach((listener) => listener(event));
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) win.webContents.send('ember:event', event);
+  });
+};
+
+const eventStreams = new EventStreamManager(instanceTarget, {
+  onEvent: broadcast,
+  onStatus: ({ instanceId, connected }: StreamStatus) =>
+    broadcast({ instanceId, type: 'ember:stream-status', connected }),
+});
 
 const rendererFile = (): string => path.join(__dirname, '..', 'dist', 'index.html');
 
@@ -546,6 +574,11 @@ ipcMain.handle('ember:api', async (event, args: unknown) => {
   return proxyApiRequest(String(input.instanceId || ''), input.method, input.path, input.body);
 });
 
+ipcMain.handle('ember:events:status', (event) => {
+  assertTrustedSender(event);
+  return eventStreams.snapshot();
+});
+
 let remoteServer: ReturnType<typeof startRemoteServer> = null;
 refreshRemoteServer = () => {
   remoteServer?.close();
@@ -558,6 +591,8 @@ refreshRemoteServer = () => {
     setSettings: updateSettings,
     request: proxyApiRequest,
     verifyPassword: (password) => verifyRemotePassword(password, readJson(emberSettingsPath()).remotePasswordHash),
+    subscribeEvents,
+    eventStatus: () => eventStreams.snapshot(),
   });
 };
 

@@ -338,7 +338,61 @@ const deliverQueuedMessage = (instanceId: string, sessionId: string) => {
   }, 1200);
 };
 
+/**
+ * Synthetic event stream. Rather than instrumenting every place the mock mutates state, a
+ * watcher diffs each session's status/message count/pending prompts and emits the hint an
+ * OpenChamber instance would. Only `local` streams; `studio` stays on the fast-poll fallback.
+ */
+const STREAMING_INSTANCES = new Set(['local']);
+type EventListener = (event: unknown) => void;
+const eventListeners = new Set<EventListener>();
+const emit = (event: unknown) => eventListeners.forEach((listener) => listener(event));
+let watcher: number | undefined;
+const watchForChanges = () => {
+  const snapshot = new Map<string, string>();
+  const fingerprint = (instanceId: string) =>
+    JSON.stringify({
+      sessions: (sessions[instanceId] ?? []).map((s) => [s.id, s.status, s.messages.length, s.archived ?? 0]),
+      permissions: (permissions[instanceId] ?? []).map((p) => p.id),
+      questions: (questions[instanceId] ?? []).map((q) => q.id),
+    });
+  STREAMING_INSTANCES.forEach((instanceId) => snapshot.set(instanceId, fingerprint(instanceId)));
+  watcher = window.setInterval(() => {
+    STREAMING_INSTANCES.forEach((instanceId) => {
+      const before = JSON.parse(snapshot.get(instanceId) ?? '{}') as ReturnType<typeof JSON.parse>;
+      const nowPrint = fingerprint(instanceId);
+      if (nowPrint === snapshot.get(instanceId)) return;
+      snapshot.set(instanceId, nowPrint);
+      const after = JSON.parse(nowPrint);
+      const previous = new Map<string, unknown[]>((before.sessions ?? []).map((row: unknown[]) => [String(row[0]), row]));
+      (after.sessions as unknown[][]).forEach((row) => {
+        const [id, status, count] = row as [string, string, number];
+        const prior = previous.get(id) as [string, string, number] | undefined;
+        if (!prior) emit({ instanceId, type: 'session.created', sessionId: id });
+        else {
+          if (prior[1] !== status) emit({ instanceId, type: 'session.status', sessionId: id });
+          if (prior[2] !== count) emit({ instanceId, type: 'message.updated', sessionId: id });
+        }
+      });
+      if (JSON.stringify(before.permissions) !== JSON.stringify(after.permissions)) emit({ instanceId, type: 'permission.updated' });
+      if (JSON.stringify(before.questions) !== JSON.stringify(after.questions)) emit({ instanceId, type: 'question.asked' });
+    });
+  }, 400);
+};
+
 const bridge: EmberBridge = {
+  onEvent: (listener) => {
+    eventListeners.add(listener);
+    if (watcher === undefined) watchForChanges();
+    instances.forEach((instance) =>
+      listener({ instanceId: instance.id, type: 'ember:stream-status', connected: STREAMING_INSTANCES.has(instance.id) })
+    );
+    return () => {
+      eventListeners.delete(listener);
+    };
+  },
+  eventStatus: async () =>
+    Object.fromEntries(instances.map((instance) => [instance.id, STREAMING_INSTANCES.has(instance.id)])),
   listInstances: () => delay(instances, 300),
   getSettings: () => delay(settings),
   setSettings: (patch: EmberSettingsPatch) => {

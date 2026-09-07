@@ -24,6 +24,19 @@ const bridge: EmberBridge = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ instanceId, method, path, body }),
     })).json() as Promise<ApiResponse>,
+  // EventSource reconnects on its own and sends the session cookie, so the relay's auth holds.
+  // The relay replays each instance's live status first, so no separate eventStatus is needed.
+  onEvent: (listener) => {
+    const source = new EventSource('/remote/events');
+    source.onmessage = (message) => {
+      try {
+        listener(JSON.parse(message.data));
+      } catch {
+        // A malformed frame is the relay's bug, not a reason to drop the subscription.
+      }
+    };
+    return () => source.close();
+  },
 };
 
 window.ember = bridge;

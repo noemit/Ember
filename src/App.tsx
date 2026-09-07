@@ -51,6 +51,8 @@ import { sameMessages } from '@/lib/messageSignature';
 import { useEmberSettings } from './hooks/useEmberSettings';
 import { useFeedback } from './hooks/useFeedback';
 import { useMessageQueue } from './hooks/useMessageQueue';
+import { usePoll } from './hooks/usePoll';
+import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
 import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
 import type {
   AvatarIdentity,
@@ -84,9 +86,15 @@ const DialogFallback = ({ label }: { label: string }) => (
   </div>
 );
 
+// Fast cadence: used while an instance has no live event stream.
 const STATE_POLL_MS = 3000;
 const SESSION_POLL_MS = 10_000;
 const SCHEDULE_POLL_MS = 30_000;
+// Slow cadence: the safety net while every instance is streaming events to us.
+const STATE_POLL_LIVE_MS = 30_000;
+const SESSION_POLL_LIVE_MS = 60_000;
+const MESSAGES_POLL_LIVE_MS = 20_000;
+const SCHEDULE_POLL_LIVE_MS = 5 * 60_000;
 const PREVIEW_COUNT = 24;
 const PREVIEW_CONCURRENCY = 4;
 // Transcripts kept warm for instant switching. Must cover PREVIEW_COUNT or the preview
@@ -240,6 +248,8 @@ export default function App() {
   // directory (for routing) without re-running the effect on every session list refresh.
   const selectedSessionRef = React.useRef<Session | null>(null);
   const selectedKeyRef = React.useRef<string | null>(null);
+  const sessionsByInstanceRef = React.useRef<Record<string, Session[]>>({});
+  const projectsByInstanceRef = React.useRef<Record<string, Project[]>>({});
   const pendingCreatedSessions = React.useRef(new Map<string, { session: Session; expiresAt: number }>());
   // Snapshot the entries first: deleting from a Map while `forEach`-ing it can skip entries.
   const prunePendingCreated = (shouldDrop: (pending: { session: Session; expiresAt: number }) => boolean) => {
@@ -468,6 +478,8 @@ export default function App() {
   // Sync the ref every render so the poller always sees the current directory.
   selectedSessionRef.current = selectedSession;
   selectedKeyRef.current = selectedKey;
+  sessionsByInstanceRef.current = sessionsByInstance;
+  projectsByInstanceRef.current = projectsByInstance;
   scheduledBindingsRef.current = settings.scheduledSessionBindings;
 
   React.useEffect(() => {
@@ -568,88 +580,207 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
   }, [readyKey]);
 
-  // Sessions across every connected instance, refreshed on an interval so new
-  // sessions started elsewhere show up without a manual reload.
-  React.useEffect(() => {
-    if (readyIds.length === 0) return;
-    let cancelled = false;
-    let timer: number | undefined;
+  // ---- Refreshers: one per REST resource. Timers and event hints both call these. ----
+  // Each takes the instance ids to refresh and merges the result into state, leaving other
+  // instances untouched. Failure preserves prior state (the loaders return null / omit keys).
 
-    const poll = async () => {
-      try {
-        const directoryHints: Record<string, string[]> = {};
-        if (selectedSessionRef.current?.directory) {
-          directoryHints[selectedSessionRef.current.instanceId] = [selectedSessionRef.current.directory];
-        }
-        const [next, policies] = await Promise.all([
-          loadAllSessions(readyIds, directoryHints),
-          loadAllAutoAcceptPolicies(readyIds),
-        ]);
-        if (cancelled) return;
-        setAutoAcceptByInstance((prev) => ({ ...prev, ...policies }));
-        const now = Date.now();
-        prunePendingCreated(
-          (pending) =>
-            pending.expiresAt <= now ||
-            Boolean(next[pending.session.instanceId]?.some((session) => session.id === pending.session.id))
+  const directoryHintsFor = (instanceIds: string[]): Record<string, string[]> => {
+    const hints: Record<string, string[]> = {};
+    const current = selectedSessionRef.current;
+    if (current?.directory && instanceIds.includes(current.instanceId)) {
+      hints[current.instanceId] = [current.directory];
+    }
+    return hints;
+  };
+
+  const refreshSessions = useStableCallback(async (instanceIds: string[]) => {
+    if (instanceIds.length === 0) return;
+    try {
+      const next = await loadAllSessions(instanceIds, directoryHintsFor(instanceIds));
+      const now = Date.now();
+      prunePendingCreated(
+        (pending) =>
+          pending.expiresAt <= now ||
+          Boolean(next[pending.session.instanceId]?.some((session) => session.id === pending.session.id))
+      );
+      const preserved = [
+        ...(selectedSessionRef.current ? [selectedSessionRef.current] : []),
+        ...[...pendingCreatedSessions.current.values()].map((pending) => pending.session),
+      ];
+      setSessionsByInstance((prev) => mergePolledSessions(prev, next, preserved));
+      setLoading(false);
+    } catch (err) {
+      console.error('Failed to load sessions', err);
+    }
+  });
+
+  const refreshAutoAccept = useStableCallback(async (instanceIds: string[]) => {
+    if (instanceIds.length === 0) return;
+    const policies = await loadAllAutoAcceptPolicies(instanceIds).catch(() => ({}));
+    setAutoAcceptByInstance((prev) => ({ ...prev, ...policies }));
+  });
+
+  const refreshStates = useStableCallback(async (instanceIds: string[]) => {
+    if (instanceIds.length === 0) return;
+    const next = await loadAllSessionStates(instanceIds).catch(() => ({}));
+    setStatesByInstance((prev) => ({ ...prev, ...next }));
+  });
+
+  const refreshPermissions = useStableCallback(async (instanceIds: string[]) => {
+    if (instanceIds.length === 0) return;
+    const next = await loadAllPermissions(instanceIds, directoryHintsFor(instanceIds)).catch(() => ({}));
+    setPermissionsByInstance((prev) => ({ ...prev, ...next }));
+  });
+
+  const refreshQuestions = useStableCallback(async (instanceIds: string[]) => {
+    if (instanceIds.length === 0) return;
+    const next = await loadAllQuestions(instanceIds, directoryHintsFor(instanceIds)).catch(() => ({}));
+    setQuestionsByInstance((prev) => ({ ...prev, ...next }));
+  });
+
+  const refreshQueues = useStableCallback(async (instanceIds: string[]) => {
+    if (instanceIds.length === 0) return;
+    const next = await loadAllMessageQueues(instanceIds).catch(() => ({}));
+    setQueuesByInstance((prev) => ({ ...prev, ...next }));
+  });
+
+  /** Refetch one transcript; applies to the open view only if it's still the selected session. */
+  const refreshMessages = useStableCallback(async (ref: SessionRef) => {
+    const key = sessionKey(ref);
+    const directory =
+      (sessionsByInstanceRef.current[ref.instanceId] ?? []).find((session) => session.id === ref.sessionId)?.directory;
+    try {
+      const next = await loadMessages(ref.instanceId, ref.sessionId, directory);
+      const merged = reconcilePolledMessages(messageCacheRef.current.get(key) ?? [], next, pendingOptimisticIds.current);
+      releaseReconciledOptimistic(merged);
+      const result = sameMessages(messageCacheRef.current.get(key) ?? [], merged)
+        ? messageCacheRef.current.get(key) ?? merged
+        : merged;
+      cacheMessages(key, result);
+      if (selectedKeyRef.current === key) {
+        setTranscript((current) =>
+          current.key === key && current.messages === result && current.status === 'ready'
+            ? current
+            : { key, messages: result, status: 'ready' }
         );
-        const preserved = [
-          ...(selectedSessionRef.current ? [selectedSessionRef.current] : []),
-          ...[...pendingCreatedSessions.current.values()].map((pending) => pending.session),
-        ];
-        setSessionsByInstance((prev) => mergePolledSessions(prev, next, preserved));
-        setLoading(false);
-      } catch (err) {
-        console.error('Failed to load sessions', err);
-      } finally {
-        if (!cancelled) timer = window.setTimeout(() => void poll(), SESSION_POLL_MS);
       }
-    };
+      const preview = previewOf(next);
+      if (preview) {
+        setPreviews((prev) => (prev[key] === preview ? prev : { ...prev, [key]: preview }));
+      }
+    } catch (err) {
+      console.error('Failed to load messages', err);
+      if (selectedKeyRef.current === key) {
+        setTranscript((current) =>
+          current.key === key && current.status !== 'ready' ? { ...current, status: 'error' } : current
+        );
+      }
+    }
+  });
 
-    void poll();
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
-  }, [readyKey]);
+  const refreshScheduled = useStableCallback(async (instanceIds: string[]) => {
+    const projects = projectsByInstanceRef.current;
+    const targets = instanceIds.filter((instanceId) => (projects[instanceId] ?? []).length > 0);
+    if (targets.length === 0) return;
+    try {
+      const results = await Promise.all(
+        targets.map((instanceId) => loadScheduledIdentityData(instanceId, projects[instanceId] ?? []))
+      );
+      const discovered: Record<string, string> = Object.assign({}, ...results.map((result) => result.bindings));
+      const names: Record<string, string> = Object.assign({}, ...results.map((result) => result.taskNames));
+      setScheduledTaskNames((prev) => ({ ...prev, ...names }));
+      const merged: Record<string, string> = Object.fromEntries(
+        Object.entries({ ...scheduledBindingsRef.current, ...discovered }).slice(-2000)
+      );
+      if (!sameStringRecord(merged, scheduledBindingsRef.current)) {
+        scheduledBindingsRef.current = merged;
+        handleSettings({ scheduledSessionBindings: merged });
+      }
+    } catch (err) {
+      console.warn('Failed to load scheduled task identities', err);
+    }
+  });
+
+  // ---- Event streams: hints invalidate, refreshers refetch. ----
+  const [liveInstances, setLiveInstances] = React.useState<Record<string, boolean>>({});
+  const liveInstancesRef = React.useRef(liveInstances);
+  const refetch = useStableCallback(async ({ instanceId, resource, sessionId }: Invalidation) => {
+    switch (resource) {
+      case 'sessions': await refreshSessions([instanceId]); break;
+      case 'states': await refreshStates([instanceId]); break;
+      case 'permissions': await refreshPermissions([instanceId]); break;
+      case 'questions': await refreshQuestions([instanceId]); break;
+      case 'queues': await refreshQueues([instanceId]); break;
+      case 'autoAccept': await refreshAutoAccept([instanceId]); break;
+      case 'scheduled': await refreshScheduled([instanceId]); break;
+      case 'messages': if (sessionId) await refreshMessages({ instanceId, sessionId }); break;
+    }
+  });
+  const invalidationQueue = React.useMemo(() => new InvalidationQueue(refetch), [refetch]);
 
   React.useEffect(() => {
-    if (readyIds.length === 0) return;
-    let cancelled = false;
-    let timer: number | undefined;
+    const bridge = window.ember;
+    if (!bridge.onEvent) return;
+    const readySet = new Set(readyIds);
+    const isLoaded = (instanceId: string, sessionId: string) =>
+      selectedKeyRef.current === sessionKey({ instanceId, sessionId });
 
-    const poll = async () => {
-      try {
-        const directoryHints: Record<string, string[]> = {};
-        if (selectedSessionRef.current?.directory) {
-          directoryHints[selectedSessionRef.current.instanceId] = [selectedSessionRef.current.directory];
-        }
-        const [nextStates, nextPermissions, nextQuestions, nextQueues] = await Promise.all([
-          loadAllSessionStates(readyIds),
-          loadAllPermissions(readyIds, directoryHints),
-          loadAllQuestions(readyIds, directoryHints),
-          loadAllMessageQueues(readyIds),
-        ]);
-        if (cancelled) return;
-        setStatesByInstance((prev) => ({ ...prev, ...nextStates }));
-        setPermissionsByInstance((prev) => ({ ...prev, ...nextPermissions }));
-        setQuestionsByInstance((prev) => ({ ...prev, ...nextQuestions }));
-        setQueuesByInstance((prev) => ({ ...prev, ...nextQueues }));
-      } catch (err) {
-        console.error('Failed to load session state', err);
-      } finally {
-        if (!cancelled) timer = window.setTimeout(() => void poll(), STATE_POLL_MS);
+    const catchUp = (instanceId: string) => {
+      // The stream just (re)connected; anything that changed while it was down was missed.
+      (['sessions', 'states', 'permissions', 'questions', 'queues', 'autoAccept'] as const).forEach((resource) =>
+        invalidationQueue.push({ instanceId, resource })
+      );
+      if (selectedKeyRef.current && selectedSessionRef.current?.instanceId === instanceId) {
+        invalidationQueue.push({ instanceId, resource: 'messages', sessionId: selectedSessionRef.current.id });
       }
     };
 
-    void poll();
+    const unsubscribe = bridge.onEvent((raw) => {
+      const event = parseEmberEvent(raw);
+      if (!event || !readySet.has(event.instanceId)) return;
+      if (event.type === 'ember:stream-status') {
+        const connected = event.connected === true;
+        const wasConnected = liveInstancesRef.current[event.instanceId] === true;
+        if (wasConnected === connected) return;
+        liveInstancesRef.current = { ...liveInstancesRef.current, [event.instanceId]: connected };
+        setLiveInstances(liveInstancesRef.current);
+        if (connected) catchUp(event.instanceId);
+        return;
+      }
+      invalidationsFor(event, isLoaded).forEach((invalidation) => invalidationQueue.push(invalidation));
+    });
+    void bridge.eventStatus?.().then((status) => {
+      liveInstancesRef.current = { ...liveInstancesRef.current, ...status };
+      setLiveInstances(liveInstancesRef.current);
+    });
+
     return () => {
-      cancelled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
+      unsubscribe();
+      invalidationQueue.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
-  }, [readyKey, selectedKey]);
+  }, [readyKey, invalidationQueue]);
+
+  // ---- Polling: the safety net. Instances with a live stream poll slowly; the rest fast. ----
+  // Split by liveness so one instance that can't stream (older OpenChamber, flaky tunnel)
+  // doesn't drag the others back to the fast cadence.
+  const liveIds = React.useMemo(() => readyIds.filter((id) => liveInstances[id]), [readyIds, liveInstances]);
+  const deadIds = React.useMemo(() => readyIds.filter((id) => !liveInstances[id]), [readyIds, liveInstances]);
+  const liveIdsRef = React.useRef(liveIds);
+  liveIdsRef.current = liveIds;
+  const deadIdsRef = React.useRef(deadIds);
+  deadIdsRef.current = deadIds;
+
+  const refreshListFor = async (ids: string[]) => {
+    await Promise.all([refreshSessions(ids), refreshAutoAccept(ids)]);
+  };
+  const refreshStateFor = async (ids: string[]) => {
+    await Promise.all([refreshStates(ids), refreshPermissions(ids), refreshQuestions(ids), refreshQueues(ids)]);
+  };
+  usePoll(() => refreshListFor(deadIdsRef.current), SESSION_POLL_MS, deadIds.length > 0);
+  usePoll(() => refreshListFor(liveIdsRef.current), SESSION_POLL_LIVE_MS, liveIds.length > 0);
+  usePoll(() => refreshStateFor(deadIdsRef.current), STATE_POLL_MS, deadIds.length > 0);
+  usePoll(() => refreshStateFor(liveIdsRef.current), STATE_POLL_LIVE_MS, liveIds.length > 0);
 
   // Read through refs so this effect only re-runs when the session list changes. Depending on
   // `previews` directly made every 3s transcript poll cancel an in-flight preview batch.
@@ -706,7 +837,8 @@ export default function App() {
     };
   }, [sessions]);
 
-  // Messages for the open session, kept fresh while the agent is working.
+  // Messages for the open session. Switching shows the cached transcript at once; the poll
+  // below (and message events) keep it fresh while the agent is working.
   React.useEffect(() => {
     if (!selected) {
       setTranscript({ key: null, messages: [], status: 'ready' });
@@ -714,53 +846,18 @@ export default function App() {
     }
     const key = sessionKey(selected);
     const cached = messageCacheRef.current.get(key);
-    setTranscript({
-      key,
-      messages: cached ?? [],
-      status: cached ? 'ready' : 'loading',
-    });
-    let cancelled = false;
-    let timer: number | undefined;
+    setTranscript({ key, messages: cached ?? [], status: cached ? 'ready' : 'loading' });
+    void refreshMessages(selected);
+  }, [selected, refreshMessages]);
 
-    const load = async () => {
-      try {
-        const next = await loadMessages(
-          selected.instanceId,
-          selected.sessionId,
-          selectedSessionRef.current?.directory
-        );
-        if (cancelled) return;
-        setTranscript((current) => {
-          if (current.key !== key) return current;
-          const merged = reconcilePolledMessages(current.messages, next, pendingOptimisticIds.current);
-          releaseReconciledOptimistic(merged);
-          const result = sameMessages(current.messages, merged) ? current.messages : merged;
-          cacheMessages(key, result);
-          return { key, messages: result, status: 'ready' };
-        });
-        const preview = previewOf(next);
-        if (preview) {
-          setPreviews((prev) => (prev[key] === preview ? prev : { ...prev, [key]: preview }));
-        }
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Failed to load messages', err);
-        setTranscript((current) =>
-          current.key === key && current.status !== 'ready'
-            ? { ...current, status: 'error' }
-            : current
-        );
-      } finally {
-        if (!cancelled) timer = window.setTimeout(() => void load(), STATE_POLL_MS);
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-  }, [selected]);
+  const selectedLive = Boolean(selected && liveInstances[selected.instanceId]);
+  usePoll(
+    async () => {
+      if (selected) await refreshMessages(selected);
+    },
+    selectedLive ? MESSAGES_POLL_LIVE_MS : STATE_POLL_MS,
+    selected !== null
+  );
 
   const toggleInstance = (instanceId: string) =>
     setHidden((prev) => {
@@ -1223,49 +1320,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSettings is recreated per render; it only needs the compared values
   }, [projectsByInstance, allocatedProjectColors, settings.projectColorAssignments]);
 
-  React.useEffect(() => {
-    if (readyIds.length === 0 || Object.keys(projectsByInstance).length === 0) return;
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const poll = async () => {
-      try {
-        const results = await Promise.all(
-          readyIds.map((instanceId) =>
-            loadScheduledIdentityData(instanceId, projectsByInstance[instanceId] ?? [])
-          )
-        );
-        if (cancelled) return;
-        const discovered: Record<string, string> = Object.assign(
-          {},
-          ...results.map((result) => result.bindings)
-        );
-        const names: Record<string, string> = Object.assign(
-          {},
-          ...results.map((result) => result.taskNames)
-        );
-        setScheduledTaskNames(names);
-        const merged: Record<string, string> = Object.fromEntries(
-          Object.entries({ ...scheduledBindingsRef.current, ...discovered }).slice(-2000)
-        );
-        if (!sameStringRecord(merged, scheduledBindingsRef.current)) {
-          scheduledBindingsRef.current = merged;
-          handleSettings({ scheduledSessionBindings: merged });
-        }
-      } catch (err) {
-        console.warn('Failed to load scheduled task identities', err);
-      } finally {
-        if (!cancelled) timer = window.setTimeout(() => void poll(), SCHEDULE_POLL_MS);
-      }
-    };
-
-    void poll();
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
-  }, [readyKey, projectsByInstance]);
+  // Scheduled-task identity is one request per project (70+ on a busy instance), so it polls
+  // rarely; the `scheduled-task-ran` event covers the moment it actually matters.
+  const projectsKnown = Object.keys(projectsByInstance).length > 0;
+  usePoll(() => refreshScheduled(deadIdsRef.current), SCHEDULE_POLL_MS, projectsKnown && deadIds.length > 0);
+  usePoll(() => refreshScheduled(liveIdsRef.current), SCHEDULE_POLL_LIVE_MS, projectsKnown && liveIds.length > 0);
 
   const handleTogglePin = (message: ChatMessage) => {
     if (!selected) return;
@@ -1398,6 +1457,7 @@ export default function App() {
           <InstanceBar
             instances={instances}
             hidden={hidden}
+            live={liveInstances}
             refreshing={refreshing}
               onToggle={toggleInstance}
               onToggleNavigation={() => setMobileRailOpen((open) => !open)}

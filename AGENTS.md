@@ -42,9 +42,14 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   the server's copy (`releaseReconciledOptimistic`), so neither can flicker out.
 - `src/hooks/` — concerns pulled out of App: `useFeedback` (error banner + retry, notice toast,
   live-region announcements), `useEmberSettings` (optimistic writes to main with revision guarding),
-  `useMessageQueue` (the server-owned queue handlers, see Notes).
+  `useMessageQueue` (the server-owned queue handlers, see Notes), `usePoll` (run-then-wait loop
+  with a variable interval).
 - `src/lib/` — `useStableCallback` (pin a prop's identity for `React.memo` children),
-  `messageSignature` (digest-based change detection for polls), `clipboard`.
+  `messageSignature` (digest-based change detection for polls), `invalidation` (event → resource
+  mapping and the coalescing `InvalidationQueue`), `clipboard`.
+- `electron/eventStream.ts` — SSE client for the two per-instance streams (see Data freshness).
+  It parses frames, keeps only `{ instanceId, type, sessionId?, directory? }`, and reconnects with
+  jittered backoff; main fans hints out to windows (`ember:event`) and to `/remote/events`.
 - `src/components/ChatView.tsx` — the transcript shell and composer. Text, model, reasoning variant,
   agent mode, attachments, and reply context are kept per session; the one-line textarea grows to a
   capped height and failed sends restore the draft. Draft text and model/agent choices persist
@@ -94,6 +99,30 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   bright colour is `--highlight` (Tailwind `highlight`), reserved for indicators: activity dot,
   focus ring, selection ticks, "Needs input", question cards, the wordmark. Permission cards keep
   semantic amber.
+
+## Data freshness
+
+Events drive invalidation; REST stays the source of truth. Nothing in the UI is ever built
+from an event payload.
+
+- Main subscribes each attachable instance to OpenCode's `/api/global/event` (sessions,
+  messages, status, permissions, questions; frames are `{ directory, payload: { type,
+  properties } }`) and OpenChamber's `/api/notifications/stream` (`openchamber:*` — auto-accept
+  policy, scheduled tasks; frames are `{ type, properties }`). Payload bodies are dropped in main.
+- The renderer maps a hint to REST resources in `lib/invalidation.ts` (`session.status` →
+  states; `message.*` → the open transcript if it's that session, else the session list;
+  `permission.*`/`question.*` → their list plus states; and so on) and pushes them through an
+  `InvalidationQueue` that coalesces bursts to one refetch per resource per ~250ms — a streaming
+  turn emits a `message.part.updated` per token. One "refresher" per resource in `App.tsx`
+  (`refreshSessions`, `refreshStates`, `refreshMessages`, …) does the fetch and merges into state;
+  timers call the same functions.
+- Polling is the safety net, per instance: while an instance's OpenCode stream is live it polls
+  slowly (states 30s, sessions 60s, open transcript 20s, scheduled tasks 5min); without a stream
+  it polls fast (3s / 10s / 3s / 30s). A stream (re)connecting triggers a catch-up refetch of
+  everything for that instance, since hints were missed while it was down. The instance menu shows
+  `live` vs `polling`.
+- Bridges without `onEvent` (an older remote server) simply stay on the fast cadence. The mock
+  emits synthetic hints for `local` only, so both paths get exercised in `dev:web`.
 
 ## Notes
 
