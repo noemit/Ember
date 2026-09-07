@@ -54,8 +54,13 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   attachments, and reply context are kept per session; the one-line textarea grows to a
   capped height and failed sends restore the draft. Draft text and model choices persist
   across restarts (including choice-only drafts), while attachments and reply context stay in memory.
-  `NewSessionSetup.tsx` (with its project picker) and `QueuedMessageList.tsx` are lazy children;
-  the queue list is keyed by session so its per-item UI resets on switch.
+  `ProjectPicker.tsx` and `QueuedMessageList.tsx` are lazy children; the queue list is keyed by
+  session so its per-item UI resets on switch. A new agent is a *draft*, not a dialog: with
+  `newSessionInstanceId` set and no session selected, the composer is live under key
+  `new::<instanceId>` with an instance/project/folder row above it, and the first send calls
+  `onCreateAndSend` (create session → send). Folder, model/variant and YOLO are prefilled from
+  `src/lib/newSessionDefaults.ts` (saved default → last-used on that instance → last-opened
+  project / server default) until the user edits them; switching instance re-seeds.
 - `src/components/LeftRail.tsx` — session list. Rows are a memoized `SessionRow`; the timestamp is
   a self-ticking `RelativeTime`. Archive/restore is decided per row from `session.archived`, not the
   view toggle, because the selected session is pinned into the list even when filters hide it.

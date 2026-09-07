@@ -4,7 +4,9 @@ import { ArrowUp, ChevronDown, MessageCircleQuestion, Paperclip, Pin, RefreshCw,
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
-import type { ModelList, PromptInput } from '../api';
+import type { ModelPrefill } from '../lib/newSessionDefaults';
+import { Input } from '@/components/ui/input';
+import type { PromptInput } from '../api';
 import { ModelPickerFallback } from './ModelPickerFallback';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +26,6 @@ import type {
   ChatMessage,
   FileAttachment,
   Instance,
-  InstanceDefaults,
   MessagesStatus,
   MessageQueueSession,
   ModelOption,
@@ -44,7 +45,7 @@ const loadModelPicker = () => import('./ModelPicker');
 const ModelPicker = React.lazy(loadModelPicker);
 const Transcript = React.lazy(() => import('./Transcript'));
 const SessionContextPanel = React.lazy(() => import('./SessionContextPanel'));
-const NewSessionSetup = React.lazy(() => import('./NewSessionSetup'));
+const ProjectPicker = React.lazy(() => import('./ProjectPicker'));
 const QueuedMessageList = React.lazy(() => import('./QueuedMessageList'));
 
 const TranscriptFallback = () => (
@@ -58,12 +59,10 @@ type Props = {
   instance: Instance | null;
   instanceMarkerColor?: number;
   newSessionInstanceId: string | null;
-  /** Preselect for the new-agent folder field: recent session directory or last-opened project. */
-  newSessionSuggestedDirectory: string | null;
+  /** Prefill for a new-agent draft: last-used or default folder, model and YOLO on that instance. */
+  newSessionPrefill: { directory: string | null; model: ModelPrefill | null; bypass: boolean } | null;
   instances: Instance[];
   projectsByInstance: Record<string, Project[]>;
-  modelsByInstance: Record<string, ModelList>;
-  instanceDefaults: Record<string, InstanceDefaults>;
   seed: string;
   identity: AvatarIdentity;
   state: BallState;
@@ -90,7 +89,8 @@ type Props = {
   onDeleteNote: (note: SessionNote) => void;
   onBypassChange: (enabled: boolean) => void;
   onNewSessionInstanceChange: (instanceId: string) => void;
-  onCreateSession: (options: NewSessionOptions) => Promise<boolean>;
+  /** Draft submit: create the session, then send the first message into it. */
+  onCreateAndSend: (options: NewSessionOptions, input: PromptInput) => Promise<boolean>;
   onCancelNewSession: () => void;
   onSend: (input: PromptInput) => Promise<boolean>;
   onQueue: (input: PromptInput) => Promise<boolean>;
@@ -197,11 +197,9 @@ export default function ChatView({
   instance,
   instanceMarkerColor,
   newSessionInstanceId,
-  newSessionSuggestedDirectory,
+  newSessionPrefill,
   instances,
   projectsByInstance,
-  modelsByInstance,
-  instanceDefaults,
   seed,
   identity,
   state,
@@ -227,7 +225,7 @@ export default function ChatView({
   onDeleteNote,
   onBypassChange,
   onNewSessionInstanceChange,
-  onCreateSession,
+  onCreateAndSend,
   onCancelNewSession,
   onSend,
   onQueue,
@@ -255,6 +253,7 @@ export default function ChatView({
   const [focusRequest, setFocusRequest] = React.useState(0);
   const [now, setNow] = React.useState(() => Date.now());
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const folderRef = React.useRef<HTMLInputElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const createdModelRef = React.useRef<{ key: string; variant?: string } | null>(null);
   const composerDraftsRef = React.useRef(new Map<string, ComposerState>());
@@ -264,7 +263,28 @@ export default function ChatView({
   const draftPersistTimerRef = React.useRef<number | undefined>(undefined);
   const onComposerDraftsChangeRef = React.useRef(onComposerDraftsChange);
   onComposerDraftsChangeRef.current = onComposerDraftsChange;
-  const composerKey = session ? `${session.instanceId}::${session.id}` : null;
+  // A draft is the new-agent state: no session yet, composer live, options row above it.
+  const draftInstanceId = session ? null : newSessionInstanceId;
+  const draftInstance = draftInstanceId ? instances.find((candidate) => candidate.id === draftInstanceId) ?? null : null;
+  const composerKey = session
+    ? `${session.instanceId}::${session.id}`
+    : draftInstanceId
+      ? `new::${draftInstanceId}`
+      : null;
+  const [draftDirectory, setDraftDirectory] = React.useState('');
+  const [draftBypass, setDraftBypass] = React.useState(false);
+  const draftTouchedRef = React.useRef<{ directory: boolean; bypass: boolean }>({ directory: false, bypass: false });
+
+  // Re-seed the draft options whenever the target instance changes, and follow the prefill
+  // (sessions/projects can load after the draft opens) until the user edits a field.
+  React.useEffect(() => {
+    draftTouchedRef.current = { directory: false, bypass: false };
+  }, [draftInstanceId]);
+  React.useEffect(() => {
+    if (!draftInstanceId) return;
+    if (!draftTouchedRef.current.directory) setDraftDirectory(newSessionPrefill?.directory ?? '');
+    if (!draftTouchedRef.current.bypass) setDraftBypass(newSessionPrefill?.bypass ?? false);
+  }, [draftInstanceId, newSessionPrefill]);
 
   React.useEffect(() => {
     if (!composerDraftsHydrated || draftsHydratedRef.current) return;
@@ -392,10 +412,11 @@ export default function ChatView({
     const saved = composerKey ? composerDraftsRef.current.get(composerKey) : undefined;
     const created = createdModelRef.current;
     const sessionModelKey = session?.model ? modelRefKey(session.model) : undefined;
+    const prefill = draftInstanceId ? newSessionPrefill?.model ?? undefined : undefined;
     const next: ComposerState = saved ?? {
       text: '',
-      modelId: created?.key ?? sessionModelKey ?? defaultModelId ?? DEFAULT_MODEL,
-      variant: created?.variant ?? session?.model?.variant ?? '',
+      modelId: created?.key ?? sessionModelKey ?? prefill?.key ?? defaultModelId ?? DEFAULT_MODEL,
+      variant: created?.variant ?? session?.model?.variant ?? prefill?.variant ?? '',
       attachments: [],
       replyContext: null,
     };
@@ -449,24 +470,11 @@ export default function ChatView({
       )
     : undefined;
   const activeModelLabel = activeModelOption?.details.name ?? activeModelRef?.modelID;
-  const setupInstance = instances.find((candidate) => candidate.id === newSessionInstanceId) ?? null;
-  const setupProjects = newSessionInstanceId ? projectsByInstance[newSessionInstanceId] ?? [] : [];
-  const setupModels = newSessionInstanceId ? modelsByInstance[newSessionInstanceId]?.models ?? [] : [];
-  const setupDefaultModelId = newSessionInstanceId ? modelsByInstance[newSessionInstanceId]?.defaultModelId ?? null : null;
-  const setupDefaults = newSessionInstanceId ? instanceDefaults[newSessionInstanceId] ?? {} : {};
+  const draftProjects = draftInstanceId ? projectsByInstance[draftInstanceId] ?? [] : [];
+  const draftReady = Boolean(draftInstanceId && draftDirectory.trim());
+  const effectiveBypass = draftInstanceId ? draftBypass : bypass;
 
-  const createSessionFromSetup = async (options: NewSessionOptions): Promise<boolean> => {
-    const created = await onCreateSession(options);
-    if (created) {
-      const nextModel = options.model ? modelRefKey(options.model) : DEFAULT_MODEL;
-      createdModelRef.current = { key: nextModel, variant: options.variant };
-      setModelId(nextModel);
-      setVariant(options.variant ?? '');
-    }
-    return created;
-  };
-
-  const canSend = Boolean(session) && (text.trim().length > 0 || attachments.length > 0);
+  const canSend = (session ? true : draftReady) && (text.trim().length > 0 || attachments.length > 0);
   const queueItems = queue?.items ?? [];
   const shouldQueue = Boolean(session && (busy || queueItems.length > 0));
 
@@ -474,15 +482,33 @@ export default function ChatView({
     if (!canSend) return;
     const submitted: ComposerState = { text: text.trim(), modelId, variant, attachments, replyContext };
     const submittedKey = composerKey;
-    const send = shouldQueue ? onQueue : onSend;
-    send({
+    const input: PromptInput = {
       text: submitted.text,
       model,
       mode: session?.agent,
       variant: submitted.variant || undefined,
       attachments: submitted.attachments,
       replyContext: submitted.replyContext ? messageContextText(submitted.replyContext) : undefined,
-    }).then((sent) => {
+    };
+    let result: Promise<boolean>;
+    if (draftInstanceId) {
+      // The new session's composer should open with the model chosen in the draft.
+      createdModelRef.current = { key: modelId, variant: submitted.variant || undefined };
+      if (submittedKey) touchedComposerChoicesRef.current.delete(submittedKey);
+      result = onCreateAndSend(
+        {
+          instanceId: draftInstanceId,
+          directory: draftDirectory.trim(),
+          model: model ? { providerID: model.providerID, modelID: model.modelID } : undefined,
+          variant: submitted.variant || undefined,
+          bypass: draftBypass,
+        },
+        input
+      );
+    } else {
+      result = (shouldQueue ? onQueue : onSend)(input);
+    }
+    result.then((sent) => {
       if (sent) return;
       if (submittedKey && previousComposerKeyRef.current !== submittedKey) {
         updateComposerDraft(submittedKey, submitted);
@@ -645,22 +671,16 @@ export default function ChatView({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.16 }}
           >
-            {newSessionInstanceId && setupInstance ? (
-              <React.Suspense fallback={<TranscriptFallback />}>
-                <NewSessionSetup
-                  instanceId={newSessionInstanceId}
-                  instances={instances.filter((candidate) => candidate.attachable)}
-                  projects={setupProjects}
-                  models={setupModels}
-                  recentModels={recentModels}
-                  defaultModelId={setupDefaultModelId}
-                  defaults={setupDefaults}
-                  suggestedDirectory={newSessionSuggestedDirectory}
-                  onInstanceChange={onNewSessionInstanceChange}
-                  onCreate={createSessionFromSetup}
-                  onCancel={onCancelNewSession}
-                />
-              </React.Suspense>
+            {draftInstance ? (
+              <>
+                <Blob style={blobStyle} seed={`new:${draftInstance.id}`} size={48} interactive />
+                <div className="flex flex-col items-center gap-1 text-center">
+                  <span className="text-[13px] font-medium text-foreground">New agent on {draftInstance.label}</span>
+                  <span className="max-w-[420px] truncate text-xs">
+                    {draftDirectory.trim() || 'Pick a folder below to get started.'}
+                  </span>
+                </div>
+              </>
             ) : (
               <>
                 <div className="flex -space-x-3">
@@ -675,9 +695,10 @@ export default function ChatView({
         )}
       </AnimatePresence>
 
-      {session ? (
+      {composerKey ? (
         <div className="safe-composer flex-none border-t bg-card p-2.5 sm:p-3">
           <div className="flex w-full items-stretch gap-2">
+            {session ? (
             <React.Suspense fallback={null}>
               <SessionContextPanel
                 open={contextOpen}
@@ -697,7 +718,54 @@ export default function ChatView({
                 onUnpin={onTogglePin}
               />
             </React.Suspense>
+            ) : null}
           <div className="flex min-w-0 flex-1 flex-col gap-2">
+            {draftInstance ? (
+              <div className="flex items-center gap-1.5 px-0.5" aria-label="New agent options">
+                <Select value={draftInstance.id} onValueChange={onNewSessionInstanceChange}>
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="New agent instance"
+                    className="h-7 w-auto gap-1 border-none bg-transparent px-2 text-xs shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instances.filter((candidate) => candidate.attachable).map((candidate) => (
+                      <SelectItem key={candidate.id} value={candidate.id}>
+                        {candidate.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <React.Suspense fallback={null}>
+                  <ProjectPicker
+                    projects={draftProjects}
+                    value={draftDirectory}
+                    onSelect={(directory) => {
+                      draftTouchedRef.current.directory = true;
+                      setDraftDirectory(directory);
+                      if (!directory) window.requestAnimationFrame(() => folderRef.current?.focus());
+                    }}
+                  />
+                </React.Suspense>
+                <Input
+                  ref={folderRef}
+                  value={draftDirectory}
+                  onChange={(event) => {
+                    draftTouchedRef.current.directory = true;
+                    setDraftDirectory(event.target.value);
+                  }}
+                  placeholder="Folder path"
+                  aria-label="New agent folder"
+                  className="h-7 min-w-0 flex-1 border-dashed bg-transparent px-2 font-mono text-[11.5px] shadow-none hover:bg-muted focus-visible:border-solid focus-visible:bg-background dark:bg-transparent"
+                />
+                <Button variant="ghost" size="icon-sm" className="size-7" onClick={onCancelNewSession} aria-label="Cancel new agent">
+                  <X />
+                </Button>
+              </div>
+            ) : null}
+            {session ? (
             <React.Suspense fallback={null}>
               <QueuedMessageList
                 key={composerKey ?? 'none'}
@@ -711,12 +779,10 @@ export default function ChatView({
                 onRemoveQueued={onRemoveQueued}
               />
             </React.Suspense>
+            ) : null}
             <motion.div
               layout
-            className={cn(
-              'flex flex-col rounded-xl border bg-background transition-[box-shadow,border-color] duration-200 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30',
-              !session && 'opacity-60'
-            )}
+            className="flex flex-col rounded-xl border bg-background transition-[box-shadow,border-color] duration-200 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30"
           >
             {replyContext ? (
               <div className="mx-2 mt-2 flex items-start gap-2 rounded-lg border bg-muted/50 px-2.5 py-2 text-[11.5px]">
@@ -741,9 +807,8 @@ export default function ChatView({
               ref={textareaRef}
               value={text}
               rows={1}
-              placeholder={session ? (shouldQueue ? 'Queue a follow-up…' : 'Message the agent…') : 'Select a session first'}
+              placeholder={shouldQueue ? 'Queue a follow-up…' : 'Message the agent…'}
               aria-label={shouldQueue ? 'Queue a follow-up message' : 'Message the agent'}
-              disabled={!session}
               onChange={(event) => {
                 setText(event.target.value);
                 if (composerKey) {
@@ -778,7 +843,6 @@ export default function ChatView({
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={!session}
                 onMouseEnter={() => void loadModelPicker()}
                 onFocus={() => void loadModelPicker()}
                 onClick={() => {
@@ -823,7 +887,6 @@ export default function ChatView({
                     setVariant(nextVariant);
                     updateComposerChoices({ variant: nextVariant });
                   }}
-                  disabled={!session}
                 >
                   <SelectTrigger
                     size="sm"
@@ -844,14 +907,20 @@ export default function ChatView({
               ) : null}
 
               <Toggle
-                pressed={bypass}
-                onPressedChange={onBypassChange}
-                disabled={!session}
+                pressed={effectiveBypass}
+                onPressedChange={(enabled) => {
+                  if (draftInstanceId) {
+                    draftTouchedRef.current.bypass = true;
+                    setDraftBypass(enabled);
+                  } else {
+                    onBypassChange(enabled);
+                  }
+                }}
                 variant="outline"
                 size="sm"
-                aria-label={bypass ? 'YOLO mode on: permission prompts are accepted automatically' : 'YOLO mode off'}
+                aria-label={effectiveBypass ? 'YOLO mode on: permission prompts are accepted automatically' : 'YOLO mode off'}
                 title={
-                  bypass
+                  effectiveBypass
                     ? 'YOLO mode: permission prompts for this session are accepted automatically, even while Ember is closed'
                     : 'YOLO mode: accept permission prompts for this session automatically'
                 }
@@ -875,7 +944,6 @@ export default function ChatView({
                 variant="ghost"
                 size="icon-sm"
                 className="size-7"
-                disabled={!session}
                 aria-label="Attach a file"
                 onClick={() => fileRef.current?.click()}
               >

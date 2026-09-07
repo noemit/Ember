@@ -454,7 +454,12 @@ export default function LeftRail({
                 <ChevronDown className="ml-auto opacity-70" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[220px]">
+            <DropdownMenuContent
+              align="start"
+              className="min-w-[220px]"
+              // Picking an instance opens a draft whose composer takes focus; don't yank it back here.
+              onCloseAutoFocus={(event) => event.preventDefault()}
+            >
               <DropdownMenuLabel>New agent on…</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {ready.map((instance) => (

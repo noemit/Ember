@@ -52,6 +52,7 @@ import { useEmberSettings } from './hooks/useEmberSettings';
 import { useFeedback } from './hooks/useFeedback';
 import { useMessageQueue } from './hooks/useMessageQueue';
 import { usePoll } from './hooks/usePoll';
+import { newSessionDirectoryPrefill, newSessionModelPrefill } from './lib/newSessionDefaults';
 import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
 import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
 import type {
@@ -916,50 +917,56 @@ export default function App() {
     setNewSessionInstanceId(instanceId);
   };
 
-  const handleCreateSession = async (options: NewSessionOptions): Promise<boolean> => {
+  /** Create the session from the draft, then send the first message into it. */
+  const handleCreateAndSend = async (options: NewSessionOptions, input: PromptInput): Promise<boolean> => {
     showActionError(null);
+    let created: Session | null;
     try {
-      const created = await createSession(options.instanceId, options.directory);
-      if (!created) {
-        showActionError('Could not create a new agent.');
-        return false;
-      }
-      const now = Date.now();
-      prunePendingCreated((pending) => pending.expiresAt <= now);
-      pendingCreatedSessions.current.set(sessionKey(created), {
-        session: created,
-        expiresAt: now + CREATED_SESSION_GRACE_MS,
-      });
-      setSessionsByInstance((prev) => ({
-        ...prev,
-        [options.instanceId]: [created, ...(prev[options.instanceId] ?? [])],
-      }));
-      setHidden((prev) => {
-        if (!prev.has(options.instanceId)) return prev;
-        const next = new Set(prev);
-        next.delete(options.instanceId);
-        return next;
-      });
-      const ref = { instanceId: options.instanceId, sessionId: created.id };
-      setSelected(ref);
-      setNewSessionInstanceId(null);
-      if (options.bypass) void setYolo(ref, true, created.directory);
-      // The optimistic insert above plus the pendingCreatedSessions grace keep the row visible;
-      // the next session poll (which includes the selected session's directory) is authoritative.
-      return true;
+      created = await createSession(options.instanceId, options.directory);
     } catch (err) {
       showActionError(err instanceof Error ? err.message : 'Could not create a new agent.');
       return false;
     }
+    if (!created) {
+      showActionError('Could not create a new agent.');
+      return false;
+    }
+    const session = created;
+    const now = Date.now();
+    prunePendingCreated((pending) => pending.expiresAt <= now);
+    pendingCreatedSessions.current.set(sessionKey(session), {
+      session,
+      expiresAt: now + CREATED_SESSION_GRACE_MS,
+    });
+    setSessionsByInstance((prev) => ({
+      ...prev,
+      [options.instanceId]: [session, ...(prev[options.instanceId] ?? [])],
+    }));
+    setHidden((prev) => {
+      if (!prev.has(options.instanceId)) return prev;
+      const next = new Set(prev);
+      next.delete(options.instanceId);
+      return next;
+    });
+    const ref = { instanceId: options.instanceId, sessionId: session.id };
+    setSelected(ref);
+    setNewSessionInstanceId(null);
+    if (options.bypass) void setYolo(ref, true, session.directory);
+    // The optimistic insert above plus the pendingCreatedSessions grace keep the row visible;
+    // the next session poll (which includes the selected session's directory) is authoritative.
+    // A failed send here lands the user in the new, empty session with the normal retry notice;
+    // ChatView keeps the draft text for that session.
+    return sendTo(ref, session.directory, input);
   };
 
-  const handleSend = async (input: PromptInput): Promise<boolean> => {
-    if (!selected) return false;
+  const handleSend = (input: PromptInput): Promise<boolean> =>
+    selected ? sendTo(selected, selectedSession?.directory, input) : Promise.resolve(false);
+
+  const sendTo = async (target: SessionRef, directory: string | undefined, input: PromptInput): Promise<boolean> => {
     showActionError(null);
-    const { instanceId, sessionId } = selected;
+    const { instanceId, sessionId } = target;
     const { model, text, attachments = [], variant } = input;
-    const key = sessionKey(selected);
-    const directory = selectedSession?.directory;
+    const key = sessionKey(target);
 
     // Show the user's message immediately so it doesn't look like it vanished.
     const createdAt = Date.now();
@@ -1000,7 +1007,7 @@ export default function App() {
         removeOptimistic();
         showActionError(
           responseError(sent.data, 'Message could not be sent.'),
-          () => void handleSend(input)
+          () => void sendTo(target, directory, input)
         );
         return false;
       }
@@ -1046,7 +1053,7 @@ export default function App() {
           : err instanceof Error
             ? err.message
             : 'Message could not be sent.',
-        accepted ? undefined : () => void handleSend(input)
+        accepted ? undefined : () => void sendTo(target, directory, input)
       );
       return accepted;
     } finally {
@@ -1392,23 +1399,20 @@ export default function App() {
     });
   };
 
-  // Where a new agent should start: the directory of the most recently updated session on the
-  // instance (real recent work), then the project opened most recently in OpenChamber.
-  const newSessionSuggestedDirectory = React.useMemo(() => {
+  const newSessionInstanceDefaults = newSessionInstanceId ? settings.instanceDefaults[newSessionInstanceId] : undefined;
+  const newSessionPrefill = React.useMemo(() => {
     if (!newSessionInstanceId) return null;
     const sessions = sessionsByInstance[newSessionInstanceId] ?? [];
-    const recentSession = sessions
-      .filter((session) => session.directory)
-      .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))[0]?.directory;
-    if (recentSession) return recentSession;
-    const recentProject = (projectsByInstance[newSessionInstanceId] ?? [])
-      .filter((project) => project.path && project.lastOpenedAt)
-      .sort((a, b) => (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0))[0]?.path;
-    return recentProject ?? null;
-  }, [newSessionInstanceId, sessionsByInstance, projectsByInstance]);
+    const defaults = newSessionInstanceDefaults ?? {};
+    return {
+      directory: newSessionDirectoryPrefill(sessions, projectsByInstance[newSessionInstanceId] ?? [], defaults),
+      model: newSessionModelPrefill(sessions, defaults),
+      bypass: defaults.bypass === true,
+    };
+  }, [newSessionInstanceId, newSessionInstanceDefaults, sessionsByInstance, projectsByInstance]);
 
-  const selectedModels = selected ? modelsByInstance[selected.instanceId] : undefined;
   const modelInstanceId = selected?.instanceId ?? newSessionInstanceId;
+  const selectedModels = modelInstanceId ? modelsByInstance[modelInstanceId] : undefined;
   const modelInstanceSessions = modelInstanceId ? sessionsByInstance[modelInstanceId] : undefined;
   const recentModels = React.useMemo(
     () => recentModelKeys(modelInstanceSessions ?? []),
@@ -1546,11 +1550,9 @@ export default function App() {
               instance={selectedInstance}
               instanceMarkerColor={selected?.instanceId ? settings.instanceDefaults[selected.instanceId]?.markerColor : undefined}
               newSessionInstanceId={newSessionInstanceId}
-              newSessionSuggestedDirectory={newSessionSuggestedDirectory}
+              newSessionPrefill={newSessionPrefill}
               instances={instances}
               projectsByInstance={projectsByInstance}
-              modelsByInstance={modelsByInstance}
-              instanceDefaults={settings.instanceDefaults}
               seed={selectedKey ?? ''}
               identity={selectedIdentity}
               state={selectedKey ? states[selectedKey] ?? 'idle' : 'idle'}
@@ -1578,7 +1580,7 @@ export default function App() {
                 if (selected) void setYolo(selected, enabled, selectedSession?.directory);
               }}
               onNewSessionInstanceChange={setNewSessionInstanceId}
-              onCreateSession={handleCreateSession}
+              onCreateAndSend={handleCreateAndSend}
               onCancelNewSession={() => setNewSessionInstanceId(null)}
               onSend={handleSend}
               onQueue={queue.queueMessage}
