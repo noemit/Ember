@@ -14,6 +14,7 @@ import {
   Reply,
   ShieldAlert,
   Wrench,
+  Zap,
 } from 'lucide-react';
 import Linkify from './Linkify';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ import type {
   QuestionAnswers,
   QuestionInfo,
   QuestionRequest,
+  TokenUsage,
   ToolCall,
 } from '../types';
 
@@ -505,6 +507,24 @@ const formatDuration = (milliseconds: number): string => {
   return `${minutes}m ${Math.round(seconds % 60)}s`;
 };
 
+const formatTokens = (count: number): string =>
+  count >= 1000 ? `${(count / 1000).toFixed(count < 10_000 ? 1 : 0)}k` : String(count);
+
+/**
+ * One phrase about prompt caching for the footer, or null when the provider reported none.
+ * Prefer the hit rate (what people care about); mention a write only when nothing was read,
+ * which is the first turn after the context changed.
+ */
+export const cacheSummary = (tokens: TokenUsage | undefined): string | null => {
+  if (!tokens) return null;
+  const prompt = tokens.input + tokens.cacheRead + tokens.cacheWrite;
+  if (tokens.cacheRead > 0 && prompt > 0) {
+    return `${Math.round((tokens.cacheRead / prompt) * 100)}% cached`;
+  }
+  if (tokens.cacheWrite > 0) return `cache written ${formatTokens(tokens.cacheWrite)}`;
+  return null;
+};
+
 export const isAssistantTurnEnd = (
   messages: ChatMessage[],
   index: number,
@@ -535,6 +555,8 @@ const MessageFooter = ({
       ? `${message.model.providerID} / ${message.model.modelID}`
       : 'Model unavailable'
     : null;
+  const cache = showMetadata ? cacheSummary(message.tokens) : null;
+  const tokens = message.tokens;
   if (!model && !duration && !pinned) return null;
 
   return (
@@ -544,8 +566,17 @@ const MessageFooter = ({
         message.role === 'user' ? 'self-end' : 'self-start'
       )}
     >
-      {model ? <span>{model}</span> : null}
-      {duration ? <span>· {duration}</span> : null}
+      {model ? <span className="min-w-0 truncate">{model}</span> : null}
+      {duration ? <span className="flex-none">· {duration}</span> : null}
+      {cache && tokens ? (
+        <span
+          className="flex flex-none items-center gap-0.5"
+          title={`Prompt: ${formatTokens(tokens.input)} fresh, ${formatTokens(tokens.cacheRead)} read from cache, ${formatTokens(tokens.cacheWrite)} written · Output: ${formatTokens(tokens.output)}`}
+        >
+          <Zap className="size-2.5" aria-hidden="true" />
+          {cache}
+        </span>
+      ) : null}
       {pinned ? (
         <button
           type="button"

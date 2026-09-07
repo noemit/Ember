@@ -26,7 +26,7 @@ import {
   takeQueuedMessage,
 } from './src/api';
 import { shouldOfferSessionReload } from './src/components/ChatView';
-import { isAssistantTurnEnd } from './src/components/Transcript';
+import { cacheSummary, isAssistantTurnEnd } from './src/components/Transcript';
 import type { ChatMessage, ModelOption } from './src/types';
 
 const setRequest = (
@@ -173,6 +173,40 @@ describe('session loading', () => {
       createdAt: 200,
       completedAt: 1450,
     });
+  });
+
+  test('reads prompt-cache token usage and treats missing usage as unknown', async () => {
+    setRequest(async () => ({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          info: {
+            id: 'cached',
+            role: 'assistant',
+            time: { created: 1, completed: 2 },
+            tokens: { total: 10644, input: 1483, output: 201, reasoning: 0, cache: { read: 8960, write: 0 } },
+          },
+          parts: [{ id: 'p', type: 'text', text: 'ok' }],
+        },
+        {
+          info: { id: 'unknown', role: 'assistant', time: { created: 3, completed: 4 } },
+          parts: [{ id: 'q', type: 'text', text: 'ok' }],
+        },
+        {
+          info: { id: 'zeros', role: 'assistant', time: { created: 5, completed: 6 }, tokens: { input: 0, output: 0 } },
+          parts: [{ id: 'r', type: 'text', text: 'ok' }],
+        },
+      ],
+    }));
+
+    const [cached, unknown, zeros] = await loadMessages('local', 'session');
+    expect(cached.tokens).toEqual({ input: 1483, output: 201, cacheRead: 8960, cacheWrite: 0 });
+    expect(cacheSummary(cached.tokens)).toBe('86% cached');
+    expect(unknown.tokens).toBeUndefined();
+    expect(zeros.tokens).toBeUndefined();
+    expect(cacheSummary({ input: 500, output: 10, cacheRead: 0, cacheWrite: 12_400 })).toBe('cache written 12k');
+    expect(cacheSummary({ input: 500, output: 10, cacheRead: 0, cacheWrite: 0 })).toBeNull();
   });
 
   test('keeps partless assistant errors in the transcript', async () => {

@@ -555,6 +555,12 @@ const bridge: EmberBridge = {
               modelID: model.id,
               model: model.variant ? { providerID: model.providerID, modelID: model.id, variant: model.variant } : undefined,
               error: m.error ? { name: 'APIError', data: { message: m.error, statusCode: 400 } } : undefined,
+              // First assistant turn writes the prefix; later ones read it back, like a real provider.
+              tokens: m.open || m.error
+                ? undefined
+                : i <= 1
+                  ? { input: 1800, output: 240, reasoning: 0, cache: { read: 0, write: 9200 } }
+                  : { input: 400 + i * 60, output: 180, reasoning: 0, cache: { read: 9200 + i * 300, write: 0 } },
             };
         return { info, parts: toParts(m, id) };
       })));

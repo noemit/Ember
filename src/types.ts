@@ -127,6 +127,14 @@ export type MessagePart =
   | { type: 'file'; id: string; file: FileAttachment }
   | { type: 'tool'; id: string; call: ToolCall };
 
+/** Provider-reported token usage for an assistant turn; `cache` is prompt caching. */
+export type TokenUsage = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+};
+
 export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -134,6 +142,7 @@ export type ChatMessage = {
   text: string;
   parts: MessagePart[];
   model?: ModelRef;
+  tokens?: TokenUsage;
   error?: string;
   /** The error is a user-initiated stop, not a failure; don't surface it as an error state. */
   aborted?: boolean;

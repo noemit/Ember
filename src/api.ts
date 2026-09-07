@@ -19,6 +19,7 @@ import type {
   QueuedMessage,
   Session,
   ToolCall,
+  TokenUsage,
   ToolStatus,
 } from './types';
 
@@ -51,6 +52,23 @@ export const errorMessageOf = (value: unknown, depth = 0): string | undefined =>
     return record._tag.replace(/([a-z])([A-Z])/g, '$1 $2').trim().slice(0, 4000) || undefined;
   }
   return undefined;
+};
+
+const nonNegative = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+
+/** `info.tokens` as OpenCode reports it: `{ input, output, reasoning, cache: { read, write } }`. */
+const toTokenUsage = (value: unknown): TokenUsage | undefined => {
+  const raw = asRecord(value);
+  const cache = asRecord(raw.cache);
+  const usage = {
+    input: nonNegative(raw.input),
+    output: nonNegative(raw.output),
+    cacheRead: nonNegative(cache.read),
+    cacheWrite: nonNegative(cache.write),
+  };
+  // Providers that don't report usage send zeros or nothing; treat that as "unknown", not "0".
+  return usage.input + usage.output + usage.cacheRead + usage.cacheWrite > 0 ? usage : undefined;
 };
 
 const isAbortError = (value: unknown): boolean => {
@@ -450,7 +468,8 @@ export const loadMessages = async (
       const aborted = error !== undefined && isAbortError(rawError);
       // User messages have no completion timestamp; assistants get one when the turn ends.
       const completed = role === 'user' || completedAt !== undefined || error !== undefined;
-      return { id, role, text, parts, model, error, aborted, createdAt, completedAt, completed };
+      const tokens = role === 'assistant' ? toTokenUsage(info.tokens) : undefined;
+      return { id, role, text, parts, model, tokens, error, aborted, createdAt, completedAt, completed };
     })
     .filter((message) => message.parts.length > 0 || message.error);
 };
