@@ -130,7 +130,7 @@ const InstanceDefaultsSettings = ({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <section className="flex flex-col gap-1.5">
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium">Default project</span>
           <Select
@@ -147,24 +147,6 @@ const InstanceDefaultsSettings = ({
                   {project.name}
                 </SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium">Default agent</span>
-          <Select
-            value={defaults.agent ?? 'build'}
-            onValueChange={(value) => update({ agent: value })}
-          >
-            <SelectTrigger aria-label="Default agent">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="build">Build</SelectItem>
-              <SelectItem value="plan">Plan</SelectItem>
-              {defaults.agent && defaults.agent !== 'build' && defaults.agent !== 'plan' ? (
-                <SelectItem value={defaults.agent}>{defaults.agent}</SelectItem>
-              ) : null}
             </SelectContent>
           </Select>
         </div>

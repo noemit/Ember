@@ -151,7 +151,7 @@ const composerDraftSignature = (drafts: Record<string, StoredComposerDraft>): st
   JSON.stringify(
     Object.keys(drafts).sort().map((key) => {
       const draft = drafts[key];
-      return [key, draft.text, draft.modelId ?? '', draft.variant ?? '', draft.mode ?? ''];
+      return [key, draft.text, draft.modelId ?? '', draft.variant ?? ''];
     })
   );
 
@@ -1342,14 +1342,13 @@ export default function App() {
         .filter(([key, draft]) =>
           key.length > 0 &&
           key.length <= 500 &&
-          (draft.text.trim() || draft.modelId || draft.variant || draft.mode)
+          (draft.text.trim() || draft.modelId || draft.variant)
         )
         .slice(-50)
         .map(([key, draft]) => [key, {
           text: draft.text.slice(0, 200_000),
           ...(draft.modelId ? { modelId: draft.modelId } : {}),
           ...(draft.variant ? { variant: draft.variant } : {}),
-          ...(draft.mode ? { mode: draft.mode } : {}),
           updatedAt: draft.updatedAt || Date.now(),
         }])
     );

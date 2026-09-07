@@ -51,8 +51,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   It parses frames, keeps only `{ instanceId, type, sessionId?, directory? }`, and reconnects with
   jittered backoff; main fans hints out to windows (`ember:event`) and to `/remote/events`.
 - `src/components/ChatView.tsx` — the transcript shell and composer. Text, model, reasoning variant,
-  agent mode, attachments, and reply context are kept per session; the one-line textarea grows to a
-  capped height and failed sends restore the draft. Draft text and model/agent choices persist
+  attachments, and reply context are kept per session; the one-line textarea grows to a
+  capped height and failed sends restore the draft. Draft text and model choices persist
   across restarts (including choice-only drafts), while attachments and reply context stay in memory.
   `NewSessionSetup.tsx` (with its project picker) and `QueuedMessageList.tsx` are lazy children;
   the queue list is keyed by session so its per-item UI resets on switch.

@@ -18,7 +18,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type {
-  AgentMode,
   AvatarIdentity,
   BallState,
   BlobStyle,
@@ -126,7 +125,6 @@ type ComposerState = {
   text: string;
   modelId: string;
   variant: string;
-  mode: AgentMode;
   attachments: FileAttachment[];
   replyContext: ChatMessage | null;
 };
@@ -149,7 +147,6 @@ const composerFromStored = (draft: StoredComposerDraft): ComposerState => ({
   text: draft.text,
   modelId: draft.modelId ?? DEFAULT_MODEL,
   variant: draft.variant ?? '',
-  mode: draft.mode ?? 'build',
   attachments: [],
   replyContext: null,
 });
@@ -161,7 +158,6 @@ const storedFromComposer = (state: ComposerState): StoredComposerDraft => {
     updatedAt: Date.now(),
   };
   if (state.variant) draft.variant = state.variant;
-  if (state.mode !== 'build') draft.mode = state.mode;
   return draft;
 };
 
@@ -242,7 +238,6 @@ export default function ChatView({
   onQuestion,
 }: Props) {
   const [text, setText] = React.useState('');
-  const [mode, setMode] = React.useState<AgentMode>('build');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
   const [variant, setVariant] = React.useState('');
   const [pickerOpen, setPickerOpen] = React.useState(false);
@@ -272,7 +267,7 @@ export default function ChatView({
     if (!composerDraftsHydrated || draftsHydratedRef.current) return;
     draftsHydratedRef.current = true;
     Object.entries(savedComposerDrafts).forEach(([key, draft]) => {
-      if (draft.modelId !== undefined || draft.variant || draft.mode) {
+      if (draft.modelId !== undefined || draft.variant) {
         touchedComposerChoicesRef.current.add(key);
       }
       if (!composerDraftsRef.current.has(key)) {
@@ -285,7 +280,6 @@ export default function ChatView({
       setText(restored.text);
       setModelId(restored.modelId);
       setVariant(restored.variant);
-      setMode(restored.mode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot hydration, guarded by draftsHydratedRef
   }, [composerDraftsHydrated, savedComposerDrafts]);
@@ -319,14 +313,13 @@ export default function ChatView({
     scheduleDraftPersistence();
   };
 
-  const updateComposerChoices = (patch: Partial<Pick<ComposerState, 'modelId' | 'variant' | 'mode'>>) => {
+  const updateComposerChoices = (patch: Partial<Pick<ComposerState, 'modelId' | 'variant'>>) => {
     if (!composerKey) return;
     touchedComposerChoicesRef.current.add(composerKey);
     updateComposerDraft(composerKey, {
       text,
       modelId,
       variant,
-      mode,
       attachments,
       replyContext,
       ...patch,
@@ -384,7 +377,6 @@ export default function ChatView({
           text,
           modelId,
           variant,
-          mode,
           attachments,
           replyContext,
         });
@@ -401,7 +393,6 @@ export default function ChatView({
       text: '',
       modelId: created?.key ?? sessionModelKey ?? defaultModelId ?? DEFAULT_MODEL,
       variant: created?.variant ?? session?.model?.variant ?? '',
-      mode: session?.agent ?? 'build',
       attachments: [],
       replyContext: null,
     };
@@ -409,7 +400,6 @@ export default function ChatView({
     setText(next.text);
     setModelId(next.modelId);
     setVariant(next.variant);
-    setMode(next.mode);
     setAttachments(next.attachments);
     setAttachmentError(null);
     setReplyContext(next.replyContext);
@@ -465,7 +455,6 @@ export default function ChatView({
   const createSessionFromSetup = async (options: NewSessionOptions): Promise<boolean> => {
     const created = await onCreateSession(options);
     if (created) {
-      setMode(options.agent);
       const nextModel = options.model ? modelRefKey(options.model) : DEFAULT_MODEL;
       createdModelRef.current = { key: nextModel, variant: options.variant };
       setModelId(nextModel);
@@ -480,13 +469,13 @@ export default function ChatView({
 
   const submit = () => {
     if (!canSend) return;
-    const submitted: ComposerState = { text: text.trim(), modelId, variant, mode, attachments, replyContext };
+    const submitted: ComposerState = { text: text.trim(), modelId, variant, attachments, replyContext };
     const submittedKey = composerKey;
     const send = shouldQueue ? onQueue : onSend;
     send({
       text: submitted.text,
       model,
-      mode: submitted.mode,
+      mode: session?.agent,
       variant: submitted.variant || undefined,
       attachments: submitted.attachments,
       replyContext: submitted.replyContext ? messageContextText(submitted.replyContext) : undefined,
@@ -510,7 +499,6 @@ export default function ChatView({
       setText(submitted.text);
       setModelId(submitted.modelId);
       setVariant(submitted.variant);
-      setMode(submitted.mode);
       setAttachments(submitted.attachments);
       setReplyContext(submitted.replyContext);
     });
@@ -540,7 +528,6 @@ export default function ChatView({
           text: next,
           modelId,
           variant,
-          mode,
           attachments,
           replyContext,
         });
@@ -750,7 +737,6 @@ export default function ChatView({
                       text: event.target.value,
                       modelId,
                       variant,
-                      mode,
                       attachments,
                       replyContext,
                     });
@@ -836,26 +822,6 @@ export default function ChatView({
                   </SelectContent>
                 </Select>
               ) : null}
-
-              <Select
-                value={mode}
-                onValueChange={(nextMode) => {
-                  setMode(nextMode);
-                  updateComposerChoices({ mode: nextMode });
-                }}
-                disabled={!session}
-              >
-                <SelectTrigger size="sm" className="h-7 border-none bg-transparent px-2 text-xs shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="build">Build</SelectItem>
-                  <SelectItem value="plan">Plan</SelectItem>
-                  {mode !== 'build' && mode !== 'plan' ? (
-                    <SelectItem value={mode}>{mode}</SelectItem>
-                  ) : null}
-                </SelectContent>
-              </Select>
 
               <Toggle
                 pressed={bypass}

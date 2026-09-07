@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/select';
 import { ModelPickerFallback } from './ModelPickerFallback';
 import type {
-  AgentMode,
   Instance,
   InstanceDefaults,
   ModelOption,
@@ -142,7 +141,6 @@ export default function NewSessionSetup({
   onCancel: () => void;
 }) {
   const [directory, setDirectory] = React.useState(defaults.directory ?? '');
-  const [agent, setAgent] = React.useState<AgentMode>(defaults.agent ?? 'build');
   const [selectedModel, setSelectedModel] = React.useState(
     defaults.model ? modelRefKey(defaults.model) : DEFAULT_MODEL
   );
@@ -163,7 +161,6 @@ export default function NewSessionSetup({
     const created = await onCreate({
       instanceId,
       directory: directory.trim(),
-      agent,
       model: model ? { providerID: model.providerID, modelID: model.modelID } : undefined,
       variant:
         model && selectedVariant && model.details.variants.includes(selectedVariant)
@@ -224,82 +221,65 @@ export default function NewSessionSetup({
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">Agent</span>
-            <Select value={agent} onValueChange={setAgent}>
-              <SelectTrigger aria-label="New agent type">
-                <SelectValue />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium">Model</span>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-between px-3 font-normal"
+            onClick={() => {
+              setModelPickerActivated(true);
+              setModelPickerOpen(true);
+            }}
+            aria-label="Choose new agent model"
+          >
+            <span className="truncate">
+              {selectedModelOption
+                ? `${selectedModelOption.details.providerName} / ${selectedModelOption.details.name}${selectedModel === defaultModelId ? ' (Default)' : ''}`
+                : defaultModelOption
+                  ? `${defaultModelOption.details.providerName} / ${defaultModelOption.details.name} (Default)`
+                  : 'Server default'}
+            </span>
+            <ChevronDown className="size-4 text-muted-foreground" />
+          </Button>
+          {modelPickerActivated ? (
+            <React.Suspense fallback={<ModelPickerFallback />}>
+              <ModelPicker
+                open={modelPickerOpen}
+                models={models}
+                recentModels={recentModels}
+                value={selectedModel}
+                defaultModelId={defaultModelId}
+                collapseProviders
+                onSelect={(next) => {
+                  setSelectedModel(next);
+                  const nextModel = models.find((entry) => modelRefKey(entry) === next);
+                  if (selectedVariant && !nextModel?.details.variants.includes(selectedVariant)) {
+                    setSelectedVariant('');
+                  }
+                }}
+                onOpenChange={setModelPickerOpen}
+              />
+            </React.Suspense>
+          ) : null}
+          {selectedVariantOptions.length ? (
+            <Select
+              value={selectedVariant || '__default'}
+              onValueChange={(value) => setSelectedVariant(value === '__default' ? '' : value)}
+            >
+              <SelectTrigger aria-label="New agent reasoning level" className="capitalize">
+                <SelectValue placeholder="Reasoning" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="build">Build</SelectItem>
-                <SelectItem value="plan">Plan</SelectItem>
-                {agent !== 'build' && agent !== 'plan' ? (
-                  <SelectItem value={agent}>{agent}</SelectItem>
-                ) : null}
+                <SelectItem value="__default">Reasoning: default</SelectItem>
+                {selectedVariantOptions.map((option) => (
+                  <SelectItem key={option} value={option} className="capitalize">
+                    {option}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">Model</span>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full justify-between px-3 font-normal"
-              onClick={() => {
-                setModelPickerActivated(true);
-                setModelPickerOpen(true);
-              }}
-              aria-label="Choose new agent model"
-            >
-              <span className="truncate">
-                {selectedModelOption
-                  ? `${selectedModelOption.details.providerName} / ${selectedModelOption.details.name}${selectedModel === defaultModelId ? ' (Default)' : ''}`
-                  : defaultModelOption
-                    ? `${defaultModelOption.details.providerName} / ${defaultModelOption.details.name} (Default)`
-                    : 'Server default'}
-              </span>
-              <ChevronDown className="size-4 text-muted-foreground" />
-            </Button>
-            {modelPickerActivated ? (
-              <React.Suspense fallback={<ModelPickerFallback />}>
-                <ModelPicker
-                  open={modelPickerOpen}
-                  models={models}
-                  recentModels={recentModels}
-                  value={selectedModel}
-                  defaultModelId={defaultModelId}
-                  collapseProviders
-                  onSelect={(next) => {
-                    setSelectedModel(next);
-                    const nextModel = models.find((entry) => modelRefKey(entry) === next);
-                    if (selectedVariant && !nextModel?.details.variants.includes(selectedVariant)) {
-                      setSelectedVariant('');
-                    }
-                  }}
-                  onOpenChange={setModelPickerOpen}
-                />
-              </React.Suspense>
-            ) : null}
-            {selectedVariantOptions.length ? (
-              <Select
-                value={selectedVariant || '__default'}
-                onValueChange={(value) => setSelectedVariant(value === '__default' ? '' : value)}
-              >
-                <SelectTrigger aria-label="New agent reasoning level" className="capitalize">
-                  <SelectValue placeholder="Reasoning" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__default">Reasoning: default</SelectItem>
-                  {selectedVariantOptions.map((option) => (
-                    <SelectItem key={option} value={option} className="capitalize">
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-          </div>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">

@@ -24,12 +24,8 @@ export type ModelRef = {
   variant?: string;
 };
 
-/** OpenCode agent ids are configurable; build/plan are the usual built-ins. */
-export type AgentMode = string;
-
 export type InstanceDefaults = {
   directory?: string;
-  agent?: AgentMode;
   model?: ModelRef;
   /** Reasoning-effort variant for the default model, e.g. 'high'. */
   variant?: string;
@@ -40,7 +36,6 @@ export type InstanceDefaults = {
 export type NewSessionOptions = {
   instanceId: string;
   directory: string;
-  agent: AgentMode;
   model?: ModelRef;
   variant?: string;
   bypass: boolean;
@@ -286,7 +281,6 @@ export type StoredComposerDraft = {
   text: string;
   modelId?: string;
   variant?: string;
-  mode?: AgentMode;
   updatedAt: number;
 };
 
