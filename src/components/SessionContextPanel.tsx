@@ -92,7 +92,7 @@ export default function SessionContextPanel({
   if (!open) {
     return (
       <aside
-        className="flex w-11 flex-none flex-col items-center gap-1 border-l bg-card py-2"
+        className="flex w-11 flex-none flex-col items-center justify-center gap-1 self-stretch rounded-xl border bg-background px-1 py-1.5"
         aria-label="Notes and pins"
       >
         <button
@@ -159,9 +159,12 @@ export default function SessionContextPanel({
     setSelectedIds(new Set());
   };
 
+  // Zero intrinsic height: `absolute inset-0` inside a stretched flex item, so the composer
+  // sets the row height and a long notes list scrolls instead of pushing the composer taller.
   return (
-    <aside className="flex w-[min(50%,640px)] flex-none flex-col border-l bg-card">
-      <header className="flex h-11 flex-none items-center gap-2 border-b px-3.5">
+    <aside className="relative w-[min(50%,560px)] flex-none self-stretch overflow-hidden rounded-xl border bg-background">
+      <div className="absolute inset-0 flex flex-col">
+        <header className="flex h-9 flex-none items-center gap-2 border-b px-3">
         <FilePenLine className="size-4 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">Notes</span>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close notes panel">
@@ -169,7 +172,7 @@ export default function SessionContextPanel({
         </Button>
       </header>
 
-      <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-3.5">
+      <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-3">
         <section className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 flex-col">
@@ -311,6 +314,7 @@ export default function SessionContextPanel({
             </div>
           ) : null}
         </section>
+      </div>
       </div>
     </aside>
   );

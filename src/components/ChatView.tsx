@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, ChevronDown, FilePenLine, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -603,10 +603,6 @@ export default function ChatView({
                   {questions.length === 1 ? 'Question needed' : `${questions.length} questions`}
                 </Badge>
               ) : null}
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openContext('notes')}>
-                <FilePenLine />
-                <span className="hidden sm:inline">Notes</span>
-              </Button>
               {pinnedMessages.length ? (
                 <Button variant="secondary" size="sm" className="h-7 rounded-full px-2.5 text-xs" onClick={() => openContext('pins')}>
                   <Pin />
@@ -681,7 +677,27 @@ export default function ChatView({
 
       {session ? (
         <div className="safe-composer flex-none border-t bg-card p-2.5 sm:p-3">
-          <div className="flex w-full flex-col gap-2">
+          <div className="flex w-full items-stretch gap-2">
+            <React.Suspense fallback={null}>
+              <SessionContextPanel
+                open={contextOpen}
+                sessionKey={composerKey ?? ''}
+                sessionTitle={session.title ?? session.id}
+                notes={sessionNotes}
+                pinnedMessages={pinnedMessages}
+                focusSection={contextSection}
+                focusRequest={contextRequest}
+                onClose={() => setContextOpen(false)}
+                onOpen={openContext}
+                onNotesChange={onSessionNotesChange}
+                onDeleteNote={onDeleteNote}
+                onInsertNotes={insertNotes}
+                onJump={jumpToMessage}
+                onReply={replyToMessage}
+                onUnpin={onTogglePin}
+              />
+            </React.Suspense>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
             <React.Suspense fallback={null}>
               <QueuedMessageList
                 key={composerKey ?? 'none'}
@@ -931,30 +947,10 @@ export default function ChatView({
             </div>
             </motion.div>
           </div>
+          </div>
         </div>
       ) : null}
       </div>
-      {session ? (
-        <React.Suspense fallback={null}>
-          <SessionContextPanel
-            open={contextOpen}
-            sessionKey={composerKey ?? ''}
-            sessionTitle={session.title ?? session.id}
-            notes={sessionNotes}
-            pinnedMessages={pinnedMessages}
-            focusSection={contextSection}
-            focusRequest={contextRequest}
-            onClose={() => setContextOpen(false)}
-            onOpen={openContext}
-            onNotesChange={onSessionNotesChange}
-            onDeleteNote={onDeleteNote}
-            onInsertNotes={insertNotes}
-            onJump={jumpToMessage}
-            onReply={replyToMessage}
-            onUnpin={onTogglePin}
-          />
-        </React.Suspense>
-      ) : null}
     </main>
   );
 }
