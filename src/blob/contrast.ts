@@ -68,8 +68,10 @@ export const INSTANCE_MARKER_COLORS = [
 ];
 export const GLYPH_COLORS = Array.from({ length: AVATAR_COLOR_COUNT }, (_, index) => {
   const hue = ((index * 137.508) % 360) / 360;
-  const saturation = 0.58 + (index % 4) * 0.06;
-  const lightness = 0.42 + (Math.floor(index / 4) % 4) * 0.055;
+  // Fresher than the original 0.58/0.42 mix: more saturation, more light, so blobs pop
+  // before ensureContrast nudges them for the theme.
+  const saturation = 0.72 + (index % 4) * 0.05;
+  const lightness = 0.5 + (Math.floor(index / 4) % 4) * 0.05;
   return rgbToHex(hslToRgb([hue, saturation, lightness]));
 });
 

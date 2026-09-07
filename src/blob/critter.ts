@@ -20,18 +20,18 @@ export type CritterColor = {
 };
 
 export const CRITTER_COLORS: CritterColor[] = [
-  { name: 'plum', fill: '#7b4bb5', light: '#ffd66e', dark: '#2a1147' },
-  { name: 'rust', fill: '#d2562a', light: '#ffe7a3', dark: '#3a1a3f' },
-  { name: 'moss', fill: '#5c8f3a', light: '#f5f0c2', dark: '#22301a' },
-  { name: 'sea', fill: '#2a86b5', light: '#ffd48a', dark: '#0b2b3f' },
-  { name: 'rose', fill: '#e56b98', light: '#fff0d6', dark: '#3f1226' },
-  { name: 'mustard', fill: '#dfae2c', light: '#fff5d0', dark: '#4a2c4a' },
-  { name: 'mint', fill: '#4fc79a', light: '#f2fff8', dark: '#173a56' },
-  { name: 'sky', fill: '#6fb0ee', light: '#fff2a8', dark: '#14304f' },
-  { name: 'clay', fill: '#b8735a', light: '#ffefd6', dark: '#3f1f13' },
-  { name: 'indigo', fill: '#3f52c0', light: '#ffc2d6', dark: '#121a4a' },
-  { name: 'lilac', fill: '#ad8fe3', light: '#fff7c2', dark: '#2e1b4d' },
-  { name: 'olive', fill: '#98a53a', light: '#fdf5d8', dark: '#3a2a4a' },
+  { name: 'plum', fill: '#9a55e0', light: '#ffd66e', dark: '#2a1147' },
+  { name: 'rust', fill: '#f06423', light: '#ffe7a3', dark: '#3a1a3f' },
+  { name: 'moss', fill: '#77b83d', light: '#f5f0c2', dark: '#22301a' },
+  { name: 'sea', fill: '#2fa4e0', light: '#ffd48a', dark: '#0b2b3f' },
+  { name: 'rose', fill: '#f76fa4', light: '#fff0d6', dark: '#3f1226' },
+  { name: 'mustard', fill: '#f2c11e', light: '#fff5d0', dark: '#4a2c4a' },
+  { name: 'mint', fill: '#3fd9a4', light: '#f2fff8', dark: '#173a56' },
+  { name: 'sky', fill: '#64b8ff', light: '#fff2a8', dark: '#14304f' },
+  { name: 'clay', fill: '#ec8f5e', light: '#ffefd6', dark: '#3f1f13' },
+  { name: 'indigo', fill: '#5566e8', light: '#ffc2d6', dark: '#121a4a' },
+  { name: 'lilac', fill: '#bd9ff2', light: '#fff7c2', dark: '#2e1b4d' },
+  { name: 'olive', fill: '#b4c23f', light: '#fdf5d8', dark: '#3a2a4a' },
 ];
 
 export type CritterPair = { fill: string; accent: string; ink: string };
