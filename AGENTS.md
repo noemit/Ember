@@ -124,5 +124,18 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `{ answers: string[][] }` (one array per question; option labels or a single custom string),
   `POST /api/question/:id/reject`. Sessions with a pending request of either kind are forced to
   the `needs-input` ball state — `/api/sessions/status` itself only reports idle/busy/retry.
+- Ball states: `/api/sessions/status` never says "error", so `error` is derived from the
+  transcript: an idle session whose last message is an assistant turn with `error` set (and not
+  `aborted`, i.e. a user stop) is failed. That's tracked in `failedKeys`, updated wherever
+  messages enter the cache, so it covers the open session and the previewed ones. Priority is
+  needs-input > active > error > idle. `needs-input` draws an orbiting ring (`blob/OrbitRing.tsx`,
+  offset-path + opacity only; the marker passes behind the body via a back/front split).
+- YOLO mode (`bypass` in the settings schema, kept for compatibility) is OpenChamber's server-side
+  permission auto-accept: `GET /api/permission-auto-accept` → `{ sessions: { id: bool } }`,
+  `PUT /api/permission-auto-accept/sessions/:id` `{ enabled, directory }`. The server answers
+  prompts itself, so it works while Ember is closed and matches what OpenChamber shows as
+  "Permission auto-accept". The policy is polled with the 10s session poll. Instances that 404 the
+  route are marked unsupported and fall back to a local override plus Ember auto-replying `once`
+  while the session is selected; with server support that client loop is skipped to avoid racing.
 - Prompt body: `{ parts: [{type:'file', mime, filename, url:<data URL>}..., {type:'text', text}],
   model?, agent?, variant? }`. Stop is `POST /api/session/:id/abort`.

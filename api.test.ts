@@ -8,6 +8,7 @@ import {
   loadAllPermissions,
   loadAllQuestions,
   loadAllSessions,
+  loadAutoAcceptPolicy,
   loadMessages,
   loadModels,
   loadProjects,
@@ -21,6 +22,7 @@ import {
   replyPermission,
   replyQuestion,
   sendPrompt,
+  setAutoAccept,
   takeQueuedMessage,
 } from './src/api';
 import { shouldOfferSessionReload } from './src/components/ChatView';
@@ -197,8 +199,69 @@ describe('session loading', () => {
       expect.objectContaining({
         id: 'assistant-error',
         error: 'Invalid request Error',
+        aborted: false,
         completed: true,
       }),
+    ]);
+  });
+
+  test('marks a user-initiated stop as aborted so it is not shown as a failure', async () => {
+    setRequest(async () => ({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          info: {
+            id: 'stopped',
+            role: 'assistant',
+            time: { created: 200 },
+            error: { name: 'MessageAbortedError', data: { message: 'The running turn was interrupted.' } },
+          },
+          parts: [],
+        },
+        {
+          info: {
+            id: 'failed',
+            role: 'assistant',
+            time: { created: 300 },
+            error: { name: 'ProviderAuthError', data: { message: 'Invalid API key' } },
+          },
+          parts: [],
+        },
+      ],
+    }));
+
+    const messages = await loadMessages('local', 'session');
+    expect(messages[0]).toMatchObject({ id: 'stopped', aborted: true });
+    expect(messages[1]).toMatchObject({ id: 'failed', aborted: false });
+  });
+});
+
+describe('permission auto-accept (YOLO mode)', () => {
+  test('reads the server policy and distinguishes an unsupported instance from a failure', async () => {
+    setRequest(async () => ({
+      ok: true,
+      status: 200,
+      data: { sessions: { a: true, b: false, c: 'yes' }, revision: 3 },
+    }));
+    expect(await loadAutoAcceptPolicy('local')).toEqual({ supported: true, sessions: { a: true, b: false } });
+
+    setRequest(async () => ({ ok: false, status: 404, data: null }));
+    expect(await loadAutoAcceptPolicy('old')).toEqual({ supported: false, sessions: {} });
+
+    setRequest(async () => ({ ok: false, status: 503, data: null }));
+    expect(await loadAutoAcceptPolicy('down')).toBeNull();
+  });
+
+  test('sends the session policy with its directory', async () => {
+    const calls: Array<[string, string, unknown]> = [];
+    setRequest(async (_instance, method, path, body) => {
+      calls.push([method, path, body]);
+      return { ok: true, status: 200, data: { sessions: { 'ses 1': true }, revision: 4 } };
+    });
+    expect(await setAutoAccept('local', 'ses 1', true, '/work')).toEqual({ ok: true, status: 200 });
+    expect(calls).toEqual([
+      ['PUT', '/api/permission-auto-accept/sessions/ses%201', { enabled: true, directory: '/work' }],
     ]);
   });
 });

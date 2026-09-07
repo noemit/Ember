@@ -2,6 +2,7 @@ import * as React from 'react';
 import { hashString, mulberry32, seedIdentity } from './seed';
 import { GLYPH_COLORS } from './contrast';
 import { GROK_COLORS, GROK_SHAPES } from './grok';
+import { OrbitRing } from './OrbitRing';
 import { usePupilTracking } from './usePupilTracking';
 import type { AvatarIdentity, BallState } from '../types';
 import './blob.css';
@@ -45,6 +46,7 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
   }, [identity, seed]);
 
   const isError = state === 'error';
+  const needsInput = state === 'needs-input';
   usePupilTracking(wrapperRef, [leftPupil, rightPupil], interactive && !isError, 5.5);
 
   const renderEye = (offsetX: number, pupilRef: React.RefObject<SVGGElement | null>) => (
@@ -73,6 +75,7 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
       style={{ width: size, height: size, animationDelay: `${wobbleDelay}s` }}
     >
       <svg viewBox="0 0 100 100" width={size} height={size} style={{ overflow: 'visible' }}>
+        {needsInput ? <OrbitRing.Back cx={50} cy={50} r={44} /> : null}
         <g className="blob-body" transform={`rotate(${tilt} 50 50)`}>
           <path d={shape.path} fill={color.fill} />
           {isError && <path d={shape.path} fill="rgba(0,0,0,0.28)" />}
@@ -81,6 +84,7 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
           {renderEye(-shape.eyeGap, leftPupil)}
           {renderEye(shape.eyeGap, rightPupil)}
         </g>
+        {needsInput ? <OrbitRing.Front cx={50} cy={50} r={44} /> : null}
       </svg>
     </div>
   );

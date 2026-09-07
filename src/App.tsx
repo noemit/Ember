@@ -19,6 +19,7 @@ import {
   createSession,
   errorMessageOf,
   listInstances,
+  loadAllAutoAcceptPolicies,
   loadAllMessageQueues,
   loadAllPermissions,
   loadAllProjects,
@@ -38,7 +39,9 @@ import {
   replyPermission,
   replyQuestion,
   sendPrompt,
+  setAutoAccept,
   setSessionArchived,
+  type AutoAcceptPolicy,
   type ModelList,
   type PromptInput,
 } from './api';
@@ -182,7 +185,10 @@ export default function App() {
   const [loading, setLoading] = React.useState(true);
   const [sendingKeys, setSendingKeys] = React.useState<Set<string>>(() => new Set());
   const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
+  // Local fallback for instances whose OpenChamber predates server-side auto-accept.
   const [bypassOverrides, setBypassOverrides] = React.useState<Record<string, boolean>>({});
+  const [autoAcceptByInstance, setAutoAcceptByInstance] = React.useState<Record<string, AutoAcceptPolicy>>({});
+  const [failedKeys, setFailedKeys] = React.useState<Set<string>>(() => new Set());
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [settingsActivated, setSettingsActivated] = React.useState(false);
   const [avatarPickerSession, setAvatarPickerSession] = React.useState<Session | null>(null);
@@ -268,6 +274,17 @@ export default function App() {
       if (oldest === undefined) break;
       cache.delete(oldest);
     }
+    // The status endpoint never reports errors, so the transcript is the source of truth: a
+    // turn that ended in a failure (not a user stop) puts the session in the error state.
+    const last = messagesForSession[messagesForSession.length - 1];
+    const failed = Boolean(last && last.role === 'assistant' && last.error && !last.aborted);
+    setFailedKeys((prev) => {
+      if (prev.has(key) === failed) return prev;
+      const next = new Set(prev);
+      if (failed) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   };
 
   const updateCachedMessages = (
@@ -325,15 +342,18 @@ export default function App() {
     [questionsByInstance]
   );
 
-  // A pending approval or question trumps whatever the status endpoint says (it only knows
-  // idle/busy): the agent is blocked on us.
+  // The status endpoint only knows idle/busy. A failed last turn makes an idle session `error`;
+  // a pending approval or question trumps everything: the agent is blocked on us.
   const states = React.useMemo(() => {
     const merged = Object.assign({}, ...Object.values(statesByInstance)) as Record<string, BallState>;
+    failedKeys.forEach((key) => {
+      if ((merged[key] ?? 'idle') === 'idle') merged[key] = 'error';
+    });
     [...permissions, ...questions].forEach((request) => {
       merged[sessionKey({ instanceId: request.instanceId, sessionId: request.sessionId })] = 'needs-input';
     });
     return merged;
-  }, [statesByInstance, permissions, questions]);
+  }, [statesByInstance, permissions, questions, failedKeys]);
 
   const selectedKey = selected ? sessionKey(selected) : null;
   const cachedTranscript = selectedKey ? messageCacheRef.current.get(selectedKey) : undefined;
@@ -349,8 +369,15 @@ export default function App() {
     clearActionErrorRetry();
   }, [selectedKey, clearActionErrorRetry]);
   const sending = selectedKey ? sendingKeys.has(selectedKey) : false;
+  // YOLO mode. When the instance supports server-side auto-accept, the server's per-session
+  // policy is the truth (it's what OpenChamber shows as "Permission auto-accept"). Otherwise
+  // fall back to a local override and Ember replies to prompts itself while the session is open.
+  const selectedPolicy = selected ? autoAcceptByInstance[selected.instanceId] : undefined;
+  const serverYolo = Boolean(selectedPolicy?.supported);
   const bypass = selectedKey && selected
-    ? bypassOverrides[selectedKey] ?? settings.instanceDefaults[selected.instanceId]?.bypass ?? false
+    ? serverYolo
+      ? selectedPolicy?.sessions[selected.sessionId] ?? false
+      : bypassOverrides[selectedKey] ?? settings.instanceDefaults[selected.instanceId]?.bypass ?? false
     : false;
   const selectedSession = selected
     ? (sessionsByInstance[selected.instanceId] ?? []).find((s) => s.id === selected.sessionId) ?? null
@@ -554,8 +581,12 @@ export default function App() {
         if (selectedSessionRef.current?.directory) {
           directoryHints[selectedSessionRef.current.instanceId] = [selectedSessionRef.current.directory];
         }
-        const next = await loadAllSessions(readyIds, directoryHints);
+        const [next, policies] = await Promise.all([
+          loadAllSessions(readyIds, directoryHints),
+          loadAllAutoAcceptPolicies(readyIds),
+        ]);
         if (cancelled) return;
+        setAutoAcceptByInstance((prev) => ({ ...prev, ...policies }));
         const now = Date.now();
         prunePendingCreated(
           (pending) =>
@@ -739,6 +770,49 @@ export default function App() {
       return next;
     });
 
+  /**
+   * Turn YOLO mode on/off for a session. Writes the server-side policy when the instance has
+   * it (optimistically, then reconciled by the next poll); otherwise records a local override
+   * and Ember auto-replies itself while the session is open.
+   */
+  const setYolo = async (ref: SessionRef, enabled: boolean, directory?: string): Promise<void> => {
+    const key = sessionKey(ref);
+    const policy = autoAcceptByInstance[ref.instanceId];
+    if (policy && !policy.supported) {
+      setBypassOverrides((prev) => ({ ...prev, [key]: enabled }));
+      return;
+    }
+    const previous = policy?.sessions[ref.sessionId];
+    setAutoAcceptByInstance((prev) => ({
+      ...prev,
+      [ref.instanceId]: {
+        supported: true,
+        sessions: { ...(prev[ref.instanceId]?.sessions ?? {}), [ref.sessionId]: enabled },
+      },
+    }));
+    try {
+      const result = await setAutoAccept(ref.instanceId, ref.sessionId, enabled, directory);
+      if (result.status === 404) {
+        // Older OpenChamber: remember that and use the local fallback from now on.
+        setAutoAcceptByInstance((prev) => ({ ...prev, [ref.instanceId]: { supported: false, sessions: {} } }));
+        setBypassOverrides((prev) => ({ ...prev, [key]: enabled }));
+        return;
+      }
+      if (!result.ok) throw new Error(`Server refused (${result.status}).`);
+    } catch (err) {
+      setAutoAcceptByInstance((prev) => {
+        const sessions = { ...(prev[ref.instanceId]?.sessions ?? {}) };
+        if (previous === undefined) delete sessions[ref.sessionId];
+        else sessions[ref.sessionId] = previous;
+        return { ...prev, [ref.instanceId]: { supported: true, sessions } };
+      });
+      showActionError(
+        `Could not ${enabled ? 'enable' : 'disable'} YOLO mode. ${err instanceof Error ? err.message : ''}`.trim(),
+        () => void setYolo(ref, enabled, directory)
+      );
+    }
+  };
+
   const beginNewAgent = (instanceId: string) => {
     showActionError(null);
     setSelected(null);
@@ -770,9 +844,9 @@ export default function App() {
         return next;
       });
       const ref = { instanceId: options.instanceId, sessionId: created.id };
-      setBypassOverrides((prev) => ({ ...prev, [sessionKey(ref)]: options.bypass }));
       setSelected(ref);
       setNewSessionInstanceId(null);
+      if (options.bypass) void setYolo(ref, true, created.directory);
       // The optimistic insert above plus the pendingCreatedSessions grace keep the row visible;
       // the next session poll (which includes the selected session's directory) is authoritative.
       return true;
@@ -1040,7 +1114,8 @@ export default function App() {
   // only re-runs when the permission list or the selection actually changes.
   const autoReplyPermission = useStableCallback(handlePermission);
   React.useEffect(() => {
-    if (!bypass || !selected) return;
+    // With server-side YOLO the server answers prompts itself; replying here too would race it.
+    if (!bypass || !selected || serverYolo) return;
     permissions
       .filter(
         (request) =>
@@ -1052,7 +1127,7 @@ export default function App() {
         bypassReplyIds.current.add(key);
         void autoReplyPermission(request, 'once').finally(() => bypassReplyIds.current.delete(key));
       });
-  }, [bypass, permissions, selected, autoReplyPermission]);
+  }, [bypass, serverYolo, permissions, selected, autoReplyPermission]);
 
   const sessionDirectory = (instanceId: string, sessionId: string) =>
     (sessionsByInstance[instanceId] ?? []).find((session) => session.id === sessionId)?.directory;
@@ -1425,9 +1500,7 @@ export default function App() {
               onSessionNotesChange={handleSessionNotes}
               onDeleteNote={handleDeleteSessionNote}
               onBypassChange={(enabled) => {
-                if (selectedKey) {
-                  setBypassOverrides((prev) => ({ ...prev, [selectedKey]: enabled }));
-                }
+                if (selected) void setYolo(selected, enabled, selectedSession?.directory);
               }}
               onNewSessionInstanceChange={setNewSessionInstanceId}
               onCreateSession={handleCreateSession}

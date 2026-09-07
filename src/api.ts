@@ -53,6 +53,12 @@ export const errorMessageOf = (value: unknown, depth = 0): string | undefined =>
   return undefined;
 };
 
+const isAbortError = (value: unknown): boolean => {
+  const record = asRecord(value);
+  const name = `${record.name ?? ''} ${record._tag ?? ''} ${typeof value === 'string' ? value : ''}`;
+  return /abort/i.test(name);
+};
+
 const baseName = (value: string): string => {
   const trimmed = value.replace(/\/+$/, '');
   return trimmed.split('/').pop() || trimmed;
@@ -438,10 +444,13 @@ export const loadMessages = async (
       const model = providerID && modelID ? { providerID, modelID } : undefined;
       const createdAt = typeof time.created === 'number' ? time.created : undefined;
       const completedAt = typeof time.completed === 'number' ? time.completed : undefined;
-      const error = role === 'assistant' ? errorMessageOf(info.error ?? item.error) : undefined;
+      const rawError = info.error ?? item.error;
+      const error = role === 'assistant' ? errorMessageOf(rawError) : undefined;
+      // A user-initiated stop is recorded as an error by OpenCode, but it isn't one for the rail.
+      const aborted = error !== undefined && isAbortError(rawError);
       // User messages have no completion timestamp; assistants get one when the turn ends.
       const completed = role === 'user' || completedAt !== undefined || error !== undefined;
-      return { id, role, text, parts, model, error, createdAt, completedAt, completed };
+      return { id, role, text, parts, model, error, aborted, createdAt, completedAt, completed };
     })
     .filter((message) => message.parts.length > 0 || message.error);
 };
@@ -538,6 +547,51 @@ const toolTitleFromInput = (input: Record<string, unknown>): string | undefined 
     if (typeof value === 'string' && value) return value;
   }
   return undefined;
+};
+
+/**
+ * OpenChamber's server-side permission auto-accept policy ("YOLO mode" in Ember): per session,
+ * the server itself approves permission prompts, so it keeps working when Ember isn't looking.
+ * `null` means the request failed; `{ supported: false }` means this instance predates the feature.
+ */
+export type AutoAcceptPolicy = { supported: boolean; sessions: Record<string, boolean> };
+
+export const loadAutoAcceptPolicy = async (instanceId: string): Promise<AutoAcceptPolicy | null> => {
+  const response = await window.ember.request(instanceId, 'GET', '/api/permission-auto-accept');
+  if (response.status === 404) return { supported: false, sessions: {} };
+  if (!response.ok) return null;
+  const raw = asRecord(asRecord(response.data).sessions);
+  const sessions: Record<string, boolean> = {};
+  Object.entries(raw).forEach(([sessionId, enabled]) => {
+    if (typeof enabled === 'boolean') sessions[sessionId] = enabled;
+  });
+  return { supported: true, sessions };
+};
+
+export const loadAllAutoAcceptPolicies = async (
+  instanceIds: string[]
+): Promise<Record<string, AutoAcceptPolicy>> => {
+  const results = await Promise.all(
+    instanceIds.map(async (instanceId) => [instanceId, await loadAutoAcceptPolicy(instanceId)] as const)
+  );
+  return Object.fromEntries(
+    results.filter((entry): entry is readonly [string, AutoAcceptPolicy] => entry[1] !== null)
+  );
+};
+
+export const setAutoAccept = async (
+  instanceId: string,
+  sessionId: string,
+  enabled: boolean,
+  directory?: string
+): Promise<{ ok: boolean; status: number }> => {
+  const response = await window.ember.request(
+    instanceId,
+    'PUT',
+    `/api/permission-auto-accept/sessions/${encodeURIComponent(sessionId)}`,
+    { enabled, directory }
+  );
+  return { ok: response.ok, status: response.status };
 };
 
 /** Pending permission requests across sessions in an instance or directory scope. */

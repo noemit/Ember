@@ -863,12 +863,16 @@ export default function ChatView({
                 disabled={!session}
                 variant="outline"
                 size="sm"
-                aria-label="Bypass permission prompts while this session is selected"
-                title="Automatically allow permission prompts while this session is selected"
+                aria-label={bypass ? 'YOLO mode on: permission prompts are accepted automatically' : 'YOLO mode off'}
+                title={
+                  bypass
+                    ? 'YOLO mode: permission prompts for this session are accepted automatically, even while Ember is closed'
+                    : 'YOLO mode: accept permission prompts for this session automatically'
+                }
                 className="h-7 px-2 text-xs data-[state=on]:border-warning/60 data-[state=on]:bg-warning/10 data-[state=on]:text-warning"
               >
                 <ShieldCheck className="size-3.5" />
-                <span className="hidden sm:inline">Bypass</span>
+                <span className="hidden sm:inline">YOLO</span>
               </Toggle>
 
               <input

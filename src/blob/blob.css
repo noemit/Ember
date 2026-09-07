@@ -36,6 +36,58 @@
   animation: blob-wiggle 1.4s ease-in-out infinite;
 }
 
+/*
+ * Needs-input orbit (OrbitRing.tsx). The marker rides an elliptical offset-path; the front and
+ * back copies share the same path and alternate visibility at the halfway point so the dot
+ * appears to pass behind the body. offset-distance and opacity are both compositor-friendly.
+ */
+.blob .blob-orbit {
+  offset-rotate: 0deg;
+  animation: blob-orbit 2.6s linear infinite;
+  animation-delay: inherit;
+}
+
+.blob .blob-orbit-front {
+  animation: blob-orbit 2.6s linear infinite, blob-orbit-show-front 2.6s linear infinite;
+  animation-delay: inherit;
+}
+
+.blob .blob-orbit-back {
+  animation: blob-orbit 2.6s linear infinite, blob-orbit-show-back 2.6s linear infinite;
+  animation-delay: inherit;
+}
+
+@keyframes blob-orbit {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+
+@keyframes blob-orbit-show-front {
+  0%,
+  49.99% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes blob-orbit-show-back {
+  0%,
+  49.99% {
+    opacity: 0;
+  }
+  50%,
+  100% {
+    opacity: 1;
+  }
+}
+
 .blob[data-state='error'] {
   animation: blob-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
 }
@@ -99,7 +151,18 @@
 @media (prefers-reduced-motion: reduce) {
   .blob,
   .blob .blob-body,
-  .blob .blob-eyes {
+  .blob .blob-eyes,
+  .blob .blob-orbit {
     animation: none !important;
+  }
+
+  /* Without motion, park the marker at the front so the ring still reads as "waiting on you". */
+  .blob .blob-orbit-front {
+    offset-distance: 25%;
+    opacity: 1;
+  }
+
+  .blob .blob-orbit-back {
+    opacity: 0;
   }
 }

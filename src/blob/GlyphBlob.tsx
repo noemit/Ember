@@ -2,6 +2,7 @@ import * as React from 'react';
 import { hashString, mulberry32, seedIdentity } from './seed';
 import { GLYPHS } from './glyphs';
 import { GLYPH_COLORS } from './contrast';
+import { OrbitRing } from './OrbitRing';
 import type { AvatarIdentity, BallState } from '../types';
 import './blob.css';
 
@@ -40,6 +41,7 @@ export default function GlyphBlob({ seed, identity, size = 30, state = 'idle' }:
   }, [identity, seed]);
 
   const isError = state === 'error';
+  const needsInput = state === 'needs-input';
   // The actual colour lives in a theme-set CSS variable (see themes.ts) so it has been
   // contrast-adjusted for the current surfaces; the markup just inherits it via currentColor.
   const ink = isError ? ERROR_INK : `var(--glyph-${colorIndex})`;
@@ -58,6 +60,7 @@ export default function GlyphBlob({ seed, identity, size = 30, state = 'idle' }:
     >
       {/* The source icons leave a ~4px margin in their 48 box; crop it so glyphs fill the slot like the other styles. */}
       <svg viewBox="3 3 42 42" width={size} height={size} style={{ overflow: 'visible' }}>
+        {needsInput ? <OrbitRing.Back cx={24} cy={24} r={19} /> : null}
         <g
           className="blob-body"
           fill="currentColor"
@@ -66,7 +69,10 @@ export default function GlyphBlob({ seed, identity, size = 30, state = 'idle' }:
           // Static markup from ./glyphs.ts, not user content.
           dangerouslySetInnerHTML={{ __html: body }}
         />
-        {isError ? <circle cx={40} cy={40} r={6} fill="#E8542E" stroke="var(--background)" strokeWidth={2} /> : null}
+        {isError ? (
+          <circle cx={40} cy={40} r={6} fill="var(--destructive)" stroke="var(--background)" strokeWidth={2} />
+        ) : null}
+        {needsInput ? <OrbitRing.Front cx={24} cy={24} r={19} /> : null}
       </svg>
     </div>
   );

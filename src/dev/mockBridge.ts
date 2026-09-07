@@ -144,7 +144,8 @@ const sessions: Record<string, MockSession[]> = {
       { role: 'user', text: 'Distribution for Habit.am, outreach list.' },
       { role: 'assistant', text: 'Drafted 12 outreach emails and queued them for review.' },
     ] },
-    { id: 'ses_b2', title: 'Agent deploy smoke test', directory: '/workspace/agent', updated: minutes(35), status: 'error', messages: [
+    // Real OpenChamber only reports idle/busy/retry; the error state must come from the transcript.
+    { id: 'ses_b2', title: 'Agent deploy smoke test', directory: '/workspace/agent', updated: minutes(35), status: 'idle', messages: [
       { role: 'user', text: 'Click through every new GitHub deploy and report issues.' },
       { role: 'assistant', text: '', error: 'Invalid request Error' },
     ] },
@@ -220,6 +221,8 @@ const questions: Record<string, MockQuestion[]> = {
 
 const queuedMessages: Record<string, Record<string, MockQueuedMessage[]>> = {};
 let queueRevision = 0;
+const autoAccept: Record<string, boolean> = { ses_a1: true };
+let autoAcceptRevision = 1;
 
 const queueSnapshot = (instanceId: string) => ({
   revision: queueRevision,
@@ -464,6 +467,21 @@ const bridge: EmberBridge = {
     }
     if (path === '/api/sessions/status') {
       return delay(ok({ sessions: Object.fromEntries(list.map((s) => [s.id, { status: s.status }])) }));
+    }
+    // Server-side YOLO policy. The ssh instance plays an older OpenChamber without the route so
+    // the local-override fallback stays exercised.
+    if (url.pathname === '/api/permission-auto-accept' && method === 'GET') {
+      if (instanceId !== 'local') return { ok: false, status: 404, data: null };
+      return delay(ok({ sessions: { ...autoAccept }, revision: autoAcceptRevision }));
+    }
+    const autoAcceptMatch = url.pathname.match(/^\/api\/permission-auto-accept\/sessions\/([^/]+)$/);
+    if (autoAcceptMatch && method === 'PUT') {
+      if (instanceId !== 'local') return { ok: false, status: 404, data: null };
+      const enabled = (body as { enabled?: unknown } | undefined)?.enabled;
+      if (typeof enabled !== 'boolean') return { ok: false, status: 400, data: { error: 'enabled must be a boolean' } };
+      autoAccept[decodeURIComponent(autoAcceptMatch[1])] = enabled;
+      autoAcceptRevision += 1;
+      return delay(ok({ sessions: { ...autoAccept }, revision: autoAcceptRevision }));
     }
     if (url.pathname === '/api/question' && method === 'GET') return delay(ok(questions[instanceId] ?? []));
     const questionMatch = url.pathname.match(/^\/api\/question\/([^/]+)\/(reply|reject)$/);

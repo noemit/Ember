@@ -135,6 +135,8 @@ export type ChatMessage = {
   parts: MessagePart[];
   model?: ModelRef;
   error?: string;
+  /** The error is a user-initiated stop, not a failure; don't surface it as an error state. */
+  aborted?: boolean;
   createdAt?: number;
   completedAt?: number;
   /** False while the assistant is still producing this message. */

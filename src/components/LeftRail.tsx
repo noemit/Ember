@@ -202,8 +202,12 @@ const SessionRow = React.memo(function SessionRow({
               <span className="flex items-center gap-1 truncate text-[10.5px] text-muted-foreground">
                 {state === 'needs-input' ? (
                   <span className="flex-none font-medium text-highlight">Needs input</span>
+                ) : state === 'error' ? (
+                  <span className="flex-none font-medium text-destructive">Failed</span>
                 ) : null}
-                {state === 'needs-input' && (projectName || instanceLabel) ? <span aria-hidden>·</span> : null}
+                {(state === 'needs-input' || state === 'error') && (projectName || instanceLabel) ? (
+                  <span aria-hidden>·</span>
+                ) : null}
                 {instanceLabel ? (
                   <>
                     <span className="truncate">{instanceLabel}</span>

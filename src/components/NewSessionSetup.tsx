@@ -304,14 +304,17 @@ export default function NewSessionSetup({
 
         <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
           <div className="flex min-w-0 flex-col">
-            <span className="text-xs font-medium">Bypass permission prompts</span>
-            <span className="text-[11px] text-muted-foreground">Only while this session is selected.</span>
+            <span className="text-xs font-medium">YOLO mode</span>
+            <span className="text-[11px] text-muted-foreground">
+              Permission prompts are accepted automatically, even while Ember is closed.
+            </span>
           </div>
           <Toggle
             pressed={bypass}
             onPressedChange={setBypass}
             variant="outline"
             size="sm"
+            aria-label="YOLO mode"
             className="data-[state=on]:border-warning/60 data-[state=on]:bg-warning/10 data-[state=on]:text-warning"
           >
             <ShieldCheck />

@@ -210,16 +210,16 @@ const InstanceDefaultsSettings = ({
 
       <section className="flex items-center justify-between gap-4 rounded-lg border p-3">
         <div className="flex min-w-0 flex-col">
-          <span className="font-medium">Bypass by default</span>
+          <span className="font-medium">YOLO mode by default</span>
           <span className="text-[11px] text-muted-foreground">
-            Auto-allow prompts only while a session on this instance is selected.
+            New agents on this instance start with permission prompts auto-accepted.
           </span>
         </div>
         <Toggle
           pressed={defaults.bypass === true}
           onPressedChange={(bypass) => update({ bypass })}
           variant="outline"
-          aria-label="Bypass by default"
+          aria-label="YOLO mode by default"
           className="data-[state=on]:border-warning/60 data-[state=on]:bg-warning/10 data-[state=on]:text-warning"
         >
           <ShieldCheck />
