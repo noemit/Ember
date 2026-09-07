@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint';
 const unusedVars = ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }];
 
 export default tseslint.config(
-  { ignores: ['dist/', 'dist-electron/', 'node_modules/', 'release/', 'src/blob/glyphs.ts'] },
+  // glyphs.ts is generated; glyph-arena/ is a one-off review playground, not app code.
+  { ignores: ['dist/', 'dist-electron/', 'node_modules/', 'release/', 'src/blob/glyphs.ts', 'glyph-arena/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
