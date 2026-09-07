@@ -13,6 +13,7 @@
     "build": "bun run typecheck && vite build && tsc -p tsconfig.electron.json",
     "dev": "bun run build && electron .",
     "dev:web": "vite --port 5179",
+    "arena": "bun run glyph-arena/server.ts",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit"
   },
