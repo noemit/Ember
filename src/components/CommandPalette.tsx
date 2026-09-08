@@ -124,7 +124,7 @@ export default function CommandPalette({
             <CommandInput
               ref={searchRef}
               value={query}
-              onValueChange={(value) => setQuery(value)}
+              onValueChange={(value: string) => setQuery(value)}
               placeholder="Search sessions, folders, notes, or type “new agent”…"
               aria-label="Search commands"
               className="h-10 border-none bg-transparent pl-9 text-sm shadow-none outline-none focus-visible:ring-0"
