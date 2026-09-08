@@ -19,8 +19,11 @@ import {
 import Linkify from './Linkify';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import type {
   BallState,
   ChatMessage,
@@ -291,16 +294,13 @@ const FileBlock = ({ file, mine }: { file: FileAttachment; mine: boolean }) =>
   );
 
 const MessageError = ({ error }: { error: string }) => (
-  <div
-    role="alert"
-    className="flex max-w-[85%] items-start gap-2 self-start rounded-xl border border-destructive/40 bg-destructive/5 px-3.5 py-2.5 text-[12.5px] text-destructive"
-  >
+  <Alert variant="destructive" className="max-w-[85%] self-start px-3.5 py-2.5 text-[12.5px]">
     <CircleAlert className="mt-0.5 size-4 flex-none" />
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="font-medium">OpenCode failed to send the message</span>
-      <span className="whitespace-pre-wrap break-words text-foreground">{error}</span>
-    </div>
-  </div>
+    <AlertTitle className="text-[12.5px]">OpenCode failed to send the message</AlertTitle>
+    <AlertDescription className="whitespace-pre-wrap break-words text-foreground">
+      {error}
+    </AlertDescription>
+  </Alert>
 );
 
 const PermissionCard = ({
@@ -326,34 +326,37 @@ const PermissionCard = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98 }}
       transition={spring}
-      className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/5 px-3.5 py-3 text-[13px]"
     >
-      <div className="flex items-center gap-2">
-        <ShieldAlert className="size-4 flex-none text-warning" />
-        <span className="font-medium">Approval needed</span>
-        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-          {request.permission}
-        </span>
-      </div>
-      {description ? <p className="text-[12px] text-muted-foreground">{description}</p> : null}
-      {detail ? (
-        <pre className="max-h-48 overflow-auto rounded-md bg-background/80 px-2.5 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap break-all">
-          {detail}
-        </pre>
-      ) : null}
-      <div className="flex items-center gap-1.5 pt-0.5">
-        <Button size="xs" variant="outline" disabled={busy !== null} onClick={() => void reply('reject')}>
-          Deny
-        </Button>
-        <div className="flex-1" />
-        <Button size="xs" variant="secondary" disabled={busy !== null} onClick={() => void reply('always')}>
-          Always allow
-        </Button>
-        <Button size="xs" disabled={busy !== null} onClick={() => void reply('once')}>
-          {busy === 'once' ? <Loader2 className="animate-spin" /> : <Check />}
-          Allow once
-        </Button>
-      </div>
+      <Card className="border-warning/40 bg-warning/5 text-[13px]">
+        <CardContent className="flex flex-col gap-2 p-3.5">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="size-4 flex-none text-warning" />
+            <span className="font-medium">Approval needed</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+              {request.permission}
+            </span>
+          </div>
+          {description ? <p className="text-[12px] text-muted-foreground">{description}</p> : null}
+          {detail ? (
+            <pre className="max-h-48 overflow-auto rounded-md bg-background/80 px-2.5 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap break-all">
+              {detail}
+            </pre>
+          ) : null}
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <Button size="xs" variant="outline" disabled={busy !== null} onClick={() => void reply('reject')}>
+              Deny
+            </Button>
+            <div className="flex-1" />
+            <Button size="xs" variant="secondary" disabled={busy !== null} onClick={() => void reply('always')}>
+              Always allow
+            </Button>
+            <Button size="xs" disabled={busy !== null} onClick={() => void reply('once')}>
+              {busy === 'once' ? <Loader2 className="animate-spin" /> : <Check />}
+              Allow once
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </motion.div>
   );
 };
@@ -409,92 +412,95 @@ const QuestionCard = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98 }}
       transition={spring}
-      className="flex flex-col gap-3 rounded-xl border border-highlight/40 bg-highlight/5 px-3.5 py-3 text-[13px]"
     >
-      <div className="flex items-center gap-2">
-        <MessageCircleQuestion className="size-4 flex-none text-highlight" />
-        <span className="font-medium">The agent has a question</span>
-      </div>
-
-      {request.questions.map((question, index) => {
-        const draft = drafts[index];
-        return (
-          <div key={index} className="flex flex-col gap-1.5">
-            {request.questions.length > 1 && question.header ? (
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {question.header}
-              </span>
-            ) : null}
-            <p className="whitespace-pre-wrap">{question.question}</p>
-            <div className="flex flex-col gap-1">
-              {question.options.map((option) => {
-                const picked = draft.picked.includes(option.label) && !draft.custom.trim();
-                return (
-                  <button
-                    key={option.label}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => toggle(index, question, option.label)}
-                    aria-pressed={picked}
-                    className={cn(
-                      'flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors',
-                      picked ? 'border-highlight/60 bg-highlight/10' : 'border-border hover:bg-muted/60'
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'mt-[3px] flex size-3.5 flex-none items-center justify-center border',
-                        question.multiple ? 'rounded-[3px]' : 'rounded-full',
-                        picked ? 'border-highlight bg-highlight text-highlight-foreground' : 'border-muted-foreground/50'
-                      )}
-                    >
-                      {picked ? <Check className="size-2.5" /> : null}
-                    </span>
-                    <span className="flex min-w-0 flex-col">
-                      <span className="text-[12.5px]">{option.label}</span>
-                      {option.description ? (
-                        <span className="text-[11.5px] text-muted-foreground">{option.description}</span>
-                      ) : null}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {question.custom !== false ? (
-              <Input
-                value={draft.custom}
-                disabled={busy}
-                aria-label={question.header ? `${question.header} custom answer` : 'Custom answer'}
-                placeholder="Or type your own answer…"
-                onChange={(event) => update(index, { custom: event.target.value })}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    void submit();
-                  }
-                }}
-                className="h-8 text-xs shadow-none"
-              />
-            ) : null}
+      <Card className="border-highlight/40 bg-highlight/5 text-[13px]">
+        <CardContent className="flex flex-col gap-3 p-3.5">
+          <div className="flex items-center gap-2">
+            <MessageCircleQuestion className="size-4 flex-none text-highlight" />
+            <span className="font-medium">The agent has a question</span>
           </div>
-        );
-      })}
 
-      <div className="flex items-center gap-1.5">
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={busy}
-          onClick={() => void dismiss()}
-        >
-          Dismiss
-        </Button>
-        <div className="flex-1" />
-        <Button size="xs" disabled={busy || !complete} onClick={() => void submit()}>
-          {busy ? <Loader2 className="animate-spin" /> : <Check />}
-          Answer
-        </Button>
-      </div>
+          {request.questions.map((question, index) => {
+            const draft = drafts[index];
+            return (
+              <div key={index} className="flex flex-col gap-1.5">
+                {request.questions.length > 1 && question.header ? (
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {question.header}
+                  </span>
+                ) : null}
+                <p className="whitespace-pre-wrap">{question.question}</p>
+                <div className="flex flex-col gap-1">
+                  {question.options.map((option) => {
+                    const picked = draft.picked.includes(option.label) && !draft.custom.trim();
+                    return (
+                      <button
+                        key={option.label}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => toggle(index, question, option.label)}
+                        aria-pressed={picked}
+                        className={cn(
+                          'flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors',
+                          picked ? 'border-highlight/60 bg-highlight/10' : 'border-border hover:bg-muted/60'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'mt-[3px] flex size-3.5 flex-none items-center justify-center border',
+                            question.multiple ? 'rounded-[3px]' : 'rounded-full',
+                            picked ? 'border-highlight bg-highlight text-highlight-foreground' : 'border-muted-foreground/50'
+                          )}
+                        >
+                          {picked ? <Check className="size-2.5" /> : null}
+                        </span>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="text-[12.5px]">{option.label}</span>
+                          {option.description ? (
+                            <span className="text-[11.5px] text-muted-foreground">{option.description}</span>
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {question.custom !== false ? (
+                  <Input
+                    value={draft.custom}
+                    disabled={busy}
+                    aria-label={question.header ? `${question.header} custom answer` : 'Custom answer'}
+                    placeholder="Or type your own answer…"
+                    onChange={(event) => update(index, { custom: event.target.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        void submit();
+                      }
+                    }}
+                    className="h-8 text-xs shadow-none"
+                  />
+                ) : null}
+              </div>
+            );
+          })}
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void dismiss()}
+            >
+              Dismiss
+            </Button>
+            <div className="flex-1" />
+            <Button size="xs" disabled={busy || !complete} onClick={() => void submit()}>
+              {busy ? <Loader2 className="animate-spin" /> : <Check />}
+              Answer
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </motion.div>
   );
 };
@@ -900,15 +906,16 @@ export default function Transcript({
           {messages.length === 0 && !blocked && !activity ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center text-[12px] text-muted-foreground">
               {messagesStatus === 'loading' ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  <span>Loading messages…</span>
-                </>
+                <div className="flex w-full max-w-md flex-col items-center gap-3">
+                  <Skeleton className="h-16 w-3/4 self-end rounded-2xl" />
+                  <Skeleton className="h-24 w-5/6 self-start rounded-2xl" />
+                  <Skeleton className="h-12 w-2/3 self-start rounded-2xl" />
+                </div>
               ) : messagesStatus === 'error' ? (
-                <>
+                <Alert variant="destructive" className="max-w-sm">
                   <CircleAlert className="size-4" />
-                  <span>Couldn't reach this session — retrying…</span>
-                </>
+                  <AlertDescription>Couldn't reach this session — retrying…</AlertDescription>
+                </Alert>
               ) : (
                 <span>No messages yet — say hi.</span>
               )}

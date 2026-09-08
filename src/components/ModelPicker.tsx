@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Check, ChevronRight, Search, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -90,43 +91,45 @@ const Details = ({ model }: { model: ModelOption }) => {
   ].filter((chip): chip is string => Boolean(chip));
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{details.providerName}</span>
-        <h3 className="text-[15px] font-semibold leading-tight">{details.name}</h3>
-        <code className="truncate text-[11px] text-muted-foreground" title={modelRefKey(model)}>
-          {model.modelID}
-        </code>
-      </div>
-
-      {chips.length ? (
-        <div className="flex flex-wrap gap-1">
-          {chips.map((chip) => (
-            <span key={chip} className="rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground">
-              {chip}
-            </span>
-          ))}
+    <Card className="h-full border-l-0 rounded-none shadow-none">
+      <CardContent className="flex h-full flex-col gap-4 p-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{details.providerName}</span>
+          <h3 className="text-[15px] font-semibold leading-tight">{details.name}</h3>
+          <code className="truncate text-[11px] text-muted-foreground" title={modelRefKey(model)}>
+            {model.modelID}
+          </code>
         </div>
-      ) : null}
 
-      <div className="flex flex-col gap-1.5">
-        {details.contextTokens ? <Fact label="Context" value={`${formatTokens(details.contextTokens)} tokens`} /> : null}
-        {details.outputTokens ? <Fact label="Max output" value={`${formatTokens(details.outputTokens)} tokens`} /> : null}
-        {details.costInput !== undefined && details.costOutput !== undefined ? (
-          <Fact
-            label="Cost / 1M tokens"
-            value={
-              details.costInput === 0 && details.costOutput === 0
-                ? 'free'
-                : `${formatCost(details.costInput)} in · ${formatCost(details.costOutput)} out`
-            }
-          />
+        {chips.length ? (
+          <div className="flex flex-wrap gap-1">
+            {chips.map((chip) => (
+              <span key={chip} className="rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                {chip}
+              </span>
+            ))}
+          </div>
         ) : null}
-        {details.family ? <Fact label="Family" value={details.family} /> : null}
-        {details.releaseDate ? <Fact label="Released" value={details.releaseDate} /> : null}
-        {details.variants.length ? <Fact label="Effort levels" value={details.variants.join(' · ')} /> : null}
-      </div>
-    </div>
+
+        <div className="flex flex-col gap-1.5">
+          {details.contextTokens ? <Fact label="Context" value={`${formatTokens(details.contextTokens)} tokens`} /> : null}
+          {details.outputTokens ? <Fact label="Max output" value={`${formatTokens(details.outputTokens)} tokens`} /> : null}
+          {details.costInput !== undefined && details.costOutput !== undefined ? (
+            <Fact
+              label="Cost / 1M tokens"
+              value={
+                details.costInput === 0 && details.costOutput === 0
+                  ? 'free'
+                  : `${formatCost(details.costInput)} in · ${formatCost(details.costOutput)} out`
+              }
+            />
+          ) : null}
+          {details.family ? <Fact label="Family" value={details.family} /> : null}
+          {details.releaseDate ? <Fact label="Released" value={details.releaseDate} /> : null}
+          {details.variants.length ? <Fact label="Effort levels" value={details.variants.join(' · ')} /> : null}
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 

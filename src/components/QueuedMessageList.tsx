@@ -1,8 +1,12 @@
 import * as React from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronUp, ListOrdered, Loader2 } from 'lucide-react';
 import { modelRefKey } from '../types';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { ModelPickerFallback } from './ModelPickerFallback';
+import { springTransition } from '@/lib/animation';
 import type { MessageQueueSession, ModelOption, QueuedMessage } from '../types';
 
 const ModelPicker = React.lazy(() => import('./ModelPicker'));
@@ -61,107 +65,117 @@ export default function QueuedMessageList({
 
   return (
     <>
-      <section
-        aria-label="Queued messages"
-        className="rounded-xl border bg-background/80 px-3 py-2 text-[11.5px] shadow-sm"
-      >
-        <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
-          <ListOrdered className="size-3.5 text-highlight" />
-          <span className="font-medium text-foreground">
-            {queueItems.length} queued {queueItems.length === 1 ? 'message' : 'messages'}
-          </span>
-          <span className="min-w-0 flex-1">
-            {queue?.sendingId ? 'Sending the next one…' : 'They send when this agent is idle.'}
-          </span>
-        </div>
-        <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
-          {queueItems.map((item, index) => {
-            const sendingItem = queue?.sendingId === item.id;
-            const busy = sendingItem || busyQueueItemId === item.id;
-            const reorderLocked = Boolean(queue?.sendingId) || busyQueueItemId !== null;
-            const preview = item.text.trim() || item.content.trim() ||
-              `${item.attachments.length} attachment${item.attachments.length === 1 ? '' : 's'}`;
-            return (
-              <li
-                key={item.id}
-                className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5"
-              >
-                {busy ? (
-                  <Loader2 className="size-3 flex-none animate-spin text-highlight" />
-                ) : (
-                  <span className="size-1.5 flex-none rounded-full bg-highlight" aria-hidden="true" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <span className="block truncate" title={preview}>{preview}</span>
-                  <button
-                    type="button"
-                    disabled={busy || models.length === 0}
-                    onClick={() => setQueueModelPickerItemId(item.id)}
-                    aria-label={`Change model for queued message: ${preview.slice(0, 60)}`}
-                    title="Change queued message model"
-                    className="mt-0.5 block max-w-full truncate rounded text-[10.5px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+      <Card className="bg-background/80 shadow-sm">
+        <CardContent className="p-3 text-[11.5px]">
+          <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
+            <ListOrdered className="size-3.5 text-highlight" />
+            <span className="font-medium text-foreground">
+              {queueItems.length} queued {queueItems.length === 1 ? 'message' : 'messages'}
+            </span>
+            <span className="min-w-0 flex-1">
+              {queue?.sendingId ? 'Sending the next one…' : 'They send when this agent is idle.'}
+            </span>
+          </div>
+          <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
+            <AnimatePresence initial={false} mode="popLayout">
+              {queueItems.map((item, index) => {
+                const sendingItem = queue?.sendingId === item.id;
+                const busy = sendingItem || busyQueueItemId === item.id;
+                const reorderLocked = Boolean(queue?.sendingId) || busyQueueItemId !== null;
+                const preview =
+                  item.text.trim() ||
+                  item.content.trim() ||
+                  `${item.attachments.length} attachment${item.attachments.length === 1 ? '' : 's'}`;
+                return (
+                  <motion.li
+                    key={item.id}
+                    layout="position"
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96 }}
+                    transition={springTransition}
+                    className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5"
                   >
-                    {queuedModelLabel(item)}
-                  </button>
-                </div>
-                {item.attachments.length ? (
-                  <span className="flex-none rounded bg-background px-1 py-0.5 text-[10px] text-muted-foreground">
-                    {item.attachments.length} file{item.attachments.length === 1 ? '' : 's'}
-                  </span>
-                ) : null}
-                <div className="flex flex-none items-center gap-0.5">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={reorderLocked || index === 0}
-                    onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, -1))}
-                    aria-label={`Move queued message up: ${preview.slice(0, 60)}`}
-                    title="Move up"
-                  >
-                    <ChevronUp />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={reorderLocked || index === queueItems.length - 1}
-                    onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, 1))}
-                    aria-label={`Move queued message down: ${preview.slice(0, 60)}`}
-                    title="Move down"
-                  >
-                    <ChevronDown />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    disabled={busy}
-                    onClick={() => void runQueueAction(item.id, () => onSendQueued(item.id))}
-                    aria-label={`Send queued message now: ${preview.slice(0, 60)}`}
-                    title="Send now and steer the current turn"
-                    className="px-1.5 text-[11px] text-muted-foreground hover:text-highlight"
-                  >
-                    Send now
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    disabled={busy}
-                    onClick={() => void runQueueAction(item.id, () => onRemoveQueued(item.id))}
-                    aria-label={`Cancel queued message: ${preview.slice(0, 60)}`}
-                    title={sendingItem ? 'Cannot cancel while this message is being sent' : 'Cancel queued message'}
-                    className="px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
+                    {busy ? (
+                      <Loader2 className="size-3 flex-none animate-spin text-highlight" />
+                    ) : (
+                      <span className="size-1.5 flex-none rounded-full bg-highlight" aria-hidden="true" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate" title={preview}>
+                        {preview}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={busy || models.length === 0}
+                        onClick={() => setQueueModelPickerItemId(item.id)}
+                        aria-label={`Change model for queued message: ${preview.slice(0, 60)}`}
+                        title="Change queued message model"
+                        className="mt-0.5 block max-w-full truncate rounded text-[10.5px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queuedModelLabel(item)}
+                      </button>
+                    </div>
+                    {item.attachments.length ? (
+                      <Badge variant="secondary" className="flex-none px-1 py-0 text-[10px]">
+                        {item.attachments.length} file{item.attachments.length === 1 ? '' : 's'}
+                      </Badge>
+                    ) : null}
+                    <div className="flex flex-none items-center gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={reorderLocked || index === 0}
+                        onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, -1))}
+                        aria-label={`Move queued message up: ${preview.slice(0, 60)}`}
+                        title="Move up"
+                      >
+                        <ChevronUp />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={reorderLocked || index === queueItems.length - 1}
+                        onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, 1))}
+                        aria-label={`Move queued message down: ${preview.slice(0, 60)}`}
+                        title="Move down"
+                      >
+                        <ChevronDown />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        disabled={busy}
+                        onClick={() => void runQueueAction(item.id, () => onSendQueued(item.id))}
+                        aria-label={`Send queued message now: ${preview.slice(0, 60)}`}
+                        title="Send now and steer the current turn"
+                        className="px-1.5 text-[11px] text-muted-foreground hover:text-highlight"
+                      >
+                        Send now
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        disabled={busy}
+                        onClick={() => void runQueueAction(item.id, () => onRemoveQueued(item.id))}
+                        aria-label={`Cancel queued message: ${preview.slice(0, 60)}`}
+                        title={sendingItem ? 'Cannot cancel while this message is being sent' : 'Cancel queued message'}
+                        className="px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </motion.li>
+                );
+              })}
+            </AnimatePresence>
+          </ol>
+        </CardContent>
+      </Card>
       {queueModelPickerItem ? (
         <React.Suspense fallback={<ModelPickerFallback />}>
           <ModelPicker

@@ -18,7 +18,10 @@ import Blob from '../blob/Blob';
 import { normalizeDirectory, projectForSession } from '../blob/seed';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -201,9 +204,13 @@ const SessionRow = React.memo(function SessionRow({
               </span>
               <span className="flex items-center gap-1 truncate text-[10.5px] text-muted-foreground">
                 {state === 'needs-input' ? (
-                  <span className="flex-none font-medium text-highlight">Needs input</span>
+                  <Badge variant="outline" className="flex-none border-highlight/40 px-1 py-0 text-[10px] font-medium text-highlight">
+                    Needs input
+                  </Badge>
                 ) : state === 'error' ? (
-                  <span className="flex-none font-medium text-destructive">Failed</span>
+                  <Badge variant="outline" className="flex-none border-destructive/40 px-1 py-0 text-[10px] font-medium text-destructive">
+                    Failed
+                  </Badge>
                 ) : null}
                 {(state === 'needs-input' || state === 'error') && (projectName || instanceLabel) ? (
                   <span aria-hidden>·</span>
@@ -616,28 +623,37 @@ export default function LeftRail({
         </LayoutGroup>
 
         {visible.length === 0 && (!selectedSession || selectedIsVisible) ? (
-          <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-[12px] text-muted-foreground">
-            <span>
-              {loading
-                ? 'Loading sessions…'
-                : ready.length === 0
-                  ? 'No connected instances. Open one in OpenChamber, then refresh.'
-                  : needle
-                    ? `No ${showScheduled ? 'scheduled ' : showArchived ? 'archived ' : ''}sessions match “${query.trim()}”.`
-                    : filter !== ALL_FILTER
-                      ? 'No sessions match this filter.'
-                      : showScheduled
-                        ? 'No scheduled sessions have been observed yet.'
-                        : showArchived
-                          ? 'No archived sessions.'
-                        : windowLabel
-                          ? `No sessions active in the ${windowLabel.toLowerCase()}. Widen the window in Settings.`
-                          : 'No sessions yet.'}
-            </span>
+          <div className="px-3 py-8">
+            {loading ? (
+              <div className="flex flex-col gap-3">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : (
+              <Alert variant="default" className="border-dashed">
+                <AlertDescription className="text-center text-[12px]">
+                  {ready.length === 0
+                    ? 'No connected instances. Open one in OpenChamber, then refresh.'
+                    : needle
+                      ? `No ${showScheduled ? 'scheduled ' : showArchived ? 'archived ' : ''}sessions match “${query.trim()}”.`
+                      : filter !== ALL_FILTER
+                        ? 'No sessions match this filter.'
+                        : showScheduled
+                          ? 'No scheduled sessions have been observed yet.'
+                          : showArchived
+                            ? 'No archived sessions.'
+                            : windowLabel
+                              ? `No sessions active in the ${windowLabel.toLowerCase()}. Widen the window in Settings.`
+                              : 'No sessions yet.'}
+                </AlertDescription>
+              </Alert>
+            )}
             {(showArchived || showScheduled) && !needle && filter === ALL_FILTER && ready.length > 0 ? (
               <Button
                 size="xs"
                 variant="outline"
+                className="mx-auto mt-3 block"
                 onClick={() => showScheduled ? onShowScheduled(false) : onShowArchived(false)}
               >
                 Show active sessions

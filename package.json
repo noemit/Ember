@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.2",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -22,6 +22,7 @@
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "lucide-react": "1.34.0",
     "motion": "13.1.1",
     "radix-ui": "^1.6.7",

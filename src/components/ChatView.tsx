@@ -6,6 +6,7 @@ import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
 import { Input } from '@/components/ui/input';
+import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
 import type { PromptInput } from '../api';
 import { ModelPickerFallback } from './ModelPickerFallback';
 import { cn } from '@/lib/utils';
@@ -432,13 +433,6 @@ export default function ChatView({
   }, [composerKey]);
 
   React.useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
-  }, [text, composerKey]);
-
-  React.useEffect(() => {
     setContextOpen(false);
     setFocusMessageId(null);
     if (!composerKey) return;
@@ -803,10 +797,10 @@ export default function ChatView({
                 </button>
               </div>
             ) : null}
-            <textarea
+            <AutoResizeTextarea
               ref={textareaRef}
               value={text}
-              rows={1}
+              maxHeight={160}
               placeholder={shouldQueue ? 'Queue a follow-up…' : 'Message the agent…'}
               aria-label={shouldQueue ? 'Queue a follow-up message' : 'Message the agent'}
               onChange={(event) => {
@@ -836,7 +830,7 @@ export default function ChatView({
                   submit();
                 }
               }}
-              className="max-h-40 min-h-9 w-full resize-none overflow-y-auto bg-transparent px-3 pt-2 pb-1 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed sm:px-3.5 sm:text-[13px]"
+              className="min-h-9 w-full bg-transparent px-3 pt-2 pb-1 text-base placeholder:text-muted-foreground disabled:cursor-not-allowed sm:px-3.5 sm:text-[13px]"
             />
 
             <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 sm:gap-1.5">
