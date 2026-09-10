@@ -286,6 +286,8 @@ export type EmberSettings = {
   blobStyle: BlobStyle;
   /** Only list sessions active within this many hours; 0 means show everything. */
   sessionWindowHours: number;
+  /** Collapse tool-call rows out of the transcript. */
+  hideToolCalls: boolean;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
   sessionNotes: Record<string, string>;

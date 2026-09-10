@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, ChevronDown, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -80,6 +80,7 @@ type Props = {
   queue: MessageQueueSession | null;
   reloading: boolean;
   bypass: boolean;
+  hideToolCalls: boolean;
   pinnedMessageIds: Set<string>;
   sessionNote: string;
   savedComposerDrafts: Record<string, StoredComposerDraft>;
@@ -87,6 +88,7 @@ type Props = {
   onComposerDraftsChange: (drafts: Record<string, StoredComposerDraft>) => void;
   onTogglePin: (message: ChatMessage) => void;
   onSessionNoteChange: (sessionKey: string, text: string) => void;
+  onHideToolCallsChange: (hide: boolean) => void;
   onBypassChange: (enabled: boolean) => void;
   onNewSessionInstanceChange: (instanceId: string) => void;
   /** Draft submit: create the session, then send the first message into it. */
@@ -215,6 +217,7 @@ export default function ChatView({
   queue,
   reloading,
   bypass,
+  hideToolCalls,
   pinnedMessageIds,
   sessionNote,
   savedComposerDrafts,
@@ -222,6 +225,7 @@ export default function ChatView({
   onComposerDraftsChange,
   onTogglePin,
   onSessionNoteChange,
+  onHideToolCallsChange,
   onBypassChange,
   onNewSessionInstanceChange,
   onCreateAndSend,
@@ -609,6 +613,17 @@ export default function ChatView({
                   {instance.label}
                 </Badge>
               ) : null}
+              <Toggle
+                pressed={hideToolCalls}
+                onPressedChange={onHideToolCallsChange}
+                variant="outline"
+                size="sm"
+                aria-label="Hide tool calls"
+                title={hideToolCalls ? 'Tool calls hidden — click to show' : 'Hide tool calls'}
+                className="h-7 px-2 text-xs data-[state=on]:bg-muted data-[state=on]:text-foreground"
+              >
+                <Wrench className="size-3.5" />
+              </Toggle>
             </header>
 
             <React.Suspense fallback={<TranscriptFallback />}>
@@ -621,6 +636,7 @@ export default function ChatView({
                 sending={sending}
                 activeModelLabel={activeModelLabel}
                 accentColor={blobColor(blobStyle, identity)}
+                hideToolCalls={hideToolCalls}
                 pinnedMessageIds={pinnedMessageIds}
                 focusMessageId={focusMessageId}
                 focusRequest={focusRequest}

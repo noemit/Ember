@@ -60,7 +60,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `new::<instanceId>` with an instance/project/folder row above it, and the first send calls
   `onCreateAndSend` (create session → send). Folder, model/variant and YOLO are prefilled from
   `src/lib/newSessionDefaults.ts` (saved default → last-used on that instance → last-opened
-  project / server default) until the user edits them; switching instance re-seeds.
+  project / server default) until the user edits them; switching instance re-seeds. The header's
+  wrench toggle flips the global `hideToolCalls` setting, which drops tool-call rows from every
+  transcript.
 - `src/components/LeftRail.tsx` — session list. Rows are a memoized `SessionRow`; the timestamp is
   a self-ticking `RelativeTime`. Archive/restore is decided per row from `session.archived`, not the
   view toggle, because the selected session is pinned into the list even when filters hide it.

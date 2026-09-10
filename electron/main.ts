@@ -157,6 +157,7 @@ const readEmberSettings = (): EmberSettings => {
     sessionWindowHours: isWindowHours(root.sessionWindowHours)
       ? root.sessionWindowHours
       : DEFAULT_SESSION_WINDOW_HOURS,
+    hideToolCalls: root.hideToolCalls === true,
     instanceDefaults: parseInstanceDefaults(root.instanceDefaults),
     pinnedMessages: Array.isArray(root.pinnedMessages)
       ? root.pinnedMessages.filter((entry): entry is string => typeof entry === 'string').slice(0, 2000)
@@ -446,6 +447,7 @@ const updateSettings = (patch: unknown): EmberSettings => {
   if (typeof value.theme === 'string' && value.theme) settings.theme = value.theme;
   if (isBlobStyle(value.blobStyle)) settings.blobStyle = value.blobStyle;
   if (isWindowHours(value.sessionWindowHours)) settings.sessionWindowHours = value.sessionWindowHours;
+  if (typeof value.hideToolCalls === 'boolean') settings.hideToolCalls = value.hideToolCalls;
   if (value.instanceDefaults !== undefined) settings.instanceDefaults = parseInstanceDefaults(value.instanceDefaults);
   if (Array.isArray(value.pinnedMessages)) {
     settings.pinnedMessages = value.pinnedMessages

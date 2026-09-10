@@ -238,6 +238,7 @@ let settings: EmberSettings = {
   theme: 'stone',
   blobStyle: 'grok',
   sessionWindowHours: 48,
+  hideToolCalls: false,
   instanceDefaults: {
     local: { markerColor: 0 },
     studio: { markerColor: 7 },

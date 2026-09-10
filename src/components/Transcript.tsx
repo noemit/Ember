@@ -55,6 +55,8 @@ type Props = {
   activeModelLabel?: string;
   /** CSS colour of the session's blob, so the activity line reads as "this agent is thinking". */
   accentColor: string;
+  /** Drop tool-call rows from every message. */
+  hideToolCalls: boolean;
   pinnedMessageIds: Set<string>;
   focusMessageId: string | null;
   focusRequest: number;
@@ -649,6 +651,7 @@ type MessageRowProps = {
   highlighted: boolean;
   pinned: boolean;
   showMetadata: boolean;
+  hideToolCalls: boolean;
   onTogglePin: (message: ChatMessage) => void;
   onReply: (message: ChatMessage) => void;
   registerNode: (id: string, node: HTMLDivElement | null) => void;
@@ -663,11 +666,15 @@ const MessageRow = React.memo(function MessageRow({
   highlighted,
   pinned,
   showMetadata,
+  hideToolCalls,
   onTogglePin,
   onReply,
   registerNode,
 }: MessageRowProps) {
-  const blocks = React.useMemo(() => toBlocks(message.parts), [message.parts]);
+  const blocks = React.useMemo(
+    () => toBlocks(message.parts).filter((block) => !hideToolCalls || block.type !== 'tools'),
+    [message.parts, hideToolCalls]
+  );
   const ref = React.useCallback(
     (node: HTMLDivElement | null) => registerNode(message.id, node),
     [registerNode, message.id]
@@ -715,6 +722,7 @@ export default function Transcript({
   sending,
   activeModelLabel,
   accentColor,
+  hideToolCalls,
   pinnedMessageIds,
   focusMessageId,
   focusRequest,
@@ -860,6 +868,7 @@ export default function Transcript({
                 highlighted={highlightedMessageId === message.id}
                 pinned={pinnedMessageIds.has(message.id)}
                 showMetadata={isAssistantTurnEnd(messages, index, turnPending)}
+                hideToolCalls={hideToolCalls}
                 onTogglePin={togglePin}
                 onReply={reply}
                 registerNode={registerNode}

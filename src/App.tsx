@@ -1551,6 +1551,7 @@ export default function App() {
               queue={selectedQueue}
               reloading={selectedKey ? reloadingKeys.has(selectedKey) : false}
               bypass={bypass}
+              hideToolCalls={settings.hideToolCalls}
               pinnedMessageIds={pinnedMessageIds}
               sessionNote={selectedKey ? settings.sessionNotes[selectedKey] ?? '' : ''}
               savedComposerDrafts={settings.composerDrafts}
@@ -1558,6 +1559,7 @@ export default function App() {
               onComposerDraftsChange={handleComposerDraftsChange}
               onTogglePin={handleTogglePin}
               onSessionNoteChange={handleSessionNoteChange}
+              onHideToolCallsChange={(hide) => handleSettings({ hideToolCalls: hide })}
               onBypassChange={(enabled) => {
                 if (selected) void setYolo(selected, enabled, selectedSession?.directory);
               }}

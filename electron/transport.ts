@@ -220,6 +220,7 @@ export type EmberSettings = {
   blobStyle: BlobStyle;
   /** Only list sessions active within this many hours; 0 means no limit. */
   sessionWindowHours: number;
+  hideToolCalls: boolean;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
   sessionNotes: Record<string, string>;
