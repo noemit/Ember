@@ -200,6 +200,7 @@ export default function App() {
   const [loading, setLoading] = React.useState(true);
   const [sendingKeys, setSendingKeys] = React.useState<Set<string>>(() => new Set());
   const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
+  const [archivingKeys, setArchivingKeys] = React.useState<Set<string>>(() => new Set());
   // Local fallback for instances whose OpenChamber predates server-side auto-accept.
   const [bypassOverrides, setBypassOverrides] = React.useState<Record<string, boolean>>({});
   const [autoAcceptByInstance, setAutoAcceptByInstance] = React.useState<Record<string, AutoAcceptPolicy>>({});
@@ -1219,8 +1220,11 @@ export default function App() {
   // Archive/restore on the source OpenChamber instance, then mirror locally so the
   // row leaves the current view without waiting for the next poll.
   const handleArchive = async (session: Session, archived: boolean) => {
+    const key = sessionKey(session);
+    if (archivingKeys.has(key)) return;
     showActionError(null);
     setActionNotice(null);
+    setArchivingKeys((current) => new Set(current).add(key));
     try {
       const ok = await setSessionArchived(session, archived);
       if (!ok) {
@@ -1255,6 +1259,12 @@ export default function App() {
             : 'Could not restore this session.',
         () => void handleArchive(session, archived)
       );
+    } finally {
+      setArchivingKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -1576,6 +1586,7 @@ export default function App() {
               loading={loading}
               mobileOpen={mobileRailOpen}
               reloadingKeys={reloadingKeys}
+              archivingKeys={archivingKeys}
               windowLabel={
                 SESSION_WINDOWS.find((option) => option.hours === sessionWindowHours && option.hours > 0)
                   ?.label ?? null

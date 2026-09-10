@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Clock3,
   ListFilter,
+  Loader2,
   Palette,
   Plus,
   RefreshCw,
@@ -59,6 +60,7 @@ type Props = {
   loading: boolean;
   mobileOpen: boolean;
   reloadingKeys: Set<string>;
+  archivingKeys: Set<string>;
   /** The currently open session, if any. Pinned to the rail when filters hide it. */
   selectedSession: Session | null;
   /** Human label for the recency window ("Last 2 days"), or null when everything is shown. */
@@ -120,6 +122,7 @@ type SessionRowProps = {
   selected: boolean;
   mood: BallMood;
   reloading: boolean;
+  archiving: boolean;
   markerColor: number | undefined;
   identity: AvatarIdentity | undefined;
   blobStyle: BlobStyle;
@@ -138,6 +141,7 @@ const SessionRow = React.memo(function SessionRow({
   selected,
   mood,
   reloading,
+  archiving,
   markerColor,
   identity,
   blobStyle,
@@ -151,6 +155,7 @@ const SessionRow = React.memo(function SessionRow({
   // it's archived, and its button must offer "Restore" rather than archiving it again.
   const archived = Boolean(session.archived);
   const archiveLabel = archived ? 'Restore session' : 'Archive session';
+  const archiveBusyLabel = archived ? 'Restoring…' : 'Archiving…';
   const ArchiveIcon = archived ? ArchiveRestore : Archive;
 
   return (
@@ -236,9 +241,9 @@ const SessionRow = React.memo(function SessionRow({
             Customize appearance…
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => onArchive(session, !archived)}>
-            <ArchiveIcon />
-            {archiveLabel}
+          <ContextMenuItem disabled={archiving} onSelect={() => onArchive(session, !archived)}>
+            {archiving ? <Loader2 className="animate-spin" /> : <ArchiveIcon />}
+            {archiving ? archiveBusyLabel : archiveLabel}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -248,17 +253,21 @@ const SessionRow = React.memo(function SessionRow({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={archiveLabel}
+            disabled={archiving}
+            aria-label={archiving ? archiveBusyLabel : archiveLabel}
             onClick={(event) => {
               event.stopPropagation();
               onArchive(session, !archived);
             }}
-            className="absolute top-1.5 right-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+            className={cn(
+              'absolute top-1.5 right-2 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100',
+              archiving ? 'opacity-100' : 'opacity-0'
+            )}
           >
-            <ArchiveIcon />
+            {archiving ? <Loader2 className="animate-spin" /> : <ArchiveIcon />}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="left">{archiveLabel}</TooltipContent>
+        <TooltipContent side="left">{archiving ? archiveBusyLabel : archiveLabel}</TooltipContent>
       </Tooltip>
     </motion.div>
   );
@@ -285,6 +294,7 @@ export default function LeftRail({
   loading,
   mobileOpen,
   reloadingKeys,
+  archivingKeys,
   selectedSession,
   windowLabel,
   showArchived,
@@ -433,6 +443,7 @@ export default function LeftRail({
         selected={key === selectedKey}
         mood={moods[key] ?? 'idle'}
         reloading={reloadingKeys.has(key)}
+        archiving={archivingKeys.has(key)}
         markerColor={instanceDefaults[session.instanceId]?.markerColor}
         identity={avatarIdentities[key]}
         blobStyle={blobStyle}
