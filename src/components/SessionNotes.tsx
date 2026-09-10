@@ -35,28 +35,38 @@ export default function SessionNotes({ open, notes, onOpenChange, onSend, onBrin
 
   if (notes.length === 0) return null;
 
+  // A single note isn't worth collapsing; the rail is just the icon.
+  const collapsible = notes.length > 1;
+  const rail = (
+    <span className="relative inline-flex">
+      <NotebookPen className="size-3.5 text-highlight" />
+      <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
+        {notes.length}
+      </span>
+    </span>
+  );
+
   return (
     <Card className="bg-background/80 shadow-sm">
       <CardContent className="flex items-stretch gap-1.5 p-2 text-[11.5px]">
-        <button
-          type="button"
-          onClick={() => onOpenChange(!open)}
-          aria-expanded={open}
-          aria-label={`Notes (${notes.length})`}
-          title={open ? 'Collapse notes' : 'Expand notes'}
-          className="flex w-7 flex-none flex-col items-center gap-0.5 rounded-md py-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-        >
-          <span className="relative inline-flex">
-            <NotebookPen className="size-3.5 text-highlight" />
-            <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
-              {notes.length}
-            </span>
-          </span>
-          <ChevronDown
-            className={cn('size-3 flex-none transition-transform', !open && '-rotate-90')}
-          />
-        </button>
-        {open ? (
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => onOpenChange(!open)}
+            aria-expanded={open}
+            aria-label={`Notes (${notes.length})`}
+            title={open ? 'Collapse notes' : 'Expand notes'}
+            className="flex flex-none flex-row items-center gap-2 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            {rail}
+            <ChevronDown
+              className={cn('size-3 flex-none transition-transform', !open && '-rotate-90')}
+            />
+          </button>
+        ) : (
+          <div className="flex flex-none items-center px-1.5 py-1 text-muted-foreground">{rail}</div>
+        )}
+        {open || !collapsible ? (
         <ol className="flex min-w-0 max-h-28 flex-1 flex-col gap-1 overflow-y-auto">
           <AnimatePresence initial={false} mode="popLayout">
             {notes.map((note) => {
