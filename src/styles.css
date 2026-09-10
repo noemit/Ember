@@ -31,12 +31,13 @@
   --sidebar: #1b1a18;
   --highlight: #ff7a1a;
   --highlight-foreground: #151413;
-  --glyph-0: #5564ce;
-  --glyph-1: #f17fb2;
-  --glyph-2: #2f9e52;
-  --glyph-3: #e96420;
-  --glyph-4: #e8542e;
-  --glyph-5: #f6c522;
+  /* First entries of the generated palette; applyTheme sets the full --glyph-0..23 at runtime. */
+  --glyph-0: #a34bc3;
+  --glyph-1: #8ed643;
+  --glyph-2: #306406;
+  --glyph-3: #fc6b33;
+  --glyph-4: #2dbbff;
+  --glyph-5: #9e1614;
 }
 
 @theme inline {

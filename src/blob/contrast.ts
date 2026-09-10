@@ -1,10 +1,13 @@
 /** WCAG 1.4.11 minimum for graphics; glyphs are the only thing identifying a session at a glance. */
 const MIN_CONTRAST = 3;
-const STEP = 0.03;
-const MAX_STEPS = 30;
+/** Base palette floor: no two glyph colours are closer than this in OKLab (≈ just-noticeable). */
+export const MIN_GLYPH_DISTANCE = 0.1;
+/** Theme-adjusted floor: contrast correction must not collapse colours into near-duplicates. */
+export const MIN_THEME_DISTANCE = 0.05;
 
 type Rgb = [number, number, number];
-type Hsl = [number, number, number];
+type Oklab = [number, number, number];
+type Oklch = [number, number, number];
 
 const hexToRgb = (hex: string): Rgb => {
   const value = hex.replace('#', '');
@@ -15,6 +18,12 @@ const hexToRgb = (hex: string): Rgb => {
 
 const rgbToHex = ([r, g, b]: Rgb): string =>
   `#${[r, g, b].map((c) => Math.round(Math.max(0, Math.min(255, c))).toString(16).padStart(2, '0')).join('')}`;
+
+const srgbToLinear = (channel: number): number =>
+  channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+
+const linearToSrgb = (channel: number): number =>
+  channel <= 0.0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - 0.055;
 
 const luminance = ([r, g, b]: Rgb): number => {
   const channel = (c: number) => {
@@ -30,79 +39,243 @@ export const contrastRatio = (a: string, b: string): number => {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 };
 
-const rgbToHsl = ([r, g, b]: Rgb): Hsl => {
-  const rn = r / 255;
-  const gn = g / 255;
-  const bn = b / 255;
-  const max = Math.max(rn, gn, bn);
-  const min = Math.min(rn, gn, bn);
-  const l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  const h =
-    max === rn ? ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6 : max === gn ? ((bn - rn) / d + 2) / 6 : ((rn - gn) / d + 4) / 6;
-  return [h, s, l];
+/*
+ * OKLab/OKLCH (Björn Ottosson) gives a roughly perceptually uniform space, so equal steps look
+ * like equal colour differences. Colours are chosen and adjusted here rather than in HSL, where
+ * hue steps near green and blue are perceptually much smaller than near red and yellow.
+ */
+const linearToOklab = ([r, g, b]: Rgb): Oklab => {
+  const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
+  const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
+  const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
+  const l_ = Math.cbrt(l);
+  const m_ = Math.cbrt(m);
+  const s_ = Math.cbrt(s);
+  return [
+    0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_,
+    1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_,
+    0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_,
+  ];
 };
 
-const hslToRgb = ([h, s, l]: Hsl): Rgb => {
-  if (s === 0) return [l * 255, l * 255, l * 255];
-  const hue = (p: number, q: number, t: number) => {
-    let tt = t;
-    if (tt < 0) tt += 1;
-    if (tt > 1) tt -= 1;
-    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
-    if (tt < 1 / 2) return q;
-    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
-    return p;
-  };
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  return [hue(p, q, h + 1 / 3) * 255, hue(p, q, h) * 255, hue(p, q, h - 1 / 3) * 255];
+const oklabToLinear = ([L, a, b]: Oklab): Rgb => {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+  const l = l_ ** 3;
+  const m = m_ ** 3;
+  const s = s_ ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
 };
 
-export const AVATAR_COLOR_COUNT = 64;
+const oklabToRgb = (lab: Oklab): Rgb => {
+  const [r, g, b] = oklabToLinear(lab);
+  return [linearToSrgb(r) * 255, linearToSrgb(g) * 255, linearToSrgb(b) * 255];
+};
+
+const rgbToOklab = (rgb: Rgb): Oklab =>
+  linearToOklab(rgb.map((c) => srgbToLinear(c / 255)) as Rgb);
+
+const oklchToRgb = ([L, chroma, hue]: Oklch): Rgb => {
+  const radians = (hue * Math.PI) / 180;
+  return oklabToRgb([L, chroma * Math.cos(radians), chroma * Math.sin(radians)]);
+};
+
+const rgbToOklch = (rgb: Rgb): Oklch => {
+  const [L, a, b] = rgbToOklab(rgb);
+  return [L, Math.hypot(a, b), ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360];
+};
+
+const inGamut = ([r, g, b]: Rgb): boolean =>
+  r >= -0.5 && r <= 255.5 && g >= -0.5 && g <= 255.5 && b >= -0.5 && b <= 255.5;
+
+const oklabDistance = (a: Oklab, b: Oklab): number =>
+  Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/** Perceptual (OKLab) distance between two hex colours; 0.1 is roughly a just-noticeable step. */
+export const perceptualDistance = (a: string, b: string): number =>
+  oklabDistance(rgbToOklab(hexToRgb(a)), rgbToOklab(hexToRgb(b)));
+
+export const AVATAR_COLOR_COUNT = 24;
 export const INSTANCE_MARKER_COLORS = [
   '#3D4EC7', '#A13DB8', '#D13F78', '#C84A3A', '#C66A24', '#9A7A12',
   '#4F8A2F', '#20866F', '#247F9E', '#3474C8', '#6757C2', '#8C4A9E',
 ];
-// Vivid, high-saturation hues spread by the golden angle. The saturation and lightness ramps stay
-// wide (deep/muted through bright) so all 64 read as distinct; a narrow "punchy band" makes them
-// look like near-duplicates, which is why this spread was restored once before.
-export const GLYPH_COLORS = Array.from({ length: AVATAR_COLOR_COUNT }, (_, index) => {
-  const hue = ((index * 137.508) % 360) / 360;
-  const saturation = Math.min(1, 0.55 + (index % 4) * 0.16);
-  const lightness = 0.34 + (Math.floor(index / 4) % 4) * 0.12;
-  return rgbToHex(hslToRgb([hue, saturation, lightness]));
-});
+
+/** Reduce chroma until the OKLCH triple maps back into sRGB. */
+const oklchToHex = (lightness: number, chroma: number, hue: number): string => {
+  let current = chroma;
+  let rgb = oklchToRgb([lightness, current, hue]);
+  for (let step = 0; step < 24 && !inGamut(rgb); step += 1) {
+    current *= 0.95;
+    rgb = oklchToRgb([lightness, current, hue]);
+  }
+  return rgbToHex(rgb);
+};
 
 /**
- * Nudge a colour's lightness — away from the surfaces it sits on — until it clears
- * MIN_CONTRAST against every one of them. Hue and saturation are kept so the palette
- * still reads as the same palette on every theme.
+ * Candidate colours spread across hue, lightness and chroma, then farthest-point sampled so every
+ * pick is as far as possible from the ones already chosen. That guarantees a minimum OKLab
+ * distance across the palette instead of relying on a hand-tuned HSL band, which repeatedly
+ * collapsed into near-duplicate greens and blues.
+ */
+const buildGlyphColors = (): string[] => {
+  const candidates: Array<{ hex: string; lab: Oklab }> = [];
+  const seen = new Set<string>();
+  for (let hue = 0; hue < 360; hue += 4) {
+    for (let lightness = 0.45; lightness <= 0.82; lightness += 0.025) {
+      for (let chroma = 0.07; chroma <= 0.2; chroma += 0.02) {
+        const rgb = oklchToRgb([lightness, chroma, hue]);
+        if (!inGamut(rgb)) continue;
+        const hex = rgbToHex(rgb);
+        if (seen.has(hex)) continue;
+        seen.add(hex);
+        candidates.push({ hex, lab: rgbToOklab(hexToRgb(hex)) });
+      }
+    }
+  }
+
+  // Seed with the most chromatic candidate so the palette starts vivid, then greedily add the
+  // candidate whose nearest chosen neighbour is farthest away.
+  let seedIndex = 0;
+  let seedChroma = -1;
+  candidates.forEach((candidate, index) => {
+    const chroma = rgbToOklch(hexToRgb(candidate.hex))[1];
+    if (chroma > seedChroma) {
+      seedChroma = chroma;
+      seedIndex = index;
+    }
+  });
+
+  const chosen = [candidates[seedIndex]];
+  const nearest = candidates.map((candidate) => oklabDistance(candidate.lab, chosen[0].lab));
+  while (chosen.length < AVATAR_COLOR_COUNT) {
+    let bestIndex = 0;
+    for (let index = 1; index < candidates.length; index += 1) {
+      if (nearest[index] > nearest[bestIndex]) bestIndex = index;
+    }
+    const picked = candidates[bestIndex];
+    chosen.push(picked);
+    candidates.forEach((candidate, index) => {
+      nearest[index] = Math.min(nearest[index], oklabDistance(candidate.lab, picked.lab));
+    });
+  }
+  return chosen.map((candidate) => candidate.hex);
+};
+
+export const GLYPH_COLORS = buildGlyphColors();
+
+const meetsContrast = (hex: string, surfaces: string[]): boolean =>
+  surfaces.every((surface) => contrastRatio(hex, surface) >= MIN_CONTRAST);
+
+/**
+ * The extreme OKLCH lightness at which a colour still clears MIN_CONTRAST against every surface:
+ * the largest safe lightness on a light theme, the smallest safe lightness on a dark theme. Hue and
+ * chroma are held so the adjustment stays recognisably the same colour.
+ */
+const contrastBoundary = (hex: string, surfaces: string[]): number => {
+  const dark = luminance(hexToRgb(surfaces[0])) < 0.35;
+  const [, chroma, hue] = rgbToOklch(hexToRgb(hex));
+  const safeEdge = dark ? 1 : 0;
+  const unsafeEdge = dark ? 0 : 1;
+  if (!meetsContrast(oklchToHex(safeEdge, chroma, hue), surfaces)) return safeEdge;
+  if (meetsContrast(oklchToHex(unsafeEdge, chroma, hue), surfaces)) return unsafeEdge;
+  let safe = safeEdge;
+  let unsafe = unsafeEdge;
+  for (let step = 0; step < 40; step += 1) {
+    const mid = (safe + unsafe) / 2;
+    if (meetsContrast(oklchToHex(mid, chroma, hue), surfaces)) safe = mid;
+    else unsafe = mid;
+  }
+  return safe;
+};
+
+/**
+ * Nudge a single colour's lightness — away from the surfaces it sits on — until it clears
+ * MIN_CONTRAST against every one of them. Prefer {@link adjustPaletteForContrast} when adjusting a
+ * whole palette: this per-colour clamp can push distinct colours onto the same lightness.
  */
 export const ensureContrast = (hex: string, surfaces: string[]): string => {
-  const meets = (candidate: string) => surfaces.every((surface) => contrastRatio(candidate, surface) >= MIN_CONTRAST);
-  if (meets(hex)) return hex;
+  if (meetsContrast(hex, surfaces)) return hex;
+  const [, chroma, hue] = rgbToOklch(hexToRgb(hex));
+  return oklchToHex(contrastBoundary(hex, surfaces), chroma, hue);
+};
 
-  const surfaceIsDark = luminance(hexToRgb(surfaces[0])) < 0.35;
-  const direction = surfaceIsDark ? 1 : -1;
-  const [h, s] = rgbToHsl(hexToRgb(hex));
-  let [, , l] = rgbToHsl(hexToRgb(hex));
-  let candidate = hex;
+/**
+ * Adjust a whole palette for the theme's surfaces without collapsing its colours together.
+ *
+ * A per-colour clamp moves each entry only as far as it must, so entries with the same hue end up
+ * pinned to the same boundary and read as duplicates. Instead this clamps every entry into its own
+ * feasible lightness interval, then repeatedly pushes the closest pair apart along lightness —
+ * splitting the required gap by the room each colour has — until the palette clears
+ * {@link MIN_THEME_DISTANCE} or no further separation is possible.
+ */
+export const adjustPaletteForContrast = (colors: string[], surfaces: string[]): string[] => {
+  const dark = luminance(hexToRgb(surfaces[0])) < 0.35;
+  const oklch = colors.map((color) => rgbToOklch(hexToRgb(color)));
+  const boundaries = colors.map((color) => contrastBoundary(color, surfaces));
 
-  for (let step = 0; step < MAX_STEPS; step += 1) {
-    l = Math.max(0, Math.min(1, l + direction * STEP));
-    candidate = rgbToHex(hslToRgb([h, s, l]));
-    if (meets(candidate)) return candidate;
-    if (l === 0 || l === 1) break;
+  // Dark surfaces require lightness above the boundary, light surfaces below it.
+  const lower = oklch.map(([lightness], index) =>
+    dark ? Math.max(lightness, boundaries[index]) : 0.02
+  );
+  const upper = oklch.map(([lightness], index) =>
+    dark ? 0.98 : Math.min(lightness, boundaries[index])
+  );
+  const lightness = oklch.map(([value], index) =>
+    Math.max(lower[index], Math.min(upper[index], value))
+  );
+
+  const labAt = (index: number): Oklab =>
+    rgbToOklab(hexToRgb(oklchToHex(lightness[index], oklch[index][1], oklch[index][2])));
+  const labs = colors.map((_, index) => labAt(index));
+  // Aim past the floor so rounding to hex still leaves the palette comfortably above it.
+  const target = MIN_THEME_DISTANCE + 0.01;
+
+  for (let iteration = 0; iteration < 400; iteration += 1) {
+    let first = 0;
+    let second = 1;
+    let closest = Infinity;
+    for (let i = 0; i < labs.length; i += 1) {
+      for (let j = i + 1; j < labs.length; j += 1) {
+        const distance = oklabDistance(labs[i], labs[j]);
+        if (distance < closest) {
+          closest = distance;
+          first = i;
+          second = j;
+        }
+      }
+    }
+    if (closest >= target) break;
+
+    if (lightness[first] > lightness[second]) {
+      const swap = first;
+      first = second;
+      second = swap;
+    }
+    const need = target - closest + 0.005;
+    const firstRoom = lightness[first] - lower[first];
+    const secondRoom = upper[second] - lightness[second];
+    const room = firstRoom + secondRoom;
+    if (room <= 1e-6) break;
+    lightness[first] -= Math.min(firstRoom, (need * firstRoom) / room);
+    lightness[second] += Math.min(secondRoom, (need * secondRoom) / room);
+    labs[first] = labAt(first);
+    labs[second] = labAt(second);
   }
-  return candidate;
+
+  return colors.map((_, index) =>
+    oklchToHex(lightness[index], oklch[index][1], oklch[index][2])
+  );
 };
 
 /** Theme-adjusted glyph palette, index-aligned with GLYPH_COLORS. */
 export const glyphPaletteFor = (surfaces: string[]): string[] =>
-  GLYPH_COLORS.map((color) => ensureContrast(color, surfaces));
+  adjustPaletteForContrast(GLYPH_COLORS, surfaces);
 
 export const instanceMarkerPaletteFor = (surfaces: string[]): string[] =>
-  INSTANCE_MARKER_COLORS.map((color) => ensureContrast(color, surfaces));
+  adjustPaletteForContrast(INSTANCE_MARKER_COLORS, surfaces);

@@ -61,7 +61,7 @@ describe('appearance settings validation', () => {
   });
 
   test('keeps bounded color assignments', () => {
-    expect(parseColorAssignments({ project: 63, negative: -1, overflow: 64, fractional: 1.5 })).toEqual({ project: 63 });
+    expect(parseColorAssignments({ project: 23, negative: -1, overflow: 24, fractional: 1.5 })).toEqual({ project: 23 });
     expect(parseColorAssignments({ marker: 11, overflow: 12 }, 12)).toEqual({ marker: 11 });
   });
 
@@ -117,7 +117,7 @@ describe('appearance settings validation', () => {
   test('accepts only bounded curated appearance values', () => {
     expect(parseAvatarOverrides({
       valid: { colorIndex: 5, shapeName: 'wind-turbine' },
-      badColor: { colorIndex: 64 },
+      badColor: { colorIndex: 24 },
       fractional: { colorIndex: 1.5 },
       badShape: { shapeName: '<svg>' },
       empty: {},

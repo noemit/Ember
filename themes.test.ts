@@ -1,6 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import { blobColor } from './src/blob/color';
-import { contrastRatio, GLYPH_COLORS, glyphPaletteFor, instanceMarkerPaletteFor } from './src/blob/contrast';
+import {
+  AVATAR_COLOR_COUNT,
+  contrastRatio,
+  GLYPH_COLORS,
+  glyphPaletteFor,
+  instanceMarkerPaletteFor,
+  MIN_GLYPH_DISTANCE,
+  MIN_THEME_DISTANCE,
+  perceptualDistance,
+} from './src/blob/contrast';
 import { allocateProjectColors, avatarColorKeys, hashString, mulberry32, resolveAvatarIdentity } from './src/blob/seed';
 import { GROK_COLORS } from './src/blob/grok';
 import { THEMES } from './src/themes';
@@ -48,13 +57,43 @@ describe('blob colours', () => {
     }
   });
 
+  test('keeps the base glyph palette perceptually spread', () => {
+    expect(GLYPH_COLORS).toHaveLength(AVATAR_COLOR_COUNT);
+    expect(new Set(GLYPH_COLORS).size).toBe(AVATAR_COLOR_COUNT);
+    for (let i = 0; i < GLYPH_COLORS.length; i += 1) {
+      for (let j = i + 1; j < GLYPH_COLORS.length; j += 1) {
+        expect(
+          perceptualDistance(GLYPH_COLORS[i], GLYPH_COLORS[j]),
+          `${GLYPH_COLORS[i]} vs ${GLYPH_COLORS[j]}`
+        ).toBeGreaterThanOrEqual(MIN_GLYPH_DISTANCE);
+      }
+    }
+  });
+
+  test('keeps every theme-adjusted palette free of near-duplicates', () => {
+    for (const theme of THEMES) {
+      const surfaces = [theme.palette.panel, theme.palette.elev, theme.palette.bg];
+      for (const palette of [glyphPaletteFor(surfaces), instanceMarkerPaletteFor(surfaces)]) {
+        expect(new Set(palette).size).toBe(palette.length);
+        for (let i = 0; i < palette.length; i += 1) {
+          for (let j = i + 1; j < palette.length; j += 1) {
+            expect(
+              perceptualDistance(palette[i], palette[j]),
+              `${theme.id}: ${palette[i]} vs ${palette[j]}`
+            ).toBeGreaterThanOrEqual(MIN_THEME_DISTANCE);
+          }
+        }
+      }
+    }
+  });
+
   test('allocates every project color before cycling, keeps current keys, and prunes stale ones', () => {
-    const keys = Array.from({ length: 65 }, (_, index) => `project:local::${String(index).padStart(2, '0')}`);
-    const assignments = allocateProjectColors(keys, { [keys[10]]: 42, 'project:local::gone': 7 });
-    expect(new Set(keys.slice(0, 64).map((key) => assignments[key])).size).toBe(64);
-    expect(assignments[keys[10]]).toBe(42);
+    const keys = Array.from({ length: AVATAR_COLOR_COUNT + 1 }, (_, index) => `project:local::${String(index).padStart(2, '0')}`);
+    const assignments = allocateProjectColors(keys, { [keys[10]]: 13, 'project:local::gone': 7 });
+    expect(new Set(keys.slice(0, AVATAR_COLOR_COUNT).map((key) => assignments[key])).size).toBe(AVATAR_COLOR_COUNT);
+    expect(assignments[keys[10]]).toBe(13);
     expect(assignments['project:local::gone']).toBeUndefined();
-    expect(Object.values(assignments).every((index) => index >= 0 && index < 64)).toBe(true);
+    expect(Object.values(assignments).every((index) => index >= 0 && index < AVATAR_COLOR_COUNT)).toBe(true);
   });
 
   test('allocates directory-only projects distinct colors alongside configured projects', () => {
@@ -95,7 +134,10 @@ describe('blob colours', () => {
     expect(blobColor('glyph', firstIdentity)).toBe(blobColor('glyph', secondIdentity));
     expect(blobColor('grok', firstIdentity)).toBe(blobColor('grok', secondIdentity));
     expect(blobColor('grok', firstIdentity)).toBe(blobColor('glyph', firstIdentity));
-    expect(blobColor('grok', firstIdentity)).toMatch(/^var\(--glyph-(?:[0-9]|[1-5][0-9]|6[0-3])\)$/);
+    const grouped = blobColor('grok', firstIdentity).match(/^var\(--glyph-(\d+)\)$/);
+    expect(grouped).not.toBeNull();
+    expect(Number(grouped?.[1])).toBeGreaterThanOrEqual(0);
+    expect(Number(grouped?.[1])).toBeLessThan(AVATAR_COLOR_COUNT);
   });
 
   test('uses scheduled tasks for shape and sessions for motion', () => {

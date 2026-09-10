@@ -2,6 +2,9 @@ const API_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const DEFAULT_LOCAL_PORT = 57123;
 
+/** Mirrors AVATAR_COLOR_COUNT in src/blob/contrast.ts (the two tsconfig roots can't share it). */
+const AVATAR_COLOR_COUNT = 24;
+
 export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
 const parseHttpUrl = (value: string): URL | null => {
@@ -94,7 +97,7 @@ export const parseStringRecord = (value: unknown, limit = 2000): Record<string, 
   );
 };
 
-export const parseColorAssignments = (value: unknown, colorCount = 64): Record<string, number> => {
+export const parseColorAssignments = (value: unknown, colorCount = AVATAR_COLOR_COUNT): Record<string, number> => {
   if (!value || typeof value !== 'object') return {};
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
@@ -198,7 +201,7 @@ export const parseAvatarOverrides = (value: unknown): Record<string, StoredAvata
       .slice(0, 2000)
       .map(([key, raw]) => {
         const entry = raw as Record<string, unknown>;
-        const colorIndex = Number.isInteger(entry.colorIndex) && Number(entry.colorIndex) >= 0 && Number(entry.colorIndex) < 64
+        const colorIndex = Number.isInteger(entry.colorIndex) && Number(entry.colorIndex) >= 0 && Number(entry.colorIndex) < AVATAR_COLOR_COUNT
           ? Number(entry.colorIndex)
           : undefined;
         const shapeName = typeof entry.shapeName === 'string' && /^[a-z0-9-]{1,80}$/i.test(entry.shapeName)

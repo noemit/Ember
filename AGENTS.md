@@ -88,14 +88,16 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   binding (or session key) picks shape, and the session key picks tilt/motion. OpenChamber task
   bindings come from each project's scheduled-task endpoint and observed `lastSessionId` mappings
   are retained in Ember settings. Session/task/project overrides store only curated colour indexes
-  and shape names. Project/directory colours use a persisted 64-entry allocation queue (directory-only "projects"
+  and shape names. Project/directory colours use a persisted 24-entry allocation queue (directory-only "projects"
   included, so distinct directories never collide on a hash), exhausting every colour before cycling;
   the queue is pruned to the sessions currently on screen (plus the selected one), so it doesn't grow
   forever. Optional per-instance underlines use a separate 12-colour marker palette.
   `glyphs.ts` is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}` = colour,
-  `{id}` = per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours come from
-  `--glyph-0..63`, which `applyTheme` sets after `blob/contrast.ts` nudges each palette colour's
-  lightness to ≥3:1 against the theme's panel/elev/bg.
+  `{id}` = per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours are chosen in
+  OKLCH by farthest-point sampling so the 24 base entries keep a minimum OKLab distance (no HSL
+  near-duplicate greens/blues); `applyTheme` emits `--glyph-0..23` after `blob/contrast.ts` adjusts the
+  whole palette together — clamping each colour to ≥3:1 against the theme's panel/elev/bg while pushing
+  close pairs apart, rather than per-colour clamping that collapses them onto one lightness.
 - `src/blob/dockIcon.ts` — rasterises the selected session's blob (via `renderToStaticMarkup`,
   with theme CSS vars inlined since an `<img>`-loaded SVG can't see them) onto a `--sidebar`
   squircle and sends the PNG over `window.ember.setDockIcon` → `app.dock.setIcon`. Driven by an
