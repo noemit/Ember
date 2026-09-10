@@ -37,27 +37,27 @@ export default function SessionNotes({ open, notes, onOpenChange, onSend, onBrin
 
   return (
     <Card className="bg-background/80 shadow-sm">
-      <CardContent className="p-3 text-[11.5px]">
+      <CardContent className="flex items-stretch gap-1.5 p-2 text-[11.5px]">
         <button
           type="button"
           onClick={() => onOpenChange(!open)}
           aria-expanded={open}
-          className={cn(
-            'flex w-full items-center gap-2 text-left text-muted-foreground',
-            open && 'mb-1.5'
-          )}
+          aria-label={`Notes (${notes.length})`}
+          title={open ? 'Collapse notes' : 'Expand notes'}
+          className="flex w-7 flex-none flex-col items-center gap-0.5 rounded-md py-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
         >
-          <NotebookPen className="size-3.5 flex-none text-highlight" />
-          <span className="font-medium text-foreground">
-            {notes.length} {notes.length === 1 ? 'note' : 'notes'}
+          <span className="relative inline-flex">
+            <NotebookPen className="size-3.5 text-highlight" />
+            <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
+              {notes.length}
+            </span>
           </span>
-          <span className="min-w-0 flex-1 truncate">Parked from the composer.</span>
           <ChevronDown
-            className={cn('size-3.5 flex-none transition-transform', !open && '-rotate-90')}
+            className={cn('size-3 flex-none transition-transform', !open && '-rotate-90')}
           />
         </button>
         {open ? (
-        <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
+        <ol className="flex min-w-0 max-h-28 flex-1 flex-col gap-1 overflow-y-auto">
           <AnimatePresence initial={false} mode="popLayout">
             {notes.map((note) => {
               const busy = busyNoteId === note.id;
@@ -71,11 +71,7 @@ export default function SessionNotes({ open, notes, onOpenChange, onSend, onBrin
                   transition={springTransition}
                   className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5"
                 >
-                  {busy ? (
-                    <Loader2 className="size-3 flex-none animate-spin text-highlight" />
-                  ) : (
-                    <span className="size-1.5 flex-none rounded-full bg-highlight" aria-hidden="true" />
-                  )}
+                  {busy ? <Loader2 className="size-3 flex-none animate-spin text-highlight" /> : null}
                   <span className="min-w-0 flex-1 truncate" title={note.text}>
                     {note.text}
                   </span>

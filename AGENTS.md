@@ -112,8 +112,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/components/SessionNotes.tsx` — notes parked from the composer, listed above it like the
   queue but never dispatched on their own. The composer's save-as-note button (next to send) stores
   the text in Ember settings keyed by session; each row can send as-is, bring the text back into the
-  composer (which consumes the note), or delete it. Both this card and the queue collapse from their
-  header, with the open state held in `ChatView` so it survives session switches. A queued message
+  composer (which consumes the note), or delete it. Both this card and the queue keep their icon in a
+  left rail (icon + count badge + chevron) that toggles collapse, so there's no separate header row
+  and rows carry no status dot — only a spinner while one is busy. The open state is held in
+  `ChatView` so it survives session switches. A queued message
   can also be "parked": removed from the server queue and saved as a note.
   `PinnedMessagesDialog.tsx` shows the selected session's pinned messages in a modal, opened from
   the pin chip in the chat header; its Jump/Reply/Unpin actions reuse the transcript handlers and
