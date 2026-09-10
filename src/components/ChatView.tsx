@@ -490,6 +490,14 @@ export default function ChatView({
   const queueItems = queue?.items ?? [];
   const shouldQueue = Boolean(session && (busy || queueItems.length > 0));
   const reasoningMeta = REASONING_META[reasoningDisplay];
+  // Up-arrow history: recall the most recent thing the user sent, like a shell.
+  const lastSentMessage = React.useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === 'user' && message.text.trim()) return message.text.trim();
+    }
+    return null;
+  }, [messages]);
 
   const submit = () => {
     if (!canSend) return;
@@ -868,6 +876,34 @@ export default function ChatView({
                 }
               }}
               onKeyDown={(event) => {
+                if (
+                  event.key === 'ArrowUp' &&
+                  !event.shiftKey &&
+                  !event.altKey &&
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !event.nativeEvent.isComposing &&
+                  !text.trim() &&
+                  lastSentMessage
+                ) {
+                  event.preventDefault();
+                  const recalled = lastSentMessage;
+                  setText(recalled);
+                  if (composerKey) {
+                    updateComposerDraft(composerKey, {
+                      text: recalled,
+                      modelId,
+                      variant,
+                      attachments,
+                      replyContext,
+                    });
+                  }
+                  window.requestAnimationFrame(() => {
+                    const el = textareaRef.current;
+                    if (el) el.setSelectionRange(recalled.length, recalled.length);
+                  });
+                  return;
+                }
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   submit();
