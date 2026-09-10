@@ -108,7 +108,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/components/Transcript.tsx` — message list: text bubbles, expandable tool rows (input/
   output/diff), collapsed reasoning, file parts, permission + question cards, model-named live
   activity line (suppressed until initial history resolves), pin-to-bottom scrolling (ResizeObserver +
-  `scrollend`), and message jump/highlight support.
+  `scrollend`), and message jump/highlight support. The session blob lives here rather than in the
+  chat header: while a turn is pending it rides the activity line below the last message, and once
+  the turn is done it tucks in beside the last assistant message.
 - `src/components/SessionNotes.tsx` — notes parked from the composer, listed above it like the
   queue but never dispatched on their own. The composer's save-as-note button (next to send) stores
   the text in Ember settings keyed by session; each row can send as-is, bring the text back into the
