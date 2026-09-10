@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Box, Brain, BrainCircuit, ChevronDown, EyeOff, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
+import { ArrowUp, Box, Brain, ChevronDown, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -55,10 +55,10 @@ const PinnedMessagesDialog = React.lazy(() => import('./PinnedMessagesDialog'));
 const REASONING_ORDER: ReasoningDisplay[] = ['expanded', 'collapsed', 'hidden'];
 const nextReasoningDisplay = (mode: ReasoningDisplay): ReasoningDisplay =>
   REASONING_ORDER[(REASONING_ORDER.indexOf(mode) + 1) % REASONING_ORDER.length];
-const REASONING_META: Record<ReasoningDisplay, { Icon: React.ElementType; title: string }> = {
-  expanded: { Icon: BrainCircuit, title: 'Thinking expanded — click to collapse' },
-  collapsed: { Icon: Brain, title: 'Thinking collapsed — click to hide' },
-  hidden: { Icon: EyeOff, title: 'Thinking hidden — click to expand' },
+const REASONING_META: Record<ReasoningDisplay, { title: string; iconClass: string }> = {
+  expanded: { title: 'Thinking expanded — click to collapse', iconClass: 'fill-current' },
+  collapsed: { title: 'Thinking collapsed — click to hide', iconClass: '' },
+  hidden: { title: 'Thinking hidden — click to expand', iconClass: '[stroke-dasharray:2.5_2.5]' },
 };
 
 const TranscriptFallback = () => (
@@ -678,7 +678,7 @@ export default function ChatView({
                 title={reasoningMeta.title}
                 className="h-7 px-2 text-xs"
               >
-                <reasoningMeta.Icon className="size-3.5" />
+                <Brain className={cn('size-3.5', reasoningMeta.iconClass)} />
               </Button>
               <Toggle
                 pressed={hideToolCalls}
