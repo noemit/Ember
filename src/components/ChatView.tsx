@@ -267,6 +267,8 @@ export default function ChatView({
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [replyContext, setReplyContext] = React.useState<ChatMessage | null>(null);
   const [pinnedOpen, setPinnedOpen] = React.useState(false);
+  const [notesOpen, setNotesOpen] = React.useState(true);
+  const [queueOpen, setQueueOpen] = React.useState(true);
   const [focusMessageId, setFocusMessageId] = React.useState<string | null>(null);
   const [focusRequest, setFocusRequest] = React.useState(0);
   const [now, setNow] = React.useState(() => Date.now());
@@ -787,7 +789,9 @@ export default function ChatView({
             <React.Suspense fallback={null}>
               <SessionNotes
                 key={`notes-${composerKey ?? 'none'}`}
+                open={notesOpen}
                 notes={sessionNotes}
+                onOpenChange={setNotesOpen}
                 onSend={sendNote}
                 onBringBack={bringBackNote}
                 onDelete={(note) => {
@@ -800,10 +804,12 @@ export default function ChatView({
             <React.Suspense fallback={null}>
               <QueuedMessageList
                 key={composerKey ?? 'none'}
+                open={queueOpen}
                 queue={queue}
                 models={models}
                 recentModels={recentModels}
                 defaultModelId={defaultModelId}
+                onOpenChange={setQueueOpen}
                 onSendQueued={onSendQueued}
                 onQueuedModelChange={onQueuedModelChange}
                 onMoveQueued={onMoveQueued}

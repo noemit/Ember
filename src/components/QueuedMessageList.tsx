@@ -6,16 +6,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ModelPickerFallback } from './ModelPickerFallback';
+import { cn } from '@/lib/utils';
 import { springTransition } from '@/lib/animation';
 import type { MessageQueueSession, ModelOption, QueuedMessage } from '../types';
 
 const ModelPicker = React.lazy(() => import('./ModelPicker'));
 
 type Props = {
+  open: boolean;
   queue: MessageQueueSession | null;
   models: ModelOption[];
   recentModels: string[];
   defaultModelId: string | null;
+  onOpenChange: (open: boolean) => void;
   onSendQueued: (itemId: string) => Promise<boolean>;
   onQueuedModelChange: (itemId: string, model: ModelOption) => Promise<boolean>;
   onMoveQueued: (itemId: string, direction: -1 | 1) => Promise<boolean>;
@@ -27,10 +30,12 @@ type Props = {
  * model picker, the in-flight lock) resets when the user switches chats.
  */
 export default function QueuedMessageList({
+  open,
   queue,
   models,
   recentModels,
   defaultModelId,
+  onOpenChange,
   onSendQueued,
   onQueuedModelChange,
   onMoveQueued,
@@ -67,15 +72,27 @@ export default function QueuedMessageList({
     <>
       <Card className="bg-background/80 shadow-sm">
         <CardContent className="p-3 text-[11.5px]">
-          <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
-            <ListOrdered className="size-3.5 text-highlight" />
+          <button
+            type="button"
+            onClick={() => onOpenChange(!open)}
+            aria-expanded={open}
+            className={cn(
+              'flex w-full items-center gap-2 text-left text-muted-foreground',
+              open && 'mb-1.5'
+            )}
+          >
+            <ListOrdered className="size-3.5 flex-none text-highlight" />
             <span className="font-medium text-foreground">
               {queueItems.length} queued {queueItems.length === 1 ? 'message' : 'messages'}
             </span>
-            <span className="min-w-0 flex-1">
+            <span className="min-w-0 flex-1 truncate">
               {queue?.sendingId ? 'Sending the next one…' : 'They send when this agent is idle.'}
             </span>
-          </div>
+            <ChevronDown
+              className={cn('size-3.5 flex-none transition-transform', !open && '-rotate-90')}
+            />
+          </button>
+          {open ? (
           <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
             <AnimatePresence initial={false} mode="popLayout">
               {queueItems.map((item, index) => {
@@ -174,6 +191,7 @@ export default function QueuedMessageList({
               })}
             </AnimatePresence>
           </ol>
+          ) : null}
         </CardContent>
       </Card>
       {queueModelPickerItem ? (

@@ -1,13 +1,16 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CornerUpLeft, Loader2, NotebookPen, Send, X } from 'lucide-react';
+import { ChevronDown, CornerUpLeft, Loader2, NotebookPen, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { springTransition } from '@/lib/animation';
 import type { SessionNote } from '../types';
 
 type Props = {
+  open: boolean;
   notes: SessionNote[];
+  onOpenChange: (open: boolean) => void;
   onSend: (note: SessionNote) => Promise<boolean>;
   onBringBack: (note: SessionNote) => void;
   onDelete: (note: SessionNote) => void;
@@ -17,7 +20,7 @@ type Props = {
  * Notes parked from the composer, shown above it like the queue but never dispatched on their own.
  * Each row can send as-is, bring the text back into the composer, or delete.
  */
-export default function SessionNotes({ notes, onSend, onBringBack, onDelete }: Props) {
+export default function SessionNotes({ open, notes, onOpenChange, onSend, onBringBack, onDelete }: Props) {
   const [busyNoteId, setBusyNoteId] = React.useState<string | null>(null);
 
   const send = async (note: SessionNote) => {
@@ -35,13 +38,25 @@ export default function SessionNotes({ notes, onSend, onBringBack, onDelete }: P
   return (
     <Card className="bg-background/80 shadow-sm">
       <CardContent className="p-3 text-[11.5px]">
-        <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
-          <NotebookPen className="size-3.5 text-highlight" />
+        <button
+          type="button"
+          onClick={() => onOpenChange(!open)}
+          aria-expanded={open}
+          className={cn(
+            'flex w-full items-center gap-2 text-left text-muted-foreground',
+            open && 'mb-1.5'
+          )}
+        >
+          <NotebookPen className="size-3.5 flex-none text-highlight" />
           <span className="font-medium text-foreground">
             {notes.length} {notes.length === 1 ? 'note' : 'notes'}
           </span>
-          <span className="min-w-0 flex-1">Parked from the composer.</span>
-        </div>
+          <span className="min-w-0 flex-1 truncate">Parked from the composer.</span>
+          <ChevronDown
+            className={cn('size-3.5 flex-none transition-transform', !open && '-rotate-90')}
+          />
+        </button>
+        {open ? (
         <ol className="flex max-h-28 flex-col gap-1 overflow-y-auto">
           <AnimatePresence initial={false} mode="popLayout">
             {notes.map((note) => {
@@ -109,6 +124,7 @@ export default function SessionNotes({ notes, onSend, onBringBack, onDelete }: P
             })}
           </AnimatePresence>
         </ol>
+        ) : null}
       </CardContent>
     </Card>
   );
