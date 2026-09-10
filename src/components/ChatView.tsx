@@ -23,6 +23,7 @@ import {
 import type {
   AvatarIdentity,
   BallState,
+  BallMood,
   BlobStyle,
   ChatMessage,
   FileAttachment,
@@ -78,6 +79,7 @@ type Props = {
   seed: string;
   identity: AvatarIdentity;
   state: BallState;
+  mood: BallMood;
   blobStyle: BlobStyle;
   messages: ChatMessage[];
   messagesStatus: MessagesStatus;
@@ -219,6 +221,7 @@ export default function ChatView({
   seed,
   identity,
   state,
+  mood,
   blobStyle,
   messages,
   messagesStatus,
@@ -617,7 +620,7 @@ export default function ChatView({
                 seed={seed}
                 identity={identity}
                 size={24}
-                state={state}
+                mood={mood}
               />
               <span
                 className="min-w-0 flex-1 truncate text-[13px] font-medium"

@@ -2,20 +2,28 @@ import * as React from 'react';
 import { hashString, mulberry32, seedIdentity } from './seed';
 import { GLYPH_COLORS } from './contrast';
 import { GROK_COLORS, GROK_SHAPES } from './grok';
-import { OrbitRing } from './OrbitRing';
 import { usePupilTracking } from './usePupilTracking';
-import type { AvatarIdentity, BallState } from '../types';
+import type { AvatarIdentity, BallMood, BallState } from '../types';
 import './blob.css';
 
 type Props = {
   seed: string;
   identity?: AvatarIdentity;
   size?: number;
+  /** Kept for callers that only know the coarse state; `mood` is what drives the visuals. */
   state?: BallState;
+  mood?: BallMood;
   interactive?: boolean;
 };
 
-export default function GrokBlob({ seed, identity, size = 30, state = 'idle', interactive = true }: Props) {
+/** Badge/accent colour per mood. */
+const accentFor = (mood: BallMood): string => {
+  if (mood === 'input') return 'var(--warning)';
+  if (mood === 'error') return 'var(--destructive)';
+  return 'var(--highlight)';
+};
+
+export default function GrokBlob({ seed, identity, size = 30, mood = 'idle', interactive = true }: Props) {
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const leftPupil = React.useRef<SVGGElement>(null);
   const rightPupil = React.useRef<SVGGElement>(null);
@@ -42,15 +50,14 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
         GROK_SHAPES[Math.floor(shapeRng() * GROK_SHAPES.length)],
       tilt: Math.round((motionRng() - 0.5) * 16),
       wobbleDelay: -(motionRng() * 4).toFixed(2),
-      // Working blobs flip once every ~9–16s; the negative delay spreads them out so a busy list
+      // Busy blobs flip once every ~9–16s; the negative delay spreads them out so a busy list
       // never somersaults in unison.
       flipDelay: -(motionRng() * 16).toFixed(2),
       flipDuration: (9 + motionRng() * 7).toFixed(2),
     };
   }, [identity, seed]);
 
-  const isError = state === 'error';
-  const needsInput = state === 'needs-input';
+  const isError = mood === 'error';
   usePupilTracking(wrapperRef, [leftPupil, rightPupil], interactive && !isError, 5.5);
 
   const renderEye = (offsetX: number, pupilRef: React.RefObject<SVGGElement | null>) => (
@@ -70,16 +77,17 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
     </g>
   );
 
+  const accent = accentFor(mood);
+
   return (
     <div
       className="blob blob-grok"
-      data-state={state}
+      data-mood={mood}
       aria-hidden="true"
       ref={wrapperRef}
       style={{ width: size, height: size, animationDelay: `${wobbleDelay}s` }}
     >
       <svg viewBox="0 0 100 100" width={size} height={size} style={{ overflow: 'visible' }}>
-        {needsInput ? <OrbitRing.Back cx={50} cy={50} r={44} /> : null}
         <g className="blob-hop" style={{ animationDelay: `${wobbleDelay}s` }}>
           <g
             className="blob-flip"
@@ -87,7 +95,6 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
           >
             <g className="blob-body" transform={`rotate(${tilt} 50 50)`}>
               <path d={shape.path} fill={color.fill} />
-              {isError && <path d={shape.path} fill="rgba(0,0,0,0.28)" />}
             </g>
             <g className="blob-eyes">
               {renderEye(-shape.eyeGap, leftPupil)}
@@ -95,7 +102,48 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
             </g>
           </g>
         </g>
-        {needsInput ? <OrbitRing.Front cx={50} cy={50} r={44} /> : null}
+
+        {mood === 'thinking' ? (
+          <circle
+            className="blob-arc"
+            cx={50}
+            cy={50}
+            r={48}
+            fill="none"
+            stroke={accent}
+            strokeWidth={3}
+            strokeDasharray="64 238"
+            strokeLinecap="round"
+            opacity={0.9}
+          />
+        ) : null}
+
+        {mood === 'input' ? (
+          <g className="blob-badge">
+            <circle cx={78} cy={22} r={16} fill={accent} stroke="var(--background)" strokeWidth={3} />
+            <path d="M73 21 v-3 a5 5 0 0 1 10 0 v3" fill="none" stroke="#ffffff" strokeWidth={2.8} strokeLinecap="round" />
+            <rect x={70} y={20.5} width={16} height={12.5} rx={3} fill="#ffffff" />
+            <circle cx={78} cy={26.5} r={1.8} fill={accent} />
+          </g>
+        ) : null}
+
+        {mood === 'question' ? (
+          <g className="blob-badge">
+            <circle cx={78} cy={22} r={16} fill={accent} stroke="var(--background)" strokeWidth={3} />
+            <text x={78} y={29} textAnchor="middle" fontSize={21} fontWeight={700} fill="#ffffff">
+              ?
+            </text>
+          </g>
+        ) : null}
+
+        {mood === 'error' ? (
+          <g className="blob-badge">
+            <path d="M78 4 L97 37 H59 Z" fill={accent} stroke="var(--background)" strokeWidth={3} strokeLinejoin="round" />
+            <text x={78} y={32} textAnchor="middle" fontSize={20} fontWeight={700} fill="#ffffff">
+              !
+            </text>
+          </g>
+        ) : null}
       </svg>
     </div>
   );

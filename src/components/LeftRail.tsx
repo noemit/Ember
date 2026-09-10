@@ -44,14 +44,14 @@ import { Input } from '@/components/ui/input';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { modelRefKey, sessionKey } from '../types';
-import type { AvatarIdentity, BallState, BlobStyle, Instance, InstanceDefaults, Project, Session } from '../types';
+import type { AvatarIdentity, BallMood, BlobStyle, Instance, InstanceDefaults, Project, Session } from '../types';
 
 type Props = {
   instances: Instance[];
   projectsByInstance: Record<string, Project[]>;
   instanceDefaults: Record<string, InstanceDefaults>;
   sessions: Session[];
-  states: Record<string, BallState>;
+  moods: Record<string, BallMood>;
   previews: Record<string, string>;
   selectedKey: string | null;
   avatarIdentities: Record<string, AvatarIdentity>;
@@ -118,7 +118,7 @@ type SessionRowProps = {
   projectName: string | undefined;
   preview: string | undefined;
   selected: boolean;
-  state: BallState;
+  mood: BallMood;
   reloading: boolean;
   markerColor: number | undefined;
   identity: AvatarIdentity | undefined;
@@ -136,7 +136,7 @@ const SessionRow = React.memo(function SessionRow({
   projectName,
   preview,
   selected,
-  state,
+  mood,
   reloading,
   markerColor,
   identity,
@@ -178,7 +178,7 @@ const SessionRow = React.memo(function SessionRow({
             <div className="mt-0.5">
               {/* Project/task/session identity is resolved once in App so every surface stays aligned,
                   including across instances that reuse session ids. */}
-              <Blob style={blobStyle} seed={key} identity={identity} size={55} state={state} />
+              <Blob style={blobStyle} seed={key} identity={identity} size={55} mood={mood} />
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -203,16 +203,16 @@ const SessionRow = React.memo(function SessionRow({
                 {preview ?? (session.directory ? normalizeDirectory(session.directory).split(/[\\/]/).pop() : '')}
               </span>
               <span className="flex items-center gap-1 truncate text-[10.5px] text-muted-foreground">
-                {state === 'needs-input' ? (
+                {mood === 'input' || mood === 'question' ? (
                   <Badge variant="outline" className="flex-none border-highlight/40 px-1 py-0 text-[10px] font-medium text-highlight">
                     Needs input
                   </Badge>
-                ) : state === 'error' ? (
+                ) : mood === 'error' ? (
                   <Badge variant="outline" className="flex-none border-destructive/40 px-1 py-0 text-[10px] font-medium text-destructive">
                     Failed
                   </Badge>
                 ) : null}
-                {(state === 'needs-input' || state === 'error') && (projectName || instanceLabel) ? (
+                {(mood === 'input' || mood === 'question' || mood === 'error') && (projectName || instanceLabel) ? (
                   <span aria-hidden>·</span>
                 ) : null}
                 {instanceLabel ? (
@@ -277,7 +277,7 @@ export default function LeftRail({
   projectsByInstance,
   instanceDefaults,
   sessions,
-  states,
+  moods,
   previews,
   selectedKey,
   avatarIdentities,
@@ -431,7 +431,7 @@ export default function LeftRail({
         projectName={projectForSession(session, projectsByInstance[session.instanceId] ?? [])?.name}
         preview={previews[key]}
         selected={key === selectedKey}
-        state={states[key] ?? 'idle'}
+        mood={moods[key] ?? 'idle'}
         reloading={reloadingKeys.has(key)}
         markerColor={instanceDefaults[session.instanceId]?.markerColor}
         identity={avatarIdentities[key]}

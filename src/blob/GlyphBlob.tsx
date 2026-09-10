@@ -3,7 +3,7 @@ import { hashString, mulberry32, seedIdentity } from './seed';
 import { GLYPHS } from './glyphs';
 import { GLYPH_COLORS } from './contrast';
 import { OrbitRing } from './OrbitRing';
-import type { AvatarIdentity, BallState } from '../types';
+import type { AvatarIdentity, BallMood, BallState } from '../types';
 import './blob.css';
 
 type Props = {
@@ -11,6 +11,8 @@ type Props = {
   identity?: AvatarIdentity;
   size?: number;
   state?: BallState;
+  /** Grok-only; glyphs map the mood back to `state` before rendering. */
+  mood?: BallMood;
   interactive?: boolean;
 };
 

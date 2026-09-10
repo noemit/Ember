@@ -13,6 +13,7 @@ import {
   seedIdentity,
   sessionAvatarKey,
 } from './blob/seed';
+import { isThinkingMessages, moodFrom } from './blob/mood';
 import {
   abortSession,
   createClientMessageId,
@@ -58,6 +59,7 @@ import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
 import type {
   AvatarIdentity,
   AvatarOverride,
+  BallMood,
   BallState,
   ChatMessage,
   MessagesStatus,
@@ -372,6 +374,18 @@ export default function App() {
     return merged;
   }, [statesByInstance, permissions, questions, failedKeys]);
 
+  // Which kind of pending prompt a session has, so the blob can show a lock vs a question.
+  const promptKinds = React.useMemo(() => {
+    const kinds: Record<string, 'input' | 'question'> = {};
+    permissions.forEach((request) => {
+      kinds[sessionKey({ instanceId: request.instanceId, sessionId: request.sessionId })] = 'input';
+    });
+    questions.forEach((request) => {
+      kinds[sessionKey({ instanceId: request.instanceId, sessionId: request.sessionId })] = 'question';
+    });
+    return kinds;
+  }, [permissions, questions]);
+
   const selectedKey = selected ? sessionKey(selected) : null;
   const cachedTranscript = selectedKey ? messageCacheRef.current.get(selectedKey) : undefined;
   const transcriptMatchesSelection = Boolean(selectedKey && transcript.key === selectedKey);
@@ -381,6 +395,28 @@ export default function App() {
     : cachedTranscript
       ? 'ready'
       : 'loading';
+  // Thinking = an active session whose latest assistant turn is streaming with no tool running. The
+  // selected session reads the live transcript; the rest use the warmed preview cache.
+  const thinkingKeys = React.useMemo(() => {
+    const keys = new Set<string>();
+    const consider = (key: string, list: ChatMessage[]) => {
+      if ((states[key] ?? 'idle') === 'active' && isThinkingMessages(list)) keys.add(key);
+    };
+    messageCacheRef.current.forEach((list, key) => consider(key, list));
+    if (selectedKey) consider(selectedKey, messages);
+    return keys;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- previews/polls refresh the ref'd cache
+  }, [states, selectedKey, messages, previews]);
+  const moods = React.useMemo(() => {
+    const map: Record<string, BallMood> = {};
+    Object.entries(sessionsByInstance).forEach(([, list]) =>
+      list.forEach((session) => {
+        const key = sessionKey(session);
+        map[key] = moodFrom(states[key] ?? 'idle', promptKinds[key], thinkingKeys.has(key));
+      })
+    );
+    return map;
+  }, [sessionsByInstance, states, promptKinds, thinkingKeys]);
   // A retry belongs to the session it failed on; the banner text may still apply.
   React.useEffect(() => {
     clearActionErrorRetry();
@@ -506,16 +542,17 @@ export default function App() {
     applyTheme(settings.theme);
   }, [settings.theme]);
 
-  // The Dock icon mirrors the selected session's blob (and its state) so a glance at the Dock
+  // The Dock icon mirrors the selected session's blob (and its mood) so a glance at the Dock
   // says which agent this window is on. Theme is a dependency because the tile and the
   // contrast-adjusted palettes come from the current CSS variables.
   const selectedState: BallState = selectedKey ? states[selectedKey] ?? 'idle' : 'idle';
+  const selectedMood: BallMood = selectedKey ? moods[selectedKey] ?? 'idle' : 'idle';
   React.useEffect(() => {
     if (!selectedKey) return;
     let cancelled = false;
     void import('./blob/dockIcon')
       .then(({ renderDockIcon }) =>
-        renderDockIcon(settings.blobStyle, selectedIdentity, selectedState)
+        renderDockIcon(settings.blobStyle, selectedIdentity, selectedMood)
       )
       .then((dataUrl) => {
         if (!cancelled) return window.ember.setDockIcon(dataUrl);
@@ -524,7 +561,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedKey, selectedIdentity, selectedState, settings.blobStyle, settings.theme]);
+  }, [selectedKey, selectedIdentity, selectedMood, settings.blobStyle, settings.theme]);
 
   const refreshInstances = React.useCallback(async function refreshInstances() {
     setRefreshing(true);
@@ -1510,7 +1547,7 @@ export default function App() {
               projectsByInstance={projectsByInstance}
               instanceDefaults={settings.instanceDefaults}
               sessions={sessions}
-              states={states}
+              moods={moods}
               previews={previews}
               selectedKey={selectedKey}
               selectedSession={selectedSession}
@@ -1564,6 +1601,7 @@ export default function App() {
               seed={selectedKey ?? ''}
               identity={selectedIdentity}
               state={selectedKey ? states[selectedKey] ?? 'idle' : 'idle'}
+              mood={selectedMood}
               blobStyle={settings.blobStyle}
               messages={messages}
               messagesStatus={messagesStatus}

@@ -1,12 +1,12 @@
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { AvatarIdentity, BallState, BlobStyle } from '../types';
+import type { AvatarIdentity, BallMood, BlobStyle } from '../types';
 
 type BlobComponent = React.ComponentType<{
   seed: string;
   identity?: AvatarIdentity;
   size?: number;
-  state?: BallState;
+  mood?: BallMood;
   interactive?: boolean;
 }>;
 
@@ -31,7 +31,7 @@ const cssVar = (name: string): string =>
 const blobSvg = (
   Component: BlobComponent,
   identity: AvatarIdentity,
-  state: BallState,
+  mood: BallMood,
   size: number
 ): string => {
   const html = renderToStaticMarkup(
@@ -39,7 +39,7 @@ const blobSvg = (
       seed: identity.sessionKey,
       identity,
       size,
-      state,
+      mood,
       interactive: false,
     })
   );
@@ -61,12 +61,12 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
 export const renderDockIcon = async (
   style: BlobStyle,
   identity: AvatarIdentity,
-  state: BallState
+  mood: BallMood
 ): Promise<string> => {
   const blobSize = TILE * 0.7;
   const Component = await loadBlobComponent(style);
   const image = await loadImage(
-    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(blobSvg(Component, identity, state, blobSize))}`
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(blobSvg(Component, identity, mood, blobSize))}`
   );
 
   const canvas = document.createElement('canvas');
@@ -82,16 +82,19 @@ export const renderDockIcon = async (
   const offset = (CANVAS - blobSize) / 2;
   ctx.drawImage(image, offset, offset, blobSize, blobSize);
 
-  // Blobs show state through motion, which a still image loses; give the tile a corner dot
-  // instead. Glyphs already paint their own error dot.
-  const hasOwnBadge = style === 'glyph' && state === 'error';
-  if (!hasOwnBadge && state !== 'idle') {
+  // Blobs show state through motion, which a still image loses. Grok draws its own badge for
+  // input/question/error and glyphs paint an error dot, so only the rest need a corner marker.
+  const hasOwnBadge =
+    style === 'grok'
+      ? mood === 'input' || mood === 'question' || mood === 'error'
+      : mood === 'error';
+  if (!hasOwnBadge && mood !== 'idle') {
     const r = TILE * 0.075;
     const cx = INSET + TILE - r * 1.6;
     const cy = INSET + TILE - r * 1.6;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = state === 'error' ? cssVar('--destructive') || '#d04747' : cssVar('--highlight') || '#f08a3a';
+    ctx.fillStyle = cssVar('--highlight') || '#f08a3a';
     ctx.fill();
     ctx.lineWidth = r * 0.35;
     ctx.strokeStyle = cssVar('--sidebar') || '#222';

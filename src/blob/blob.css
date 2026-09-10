@@ -25,24 +25,44 @@
   transition: transform 90ms linear;
 }
 
-/* Idle: a slow, barely-there breathe so the blobs feel alive without being busy. */
+/* Idle and thinking share a slow, barely-there breathe. */
 .blob-glyph[data-state='idle'] .blob-body,
-.blob-grok[data-state='idle'] .blob-hop {
+.blob-grok[data-mood='idle'] .blob-hop,
+.blob-grok[data-mood='thinking'] .blob-hop {
   animation: blob-breathe 4.2s ease-in-out infinite;
-  animation-delay: inherit;
 }
 
 .blob-glyph[data-state='active'] .blob-body {
   animation: blob-bob 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
-/* Working: big squash-and-stretch hops, with an occasional somersault layered on top. */
-.blob-grok[data-state='active'] .blob-hop {
+/* Busy: big squash-and-stretch hops, with an occasional somersault layered on top. */
+.blob-grok[data-mood='busy'] .blob-hop {
   animation: blob-hop 0.9s cubic-bezier(0.4, 0, 0.5, 1) infinite;
 }
 
-.blob-grok[data-state='active'] .blob-flip {
+.blob-grok[data-mood='busy'] .blob-flip {
   animation: blob-flip 12s cubic-bezier(0.62, 0, 0.38, 1) infinite;
+}
+
+/* Input / question / error move the body itself, no hop. */
+.blob-grok[data-mood='input'] {
+  animation: blob-wiggle 1.4s ease-in-out infinite;
+}
+
+.blob-grok[data-mood='question'] {
+  animation: blob-tilt 2.6s ease-in-out infinite;
+}
+
+.blob-grok[data-mood='error'] {
+  animation: blob-wobble 1.6s ease-in-out infinite;
+}
+
+/* Thinking: a soft single arc, loading-style. */
+.blob-grok .blob-arc {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: blob-spin 4s linear infinite;
 }
 
 .blob[data-state='needs-input'] {
@@ -175,6 +195,35 @@
   }
 }
 
+@keyframes blob-wobble {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-5deg);
+  }
+  75% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes blob-tilt {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes blob-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes blob-shake {
   10%,
   90% {
@@ -201,6 +250,7 @@
   .blob .blob-eyes,
   .blob .blob-hop,
   .blob .blob-flip,
+  .blob .blob-arc,
   .blob .blob-orbit {
     animation: none !important;
   }
