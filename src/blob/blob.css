@@ -14,22 +14,35 @@
   transform-origin: center;
 }
 
+/* Grok's hop/flip wrappers rotate around the viewBox centre so body and eyes stay locked. */
+.blob-grok .blob-hop,
+.blob-grok .blob-flip {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+
 .blob .blob-eyes .blob-pupil {
   transition: transform 90ms linear;
 }
 
 /* Idle: a slow, barely-there breathe so the blobs feel alive without being busy. */
-.blob[data-state='idle'] .blob-body {
+.blob-glyph[data-state='idle'] .blob-body,
+.blob-grok[data-state='idle'] .blob-hop {
   animation: blob-breathe 4.2s ease-in-out infinite;
   animation-delay: inherit;
 }
 
-.blob[data-state='active'] .blob-body {
+.blob-glyph[data-state='active'] .blob-body {
   animation: blob-bob 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
-.blob[data-state='active'] .blob-eyes {
-  animation: blob-bob 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+/* Working: big squash-and-stretch hops, with an occasional somersault layered on top. */
+.blob-grok[data-state='active'] .blob-hop {
+  animation: blob-hop 0.9s cubic-bezier(0.4, 0, 0.5, 1) infinite;
+}
+
+.blob-grok[data-state='active'] .blob-flip {
+  animation: blob-flip 12s cubic-bezier(0.62, 0, 0.38, 1) infinite;
 }
 
 .blob[data-state='needs-input'] {
@@ -115,6 +128,40 @@
   }
 }
 
+@keyframes blob-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  10% {
+    transform: translateY(2%) scale(1.12, 0.86);
+  }
+  42% {
+    transform: translateY(-26%) scale(0.9, 1.14);
+  }
+  62% {
+    transform: translateY(-26%) scale(0.92, 1.12);
+  }
+  82% {
+    transform: translateY(0) scale(1.16, 0.82);
+  }
+  92% {
+    transform: translateY(-5%) scale(0.97, 1.04);
+  }
+}
+
+/* Mostly still; once per cycle it winds up and does a full somersault. */
+@keyframes blob-flip {
+  0%,
+  86% {
+    transform: rotate(0deg);
+  }
+  94%,
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes blob-wiggle {
   0%,
   100% {
@@ -152,6 +199,8 @@
   .blob,
   .blob .blob-body,
   .blob .blob-eyes,
+  .blob .blob-hop,
+  .blob .blob-flip,
   .blob .blob-orbit {
     animation: none !important;
   }

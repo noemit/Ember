@@ -20,7 +20,7 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
   const leftPupil = React.useRef<SVGGElement>(null);
   const rightPupil = React.useRef<SVGGElement>(null);
 
-  const { color, shape, tilt, wobbleDelay } = React.useMemo(() => {
+  const { color, shape, tilt, wobbleDelay, flipDelay, flipDuration } = React.useMemo(() => {
     const resolved = identity ?? seedIdentity(seed);
     const colorRng = mulberry32(hashString(`grok:${resolved.colorSeed}`));
     const shapeRng = mulberry32(hashString(`grok:${resolved.shapeSeed}`));
@@ -42,6 +42,10 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
         GROK_SHAPES[Math.floor(shapeRng() * GROK_SHAPES.length)],
       tilt: Math.round((motionRng() - 0.5) * 16),
       wobbleDelay: -(motionRng() * 4).toFixed(2),
+      // Working blobs flip once every ~9–16s; the negative delay spreads them out so a busy list
+      // never somersaults in unison.
+      flipDelay: -(motionRng() * 16).toFixed(2),
+      flipDuration: (9 + motionRng() * 7).toFixed(2),
     };
   }, [identity, seed]);
 
@@ -76,13 +80,20 @@ export default function GrokBlob({ seed, identity, size = 30, state = 'idle', in
     >
       <svg viewBox="0 0 100 100" width={size} height={size} style={{ overflow: 'visible' }}>
         {needsInput ? <OrbitRing.Back cx={50} cy={50} r={44} /> : null}
-        <g className="blob-body" transform={`rotate(${tilt} 50 50)`}>
-          <path d={shape.path} fill={color.fill} />
-          {isError && <path d={shape.path} fill="rgba(0,0,0,0.28)" />}
-        </g>
-        <g className="blob-eyes">
-          {renderEye(-shape.eyeGap, leftPupil)}
-          {renderEye(shape.eyeGap, rightPupil)}
+        <g className="blob-hop" style={{ animationDelay: `${wobbleDelay}s` }}>
+          <g
+            className="blob-flip"
+            style={{ animationDuration: `${flipDuration}s`, animationDelay: `${flipDelay}s` }}
+          >
+            <g className="blob-body" transform={`rotate(${tilt} 50 50)`}>
+              <path d={shape.path} fill={color.fill} />
+              {isError && <path d={shape.path} fill="rgba(0,0,0,0.28)" />}
+            </g>
+            <g className="blob-eyes">
+              {renderEye(-shape.eyeGap, leftPupil)}
+              {renderEye(shape.eyeGap, rightPupil)}
+            </g>
+          </g>
         </g>
         {needsInput ? <OrbitRing.Front cx={50} cy={50} r={44} /> : null}
       </svg>

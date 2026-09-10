@@ -178,7 +178,7 @@ const SessionRow = React.memo(function SessionRow({
             <div className="mt-0.5">
               {/* Project/task/session identity is resolved once in App so every surface stays aligned,
                   including across instances that reuse session ids. */}
-              <Blob style={blobStyle} seed={key} identity={identity} size={34} state={state} interactive={false} />
+              <Blob style={blobStyle} seed={key} identity={identity} size={34} state={state} />
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">

@@ -247,11 +247,8 @@ let settings: EmberSettings = {
     'local::ses_a2::ses_a2-1',
   ],
   sessionNotes: {
-    'local::ses_a2': [
-      { id: 'verify-narrow', text: 'Verify the fix on a narrow viewport.' },
-      { id: 'regression-test', text: 'Add a regression test for the completed checklist state.' },
-      { id: 'progress-decision', text: 'Decision: keep the progress indicator visible after onboarding.' },
-    ],
+    'local::ses_a2':
+      'Verify the fix on a narrow viewport.\n\nAdd a regression test for the completed checklist state.\n\nDecision: keep the progress indicator visible after onboarding.',
   },
   composerDrafts: {},
   scheduledSessionBindings: {

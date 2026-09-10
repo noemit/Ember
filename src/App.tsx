@@ -69,7 +69,6 @@ import type {
   QuestionAnswers,
   QuestionRequest,
   Session,
-  SessionNote,
   SessionRef,
   StoredComposerDraft,
   NewSessionOptions,
@@ -1363,40 +1362,15 @@ export default function App() {
     handleSettings({ composerDrafts }, { preserveActionError: true });
   };
 
-  const handleSessionNotes = (notes: SessionNote[]) => {
-    if (!selectedKey) return;
-    const sessionNotes = { ...settings.sessionNotes };
-    const clean = notes
-      .map((note) => ({ id: note.id, text: note.text.slice(0, 20_000) }))
-      .filter((note) => note.text.trim())
-      .slice(-100);
-    if (clean.length) sessionNotes[selectedKey] = clean;
-    else delete sessionNotes[selectedKey];
+  const handleSessionNoteChange = (key: string, text: string) => {
+    if (!key) return;
+    const clean = text.slice(0, 20_000);
+    const current = settingsRef.current.sessionNotes;
+    if ((current[key] ?? '') === clean) return;
+    const sessionNotes = { ...current };
+    if (clean.trim()) sessionNotes[key] = clean;
+    else delete sessionNotes[key];
     handleSettings({ sessionNotes });
-  };
-
-  const handleDeleteSessionNote = (deleted: SessionNote) => {
-    if (!selectedKey) return;
-    const key = selectedKey;
-    const current = settingsRef.current.sessionNotes[key] ?? [];
-    const index = current.findIndex((note) => note.id === deleted.id);
-    if (index < 0) return;
-    handleSessionNotes(current.filter((note) => note.id !== deleted.id));
-    showActionError(null);
-    setActionNotice({
-      message: 'Note deleted.',
-      actionLabel: 'Undo',
-      action: () => {
-        const latest = settingsRef.current.sessionNotes[key] ?? [];
-        if (latest.some((note) => note.id === deleted.id)) return;
-        const restored = [...latest];
-        restored.splice(Math.min(index, restored.length), 0, deleted);
-        handleSettings({
-          sessionNotes: { ...settingsRef.current.sessionNotes, [key]: restored },
-        });
-        setActionNotice({ message: 'Note restored.' });
-      },
-    });
   };
 
   const newSessionInstanceDefaults = newSessionInstanceId ? settings.instanceDefaults[newSessionInstanceId] : undefined;
@@ -1569,13 +1543,12 @@ export default function App() {
               reloading={selectedKey ? reloadingKeys.has(selectedKey) : false}
               bypass={bypass}
               pinnedMessageIds={pinnedMessageIds}
-              sessionNotes={selectedKey ? settings.sessionNotes[selectedKey] ?? [] : []}
+              sessionNote={selectedKey ? settings.sessionNotes[selectedKey] ?? '' : ''}
               savedComposerDrafts={settings.composerDrafts}
               composerDraftsHydrated={settingsLoaded}
               onComposerDraftsChange={handleComposerDraftsChange}
               onTogglePin={handleTogglePin}
-              onSessionNotesChange={handleSessionNotes}
-              onDeleteNote={handleDeleteSessionNote}
+              onSessionNoteChange={handleSessionNoteChange}
               onBypassChange={(enabled) => {
                 if (selected) void setYolo(selected, enabled, selectedSession?.directory);
               }}

@@ -65,17 +65,18 @@ describe('appearance settings validation', () => {
     expect(parseColorAssignments({ marker: 11, overflow: 12 }, 12)).toEqual({ marker: 11 });
   });
 
-  test('migrates legacy notes and keeps bounded note lists', () => {
+  test('migrates legacy note lists into one bounded string per session', () => {
     const unsafe = JSON.parse('{"local::session":"next prompt","__proto__":"bad"}');
     expect(parseSessionNotes(unsafe)).toEqual({
-      'local::session': [{ id: 'legacy', text: 'next prompt' }],
+      'local::session': 'next prompt',
     });
     expect(parseSessionNotes({
       valid: [{ id: 'note-1', text: 'one' }, { text: 'two' }],
       tooLong: [{ id: 'note-2', text: 'x'.repeat(20_001) }],
       empty: [],
     })).toEqual({
-      valid: [{ id: 'note-1', text: 'one' }, { id: 'legacy-1', text: 'two' }],
+      valid: 'one\n\ntwo',
+      tooLong: 'x'.repeat(20_000),
     });
   });
 

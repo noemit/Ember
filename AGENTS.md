@@ -70,15 +70,17 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/blob/` — session avatars. `Blob.tsx` switches between `GrokBlob` ("Buddy", flat) and
   `GlyphBlob` (hand-drawn icons, no eyes); Gem and Critter were removed, and stored settings that
   still name them fall back to the default. Renderers memoize on the `identity` object, so App
-  hands back the previous reference when nothing changed. `blob/seed.ts` resolves three identity
-  channels: project/directory + instance picks colour, a scheduled-task binding (or session key)
-  picks shape, and the session key picks tilt/motion. OpenChamber task bindings come from each
-  project's scheduled-task endpoint and observed `lastSessionId` mappings are retained in Ember
-  settings. Session/task/project overrides store only curated colour indexes and shape names.
-  Project colours use a persisted 64-entry allocation queue, exhausting every colour before
-  cycling; optional per-instance underlines use a separate 12-colour marker palette. `glyphs.ts`
-  is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}` = colour, `{id}` =
-  per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours come from
+  hands back the previous reference when nothing changed. Grok pupils track the cursor only while
+  it's within `NEAR_RADIUS` (`usePupilTracking.ts`), and active Grok blobs do squash-and-stretch
+  hops with a per-blob occasional somersault (`blob-hop`/`blob-flip` in `blob.css`). `blob/seed.ts`
+  resolves three identity channels: project/directory + instance picks colour, a scheduled-task
+  binding (or session key) picks shape, and the session key picks tilt/motion. OpenChamber task
+  bindings come from each project's scheduled-task endpoint and observed `lastSessionId` mappings
+  are retained in Ember settings. Session/task/project overrides store only curated colour indexes
+  and shape names. Project colours use a persisted 64-entry allocation queue, exhausting every
+  colour before cycling; optional per-instance underlines use a separate 12-colour marker palette.
+  `glyphs.ts` is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}` = colour,
+  `{id}` = per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours come from
   `--glyph-0..63`, which `applyTheme` sets after `blob/contrast.ts` nudges each palette colour's
   lightness to ≥3:1 against the theme's panel/elev/bg.
 - `src/blob/dockIcon.ts` — rasterises the selected session's blob (via `renderToStaticMarkup`,
@@ -91,10 +93,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   output/diff), collapsed reasoning, file parts, permission + question cards, model-named live
   activity line (suppressed until initial history resolves), pin-to-bottom scrolling (ResizeObserver +
   `scrollend`), and message jump/highlight support.
-- `src/components/SessionContextPanel.tsx` — persistent notes/pins side panel. Notes are keyed by
-  session, stored in Ember settings as up to 100 selectable text entries, and selected notes append
-  to the composer without replacing its draft; deleting a note offers undo. Pin actions jump, reply,
-  or unpin without changing OpenChamber data.
+- `src/components/SessionContextPanel.tsx` — one freeform note per session, rendered as a
+  composer-style input (no header, no scroll region) beside the composer. Edits are debounced and
+  flushed on blur, unmount, or session switch; the note is stored in Ember settings keyed by
+  session. `PinnedMessagesDialog.tsx` shows the selected session's pinned messages in a modal,
+  opened from the pin chip in the chat header; its Jump/Reply/Unpin actions reuse the transcript
+  handlers and change no OpenChamber data.
 - `src/components/Markdown.tsx` — assistant prose via `react-markdown` + `remark-gfm` (no raw
   HTML). A small rehype plugin reuses `Linkify.tsx`'s tokenizer to link bare local paths; all
   anchors route through `window.ember.openExternal`.

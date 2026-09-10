@@ -274,11 +274,6 @@ export type ModelOption = ModelRef & {
   details: ModelDetails;
 };
 
-export type SessionNote = {
-  id: string;
-  text: string;
-};
-
 export type StoredComposerDraft = {
   text: string;
   modelId?: string;
@@ -293,7 +288,7 @@ export type EmberSettings = {
   sessionWindowHours: number;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
-  sessionNotes: Record<string, SessionNote[]>;
+  sessionNotes: Record<string, string>;
   composerDrafts: Record<string, StoredComposerDraft>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, AvatarOverride>;

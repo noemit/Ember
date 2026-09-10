@@ -111,37 +111,25 @@ export const parseColorAssignments = (value: unknown, colorCount = 64): Record<s
   );
 };
 
-export type StoredSessionNote = {
-  id: string;
-  text: string;
-};
-
-const toStoredSessionNote = (value: unknown, fallbackId: string): StoredSessionNote | null => {
-  if (typeof value === 'string') {
-    return value.trim() && value.length <= 20_000 ? { id: fallbackId, text: value } : null;
-  }
-  if (!value || typeof value !== 'object') return null;
-  const entry = value as Record<string, unknown>;
-  const text = typeof entry.text === 'string' ? entry.text : '';
-  if (!text.trim() || text.length > 20_000) return null;
-  const id = typeof entry.id === 'string' && /^[a-z0-9_-]{1,120}$/i.test(entry.id)
-    ? entry.id
-    : fallbackId;
-  return { id, text };
-};
-
-export const parseSessionNotes = (value: unknown): Record<string, StoredSessionNote[]> => {
+/** A single freeform note per session; legacy arrays of `{ id, text }` collapse into one string. */
+export const parseSessionNotes = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== 'object') return {};
-  const notes: Record<string, StoredSessionNote[]> = {};
+  const notes: Record<string, string> = {};
   Object.entries(value as Record<string, unknown>)
     .filter(([key]) => !UNSAFE_RECORD_KEYS.has(key) && key.length > 0 && key.length <= 500)
     .slice(0, 2000)
     .forEach(([key, raw]) => {
-      const parsed = (Array.isArray(raw) ? raw : [raw])
-        .slice(0, 100)
-        .map((entry, index) => toStoredSessionNote(entry, index === 0 ? 'legacy' : `legacy-${index}`))
-        .filter((entry): entry is StoredSessionNote => Boolean(entry));
-      if (parsed.length) notes[key] = parsed;
+      const text = (Array.isArray(raw) ? raw : [raw])
+        .map((entry) => {
+          if (typeof entry === 'string') return entry;
+          if (!entry || typeof entry !== 'object') return '';
+          const record = entry as Record<string, unknown>;
+          return typeof record.text === 'string' ? record.text : '';
+        })
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join('\n\n');
+      if (text) notes[key] = text.slice(0, 20_000);
     });
   return notes;
 };
@@ -234,7 +222,7 @@ export type EmberSettings = {
   sessionWindowHours: number;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
-  sessionNotes: Record<string, StoredSessionNote[]>;
+  sessionNotes: Record<string, string>;
   composerDrafts: Record<string, StoredComposerDraft>;
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, StoredAvatarOverride>;

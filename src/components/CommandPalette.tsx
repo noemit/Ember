@@ -61,7 +61,7 @@ export default function CommandPalette({
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
       .map((session): PaletteItem => {
         const key = sessionKey(session);
-        const notes = (sessionNotes[key] ?? []).map((note) => note.text).join('\n');
+        const notes = sessionNotes[key] ?? '';
         const instance = instances.find((candidate) => candidate.id === session.instanceId);
         return {
           type: 'session',
@@ -173,7 +173,7 @@ export default function CommandPalette({
                   <CommandGroup heading="Sessions">
                     {sessionItems.map((item) => {
                       const key = sessionKey(item.session);
-                      const noteCount = sessionNotes[key]?.length ?? 0;
+                      const hasNote = Boolean(sessionNotes[key]?.trim());
                       return (
                         <CommandItem
                           key={item.id}
@@ -190,7 +190,7 @@ export default function CommandPalette({
                               {instances.find((instance) => instance.id === item.session.instanceId)?.label ??
                                 item.session.instanceId}
                               {item.session.directory ? ` · ${item.session.directory}` : ''}
-                              {noteCount ? ` · ${noteCount} ${noteCount === 1 ? 'note' : 'notes'}` : ''}
+                              {hasNote ? ' · has notes' : ''}
                             </span>
                           </span>
                           <span

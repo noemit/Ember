@@ -38,7 +38,6 @@ import type {
   QuestionAnswers,
   QuestionRequest,
   Session,
-  SessionNote,
   StoredComposerDraft,
 } from '../types';
 
@@ -48,6 +47,7 @@ const Transcript = React.lazy(() => import('./Transcript'));
 const SessionContextPanel = React.lazy(() => import('./SessionContextPanel'));
 const ProjectPicker = React.lazy(() => import('./ProjectPicker'));
 const QueuedMessageList = React.lazy(() => import('./QueuedMessageList'));
+const PinnedMessagesDialog = React.lazy(() => import('./PinnedMessagesDialog'));
 
 const TranscriptFallback = () => (
   <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground" role="status">
@@ -81,13 +81,12 @@ type Props = {
   reloading: boolean;
   bypass: boolean;
   pinnedMessageIds: Set<string>;
-  sessionNotes: SessionNote[];
+  sessionNote: string;
   savedComposerDrafts: Record<string, StoredComposerDraft>;
   composerDraftsHydrated: boolean;
   onComposerDraftsChange: (drafts: Record<string, StoredComposerDraft>) => void;
   onTogglePin: (message: ChatMessage) => void;
-  onSessionNotesChange: (notes: SessionNote[]) => void;
-  onDeleteNote: (note: SessionNote) => void;
+  onSessionNoteChange: (sessionKey: string, text: string) => void;
   onBypassChange: (enabled: boolean) => void;
   onNewSessionInstanceChange: (instanceId: string) => void;
   /** Draft submit: create the session, then send the first message into it. */
@@ -217,13 +216,12 @@ export default function ChatView({
   reloading,
   bypass,
   pinnedMessageIds,
-  sessionNotes,
+  sessionNote,
   savedComposerDrafts,
   composerDraftsHydrated,
   onComposerDraftsChange,
   onTogglePin,
-  onSessionNotesChange,
-  onDeleteNote,
+  onSessionNoteChange,
   onBypassChange,
   onNewSessionInstanceChange,
   onCreateAndSend,
@@ -248,8 +246,7 @@ export default function ChatView({
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [replyContext, setReplyContext] = React.useState<ChatMessage | null>(null);
   const [contextOpen, setContextOpen] = React.useState(false);
-  const [contextSection, setContextSection] = React.useState<'notes' | 'pins'>('notes');
-  const [contextRequest, setContextRequest] = React.useState(0);
+  const [pinnedOpen, setPinnedOpen] = React.useState(false);
   const [focusMessageId, setFocusMessageId] = React.useState<string | null>(null);
   const [focusRequest, setFocusRequest] = React.useState(0);
   const [now, setNow] = React.useState(() => Date.now());
@@ -532,31 +529,10 @@ export default function ChatView({
     setReplyContext(null);
   };
 
-  const openContext = (section: 'notes' | 'pins') => {
-    setContextSection(section);
-    setContextRequest((request) => request + 1);
-    setContextOpen(true);
-  };
+  const openNotes = () => setContextOpen(true);
 
   const replyToMessage = (message: ChatMessage) => {
     setReplyContext(message);
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
-  };
-
-  const insertNotes = (noteText: string) => {
-    setText((current) => {
-      const next = current.trim() ? `${current}\n\n${noteText.trim()}` : noteText.trim();
-      if (composerKey) {
-        updateComposerDraft(composerKey, {
-          text: next,
-          modelId,
-          variant,
-          attachments,
-          replyContext,
-        });
-      }
-      return next;
-    });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
@@ -585,7 +561,6 @@ export default function ChatView({
                 identity={identity}
                 size={24}
                 state={state}
-                interactive={false}
               />
               <span
                 className="min-w-0 flex-1 truncate text-[13px] font-medium"
@@ -624,7 +599,7 @@ export default function ChatView({
                 </Badge>
               ) : null}
               {pinnedMessages.length ? (
-                <Button variant="secondary" size="sm" className="h-7 rounded-full px-2.5 text-xs" onClick={() => openContext('pins')}>
+                <Button variant="secondary" size="sm" className="h-7 rounded-full px-2.5 text-xs" onClick={() => setPinnedOpen(true)}>
                   <Pin />
                   {pinnedMessages.length} {pinnedMessages.length === 1 ? 'pin' : 'pins'}
                 </Button>
@@ -697,19 +672,10 @@ export default function ChatView({
               <SessionContextPanel
                 open={contextOpen}
                 sessionKey={composerKey ?? ''}
-                sessionTitle={session.title ?? session.id}
-                notes={sessionNotes}
-                pinnedMessages={pinnedMessages}
-                focusSection={contextSection}
-                focusRequest={contextRequest}
+                note={sessionNote}
                 onClose={() => setContextOpen(false)}
-                onOpen={openContext}
-                onNotesChange={onSessionNotesChange}
-                onDeleteNote={onDeleteNote}
-                onInsertNotes={insertNotes}
-                onJump={jumpToMessage}
-                onReply={replyToMessage}
-                onUnpin={onTogglePin}
+                onOpen={openNotes}
+                onNoteChange={onSessionNoteChange}
               />
             </React.Suspense>
             ) : null}
@@ -830,7 +796,7 @@ export default function ChatView({
                   submit();
                 }
               }}
-              className="min-h-9 w-full bg-transparent px-3 pt-2 pb-1 text-base placeholder:text-muted-foreground disabled:cursor-not-allowed sm:px-3.5 sm:text-[13px]"
+              className="min-h-9 w-full bg-transparent px-3 pt-2 pb-1 text-base placeholder:text-muted-foreground focus-visible:border-input focus-visible:ring-0 disabled:cursor-not-allowed sm:px-3.5 sm:text-[13px]"
             />
 
             <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 sm:gap-1.5">
@@ -1013,6 +979,23 @@ export default function ChatView({
         </div>
       ) : null}
       </div>
+
+      <React.Suspense fallback={null}>
+        <PinnedMessagesDialog
+          open={pinnedOpen}
+          onOpenChange={setPinnedOpen}
+          messages={pinnedMessages}
+          onJump={(messageId) => {
+            setPinnedOpen(false);
+            jumpToMessage(messageId);
+          }}
+          onReply={(message) => {
+            setPinnedOpen(false);
+            replyToMessage(message);
+          }}
+          onUnpin={onTogglePin}
+        />
+      </React.Suspense>
     </main>
   );
 }
