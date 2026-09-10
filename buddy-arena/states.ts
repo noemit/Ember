@@ -213,6 +213,7 @@ const card = (design: StateDesign): string => `
   <button class="card" type="button" data-name="${design.id}">
     <div class="stage">${renderBlob(design)}</div>
     <span class="label">${design.name}</span>
+    <span class="id">${design.id}</span>
     <span class="desc">${design.description}</span>
   </button>`;
 
@@ -256,6 +257,7 @@ export const STATES_PAGE = `<!doctype html>
   header a { color: var(--highlight); text-decoration: none; }
   .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   input[type=range] { width: 120px; accent-color: var(--highlight); }
+  .size-value { display: inline-block; width: 42px; color: var(--text); font-variant-numeric: tabular-nums; }
   .toggle { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; }
   .toggle[aria-pressed=true] { border-color: var(--highlight); color: var(--highlight); }
   main { padding: 18px 20px 90px; }
@@ -273,6 +275,7 @@ export const STATES_PAGE = `<!doctype html>
   .card.picked { border-color: var(--highlight); box-shadow: 0 0 0 3px color-mix(in oklab, var(--highlight) 30%, transparent); }
   .stage { display: grid; place-items: center; height: calc(var(--size) + 14px); }
   .label { font-weight: 600; font-size: 12.5px; }
+  .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: var(--dim); opacity: 0.75; }
   .desc { color: var(--dim); font-size: 11px; line-height: 1.35; }
   .blob svg { display: block; width: var(--size); height: var(--size); overflow: visible; transform-origin: 50% 50%; }
   .blob .hop, .blob .flip { transform-box: view-box; transform-origin: 50% 50%; }
@@ -311,12 +314,12 @@ export const STATES_PAGE = `<!doctype html>
   @keyframes twinkle { 0%, 100% { transform: scale(0.7); opacity: 0.5; } 50% { transform: scale(1.15); opacity: 1; } }
   @keyframes dot { 0%, 100% { transform: translateY(0); opacity: 0.45; } 50% { transform: translateY(-4px); opacity: 1; } }
   @keyframes roam {
-    0%, 100% { transform: translate(0, -3); }
-    15% { transform: translate(-4, -2); }
-    32% { transform: translate(4, -2); }
-    50% { transform: translate(0, 1); }
-    68% { transform: translate(-4, 1); }
-    85% { transform: translate(4, -1); }
+    0%, 100% { transform: translate(0px, -3px); }
+    15% { transform: translate(-5px, -2px); }
+    32% { transform: translate(5px, -2px); }
+    50% { transform: translate(0px, 2px); }
+    68% { transform: translate(-5px, 1px); }
+    85% { transform: translate(5px, -1px); }
   }
   @keyframes tear { 0% { transform: translateY(0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(10px); opacity: 0; } }
   @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
@@ -334,7 +337,7 @@ export const STATES_PAGE = `<!doctype html>
   <h1>Buddy state review</h1>
   <p>Alternatives for the blob's state visuals. Click to shortlist. <a href="/">← shape review</a></p>
   <div class="controls">
-    <label>Size <input id="size" type="range" min="48" max="140" value="92" /></label>
+    <label>Size <input id="size" type="range" min="48" max="140" value="92" /> <span class="size-value" id="sizeValue">92px</span></label>
     <button class="toggle" id="dark" aria-pressed="false">Dark</button>
   </div>
 </header>
@@ -354,7 +357,11 @@ export const STATES_PAGE = `<!doctype html>
   const root = document.documentElement;
   const body = document.body;
   const size = document.getElementById('size');
-  size.addEventListener('input', () => root.style.setProperty('--size', size.value + 'px'));
+  const sizeValue = document.getElementById('sizeValue');
+  size.addEventListener('input', () => {
+    root.style.setProperty('--size', size.value + 'px');
+    sizeValue.textContent = size.value + 'px';
+  });
   const dark = document.getElementById('dark');
   dark.addEventListener('click', () => {
     const on = dark.getAttribute('aria-pressed') !== 'true';

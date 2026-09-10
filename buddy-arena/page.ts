@@ -69,6 +69,7 @@ export const PAGE = `<!doctype html>
   .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .controls label { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
   input[type=range] { width: 130px; accent-color: var(--accent); }
+  .size-value { display: inline-block; width: 42px; color: var(--text); font-variant-numeric: tabular-nums; }
   .toggle {
     display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
     border: 1px solid var(--border); background: var(--panel); color: var(--text);
@@ -123,7 +124,7 @@ export const PAGE = `<!doctype html>
   <h1>Buddy shape review</h1>
   <p>Every shipped silhouette. <strong>Hand-drawn</strong> are the originals; <strong>Generated</strong> are radial-harmonic blobs. Resize and toggle hops to see how they hold up small. <a href="/states" style="color:var(--accent)">state review →</a></p>
   <div class="controls">
-    <label>Size <input id="size" type="range" min="24" max="120" value="76" /></label>
+    <label>Size <input id="size" type="range" min="24" max="120" value="76" /> <span class="size-value" id="sizeValue">76px</span></label>
     <button class="toggle" id="animate" aria-pressed="true">Breathe</button>
     <button class="toggle" id="hop" aria-pressed="false">Hops</button>
     <button class="toggle" id="dark" aria-pressed="false">Dark</button>
@@ -144,7 +145,11 @@ export const PAGE = `<!doctype html>
   const root = document.documentElement;
   const body = document.body;
   const size = document.getElementById('size');
-  size.addEventListener('input', () => root.style.setProperty('--size', size.value + 'px'));
+  const sizeValue = document.getElementById('sizeValue');
+  size.addEventListener('input', () => {
+    root.style.setProperty('--size', size.value + 'px');
+    sizeValue.textContent = size.value + 'px';
+  });
   const bindToggle = (id, cls) => {
     const el = document.getElementById(id);
     el.addEventListener('click', () => {
