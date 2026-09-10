@@ -591,6 +591,18 @@ export default function ChatView({
     return sent;
   };
 
+  // Move a queued message out of the server queue and into this session's notes.
+  const parkQueuedItem = async (itemId: string): Promise<boolean> => {
+    if (!composerKey) return false;
+    const item = queueItems.find((entry) => entry.id === itemId);
+    const text = item ? item.text.trim() || item.content.trim() : '';
+    if (!text) return false;
+    const removed = await onRemoveQueued(itemId);
+    if (!removed) return false;
+    onSaveNote(composerKey, text);
+    return true;
+  };
+
   const replyToMessage = (message: ChatMessage) => {
     setReplyContext(message);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -825,6 +837,7 @@ export default function ChatView({
                 onQueuedModelChange={onQueuedModelChange}
                 onMoveQueued={onMoveQueued}
                 onRemoveQueued={onRemoveQueued}
+                onParkQueued={parkQueuedItem}
               />
             </React.Suspense>
             ) : null}

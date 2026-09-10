@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronUp, ListOrdered, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, ListOrdered, Loader2, NotebookPen } from 'lucide-react';
 import { modelRefKey } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ type Props = {
   onQueuedModelChange: (itemId: string, model: ModelOption) => Promise<boolean>;
   onMoveQueued: (itemId: string, direction: -1 | 1) => Promise<boolean>;
   onRemoveQueued: (itemId: string) => Promise<boolean>;
+  onParkQueued: (itemId: string) => Promise<boolean>;
 };
 
 /**
@@ -40,6 +41,7 @@ export default function QueuedMessageList({
   onQueuedModelChange,
   onMoveQueued,
   onRemoveQueued,
+  onParkQueued,
 }: Props) {
   const [queueModelPickerItemId, setQueueModelPickerItemId] = React.useState<string | null>(null);
   // Queue mutations round-trip to the server; lock the row so a double-click can't fire two.
@@ -160,6 +162,19 @@ export default function QueuedMessageList({
                         title="Move down"
                       >
                         <ChevronDown />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        disabled={busy || !(item.text.trim() || item.content.trim())}
+                        onClick={() => void runQueueAction(item.id, () => onParkQueued(item.id))}
+                        aria-label={`Park queued message as a note: ${preview.slice(0, 60)}`}
+                        title="Park it as a note"
+                        className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+                      >
+                        <NotebookPen />
+                        Park it
                       </Button>
                       <Button
                         type="button"
