@@ -73,6 +73,7 @@ export const STATE_DESIGNS: StateDesign[] = [
   { id: 'e-dizzy', state: 'error', name: 'Dizzy', description: 'Spiral eyes and a woozy wobble.', eyes: 'dizzy', overlay: 'none', motion: 'wobble', accent: 'danger' },
   { id: 'e-sad', state: 'error', name: 'Sad + tear', description: 'Drooping brows and a single tear.', eyes: 'sad', overlay: 'tear', motion: 'breathe', accent: 'danger' },
   { id: 'e-badge', state: 'error', name: 'Warning triangle', description: 'A red triangle badge — distinct from the round input alert.', eyes: 'normal', overlay: 'errorBadge', motion: 'shake', accent: 'danger' },
+  { id: 'e-x-badge', state: 'error', name: 'X eyes + badge', description: 'Crossed eyes with the warning triangle and a woozy wobble.', eyes: 'x', overlay: 'errorBadge', motion: 'wobble', accent: 'danger' },
   { id: 'e-crack', state: 'error', name: 'Cracked', description: 'X eyes with a crack across the body.', eyes: 'x', overlay: 'crack', motion: 'shake', accent: 'danger' },
 ];
 
