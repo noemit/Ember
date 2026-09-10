@@ -192,9 +192,11 @@ const generatedShape = (seed: number): Omit<GrokShape, 'name'> => {
   return buildGeneratedShape(radius, topScale, bottomScale, harmonics);
 };
 
-const GENERATED_GROK_SHAPES: GrokShape[] = Array.from({ length: 24 }, (_, index) => ({
-  name: `c${String(index + 1).padStart(2, '0')}`,
-  ...generatedShape(index + 1),
+const GENERATED_GROK_SHAPES: GrokShape[] = [
+  2, 3, 4, 5, 6, 9, 10, 12, 14, 15, 16, 19, 20, 21, 22, 23, 24,
+].map((seed) => ({
+  name: `c${String(seed).padStart(2, '0')}`,
+  ...generatedShape(seed),
 }));
 
 export const GROK_SHAPES: GrokShape[] = [...BASE_GROK_SHAPES, ...GENERATED_GROK_SHAPES];
