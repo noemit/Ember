@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { blobColor } from './src/blob/color';
 import {
   AVATAR_COLOR_COUNT,
+  colorHue,
   contrastRatio,
   GLYPH_COLORS,
   glyphPaletteFor,
@@ -67,6 +68,15 @@ describe('blob colours', () => {
           `${GLYPH_COLORS[i]} vs ${GLYPH_COLORS[j]}`
         ).toBeGreaterThanOrEqual(MIN_GLYPH_DISTANCE);
       }
+    }
+  });
+
+  test('orders the glyph palette as a rainbow', () => {
+    for (let index = 1; index < GLYPH_COLORS.length; index += 1) {
+      expect(
+        colorHue(GLYPH_COLORS[index]),
+        `${GLYPH_COLORS[index]} should follow ${GLYPH_COLORS[index - 1]}`
+      ).toBeGreaterThanOrEqual(colorHue(GLYPH_COLORS[index - 1]));
     }
   });
 

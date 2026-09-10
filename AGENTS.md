@@ -95,7 +95,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `glyphs.ts` is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}` = colour,
   `{id}` = per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours are chosen in
   OKLCH by farthest-point sampling so the 24 base entries keep a minimum OKLab distance (no HSL
-  near-duplicate greens/blues); `applyTheme` emits `--glyph-0..23` after `blob/contrast.ts` adjusts the
+  near-duplicate greens/blues), then sorted by hue so the appearance picker reads as a rainbow;
+  `applyTheme` emits `--glyph-0..23` after `blob/contrast.ts` adjusts the
   whole palette together — clamping each colour to ≥3:1 against the theme's panel/elev/bg while pushing
   close pairs apart, rather than per-colour clamping that collapses them onto one lightness.
 - `src/blob/dockIcon.ts` — rasterises the selected session's blob (via `renderToStaticMarkup`,

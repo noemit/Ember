@@ -100,6 +100,9 @@ const oklabDistance = (a: Oklab, b: Oklab): number =>
 export const perceptualDistance = (a: string, b: string): number =>
   oklabDistance(rgbToOklab(hexToRgb(a)), rgbToOklab(hexToRgb(b)));
 
+/** OKLCH hue of a hex colour in degrees [0, 360); GLYPH_COLORS is sorted by this (rainbow order). */
+export const colorHue = (hex: string): number => rgbToOklch(hexToRgb(hex))[2];
+
 export const AVATAR_COLOR_COUNT = 24;
 export const INSTANCE_MARKER_COLORS = [
   '#3D4EC7', '#A13DB8', '#D13F78', '#C84A3A', '#C66A24', '#9A7A12',
@@ -164,7 +167,11 @@ const buildGlyphColors = (): string[] => {
       nearest[index] = Math.min(nearest[index], oklabDistance(candidate.lab, picked.lab));
     });
   }
-  return chosen.map((candidate) => candidate.hex);
+  // Index order is the picker's display order, so lay the picks out as a rainbow (ascending OKLCH
+  // hue). Sampling is order-independent, so this only changes which index a colour lands on.
+  return chosen
+    .sort((a, b) => colorHue(a.hex) - colorHue(b.hex))
+    .map((candidate) => candidate.hex);
 };
 
 export const GLYPH_COLORS = buildGlyphColors();

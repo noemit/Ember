@@ -32,12 +32,12 @@
   --highlight: #ff7a1a;
   --highlight-foreground: #151413;
   /* First entries of the generated palette; applyTheme sets the full --glyph-0..23 at runtime. */
-  --glyph-0: #a34bc3;
-  --glyph-1: #8ed643;
-  --glyph-2: #306406;
-  --glyph-3: #fc6b33;
-  --glyph-4: #2dbbff;
-  --glyph-5: #9e1614;
+  --glyph-0: #cd366c;
+  --glyph-1: #9e1614;
+  --glyph-2: #fc6b33;
+  --glyph-3: #af630f;
+  --glyph-4: #6f4d27;
+  --glyph-5: #dab78c;
 }
 
 @theme inline {
