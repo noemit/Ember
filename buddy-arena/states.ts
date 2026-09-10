@@ -103,8 +103,8 @@ const renderEye = (design: StateDesign, x: number): string => {
 
 const roundBadge = (glyph: string): string => `
   <g class="ov-badge">
-    <circle cx="79" cy="21" r="13" fill="var(--accent)" stroke="var(--bg)" stroke-width="2.5" />
-    <text x="79" y="27" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">${glyph}</text>
+    <circle cx="78" cy="22" r="16" fill="var(--accent)" stroke="var(--bg)" stroke-width="3" />
+    <text x="78" y="29" text-anchor="middle" font-size="21" font-weight="700" fill="#ffffff">${glyph}</text>
   </g>`;
 
 const renderOverlay = (design: StateDesign): { back: string; front: string } => {
@@ -141,8 +141,8 @@ const renderOverlay = (design: StateDesign): { back: string; front: string } => 
         back: '',
         front: `
         <g class="ov-badge">
-          <path d="M79 7 L93 32 H65 Z" fill="${a}" stroke="var(--bg)" stroke-width="2.5" stroke-linejoin="round" />
-          <text x="79" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">!</text>
+          <path d="M78 4 L97 37 H59 Z" fill="${a}" stroke="var(--bg)" stroke-width="3" stroke-linejoin="round" />
+          <text x="78" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">!</text>
         </g>`,
       };
     case 'lock':
@@ -150,9 +150,10 @@ const renderOverlay = (design: StateDesign): { back: string; front: string } => 
         back: '',
         front: `
         <g class="ov-badge">
-          <circle cx="79" cy="21" r="13" fill="${a}" stroke="var(--bg)" stroke-width="2.5" />
-          <rect x="73.5" y="19.5" width="11" height="8.5" rx="1.8" fill="none" stroke="#ffffff" stroke-width="2" />
-          <path d="M75.5 19.5 v-1.5 a3.5 3.5 0 0 1 7 0 V19.5" fill="none" stroke="#ffffff" stroke-width="2" />
+          <circle cx="78" cy="22" r="16" fill="${a}" stroke="var(--bg)" stroke-width="3" />
+          <path d="M73 21 v-3 a5 5 0 0 1 10 0 v3" fill="none" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round" />
+          <rect x="70" y="20.5" width="16" height="12.5" rx="3" fill="#ffffff" />
+          <circle cx="78" cy="26.5" r="1.8" fill="${a}" />
         </g>`,
       };
     case 'dots':
