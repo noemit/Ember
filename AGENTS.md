@@ -63,7 +63,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   project / server default) until the user edits them; switching instance re-seeds. The header's
   wrench toggle flips the global `hideToolCalls` setting, which drops tool-call rows from every
   transcript, and a cyclical thinking button cycles `reasoningDisplay` (expanded → collapsed →
-  hidden). Pressing Up on an empty composer recalls the last message the user sent, and
+  hidden) using `ThinkingIcon` — one brain, with a bar for collapsed and a slash for hidden, cut out
+  of the glyph with a background-coloured casing (reviewed in `buddy-arena/`, `/thinking`). Pressing
+  Up on an empty composer recalls the last message the user sent, and
   Cmd/Ctrl+Enter saves the draft as a note. The same two
   display settings are also editable from the top bar's View options dialog (`ViewOptionsDialog.tsx`).
 - `src/components/LeftRail.tsx` — session list. Rows are a memoized `SessionRow`; the timestamp is

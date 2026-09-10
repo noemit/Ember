@@ -1,4 +1,5 @@
-import { Brain, Wrench } from 'lucide-react';
+import { Wrench } from 'lucide-react';
+import ThinkingIcon from './ThinkingIcon';
 import {
   Dialog,
   DialogContent,
@@ -68,7 +69,7 @@ export default function ViewOptionsDialog({
 
           <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
             <div className="flex min-w-0 items-start gap-2.5">
-              <Brain className="mt-0.5 size-4 flex-none text-muted-foreground" />
+              <ThinkingIcon mode={reasoningDisplay} className="mt-0.5 size-4 flex-none text-muted-foreground" />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="font-medium">Thinking</span>
                 <span className="text-[11px] text-muted-foreground">
