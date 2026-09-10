@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, ChevronDown, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
+import { ArrowUp, Brain, BrainCircuit, ChevronDown, EyeOff, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -37,6 +37,7 @@ import type {
   PermissionRequest,
   QuestionAnswers,
   QuestionRequest,
+  ReasoningDisplay,
   Session,
   SessionNote,
   StoredComposerDraft,
@@ -49,6 +50,15 @@ const SessionNotes = React.lazy(() => import('./SessionNotes'));
 const ProjectPicker = React.lazy(() => import('./ProjectPicker'));
 const QueuedMessageList = React.lazy(() => import('./QueuedMessageList'));
 const PinnedMessagesDialog = React.lazy(() => import('./PinnedMessagesDialog'));
+
+const REASONING_ORDER: ReasoningDisplay[] = ['expanded', 'collapsed', 'hidden'];
+const nextReasoningDisplay = (mode: ReasoningDisplay): ReasoningDisplay =>
+  REASONING_ORDER[(REASONING_ORDER.indexOf(mode) + 1) % REASONING_ORDER.length];
+const REASONING_META: Record<ReasoningDisplay, { Icon: React.ElementType; title: string }> = {
+  expanded: { Icon: BrainCircuit, title: 'Thinking expanded — click to collapse' },
+  collapsed: { Icon: Brain, title: 'Thinking collapsed — click to hide' },
+  hidden: { Icon: EyeOff, title: 'Thinking hidden — click to expand' },
+};
 
 const TranscriptFallback = () => (
   <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground" role="status">
@@ -82,6 +92,7 @@ type Props = {
   reloading: boolean;
   bypass: boolean;
   hideToolCalls: boolean;
+  reasoningDisplay: ReasoningDisplay;
   pinnedMessageIds: Set<string>;
   sessionNotes: SessionNote[];
   savedComposerDrafts: Record<string, StoredComposerDraft>;
@@ -91,6 +102,7 @@ type Props = {
   onSaveNote: (sessionKey: string, text: string) => void;
   onDeleteNote: (sessionKey: string, noteId: string) => void;
   onHideToolCallsChange: (hide: boolean) => void;
+  onReasoningDisplayChange: (mode: ReasoningDisplay) => void;
   onBypassChange: (enabled: boolean) => void;
   onNewSessionInstanceChange: (instanceId: string) => void;
   /** Draft submit: create the session, then send the first message into it. */
@@ -220,6 +232,7 @@ export default function ChatView({
   reloading,
   bypass,
   hideToolCalls,
+  reasoningDisplay,
   pinnedMessageIds,
   sessionNotes,
   savedComposerDrafts,
@@ -229,6 +242,7 @@ export default function ChatView({
   onSaveNote,
   onDeleteNote,
   onHideToolCallsChange,
+  onReasoningDisplayChange,
   onBypassChange,
   onNewSessionInstanceChange,
   onCreateAndSend,
@@ -473,6 +487,7 @@ export default function ChatView({
   const canSend = (session ? true : draftReady) && (text.trim().length > 0 || attachments.length > 0);
   const queueItems = queue?.items ?? [];
   const shouldQueue = Boolean(session && (busy || queueItems.length > 0));
+  const reasoningMeta = REASONING_META[reasoningDisplay];
 
   const submit = () => {
     if (!canSend) return;
@@ -641,6 +656,16 @@ export default function ChatView({
                   {instance.label}
                 </Badge>
               ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onReasoningDisplayChange(nextReasoningDisplay(reasoningDisplay))}
+                aria-label={`Thinking display: ${reasoningDisplay}`}
+                title={reasoningMeta.title}
+                className="h-7 px-2 text-xs"
+              >
+                <reasoningMeta.Icon className="size-3.5" />
+              </Button>
               <Toggle
                 pressed={hideToolCalls}
                 onPressedChange={onHideToolCallsChange}
@@ -665,6 +690,7 @@ export default function ChatView({
                 activeModelLabel={activeModelLabel}
                 accentColor={blobColor(blobStyle, identity)}
                 hideToolCalls={hideToolCalls}
+                reasoningDisplay={reasoningDisplay}
                 pinnedMessageIds={pinnedMessageIds}
                 focusMessageId={focusMessageId}
                 focusRequest={focusRequest}

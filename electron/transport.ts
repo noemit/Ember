@@ -221,6 +221,12 @@ export const BLOB_STYLES: BlobStyle[] = ['grok', 'glyph'];
 export const isBlobStyle = (value: unknown): value is BlobStyle =>
   typeof value === 'string' && (BLOB_STYLES as string[]).includes(value);
 
+export type ReasoningDisplay = 'expanded' | 'collapsed' | 'hidden';
+
+const REASONING_DISPLAYS: ReasoningDisplay[] = ['expanded', 'collapsed', 'hidden'];
+export const isReasoningDisplay = (value: unknown): value is ReasoningDisplay =>
+  typeof value === 'string' && (REASONING_DISPLAYS as string[]).includes(value);
+
 export type InstanceDefaults = {
   directory?: string;
   agent?: string;
@@ -236,6 +242,7 @@ export type EmberSettings = {
   /** Only list sessions active within this many hours; 0 means no limit. */
   sessionWindowHours: number;
   hideToolCalls: boolean;
+  reasoningDisplay: ReasoningDisplay;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
   sessionNotes: Record<string, StoredSessionNote[]>;

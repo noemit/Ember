@@ -78,6 +78,9 @@ export type MessagesStatus = 'loading' | 'error' | 'ready';
 
 export type BlobStyle = 'grok' | 'glyph';
 
+/** How assistant thinking blocks render: fully open, collapsed rows, or not at all. */
+export type ReasoningDisplay = 'expanded' | 'collapsed' | 'hidden';
+
 export type AvatarOverride = {
   colorIndex?: number;
   shapeName?: string;
@@ -293,6 +296,7 @@ export type EmberSettings = {
   sessionWindowHours: number;
   /** Collapse tool-call rows out of the transcript. */
   hideToolCalls: boolean;
+  reasoningDisplay: ReasoningDisplay;
   instanceDefaults: Record<string, InstanceDefaults>;
   pinnedMessages: string[];
   sessionNotes: Record<string, SessionNote[]>;

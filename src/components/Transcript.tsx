@@ -35,6 +35,7 @@ import type {
   QuestionAnswers,
   QuestionInfo,
   QuestionRequest,
+  ReasoningDisplay,
   TokenUsage,
   ToolCall,
 } from '../types';
@@ -57,6 +58,8 @@ type Props = {
   accentColor: string;
   /** Drop tool-call rows from every message. */
   hideToolCalls: boolean;
+  /** How thinking blocks render: open, collapsed, or dropped. */
+  reasoningDisplay: ReasoningDisplay;
   pinnedMessageIds: Set<string>;
   focusMessageId: string | null;
   focusRequest: number;
@@ -249,8 +252,9 @@ const ToolGroupRow = ({ tool, calls }: { tool: string; calls: ToolCall[] }) => {
   );
 };
 
-const ReasoningRow = ({ text }: { text: string }) => {
-  const [open, setOpen] = React.useState(false);
+const ReasoningRow = ({ text, defaultOpen }: { text: string; defaultOpen: boolean }) => {
+  const [open, setOpen] = React.useState(defaultOpen);
+  React.useEffect(() => setOpen(defaultOpen), [defaultOpen]);
   return (
     <div className="flex max-w-[85%] flex-col self-start">
       <button
@@ -599,7 +603,7 @@ const MessageFooter = ({
   );
 };
 
-const renderBlock = (message: ChatMessage, block: Block) => {
+const renderBlock = (message: ChatMessage, block: Block, reasoningExpanded: boolean) => {
   const mine = message.role === 'user';
   if (block.type === 'text') {
     return (
@@ -638,7 +642,7 @@ const renderBlock = (message: ChatMessage, block: Block) => {
       {block.type === 'tools' ? (
         <ToolGroupRow tool={block.tool} calls={block.calls} />
       ) : block.type === 'reasoning' ? (
-        <ReasoningRow text={block.text} />
+        <ReasoningRow text={block.text} defaultOpen={reasoningExpanded} />
       ) : (
         <FileBlock file={block.file} mine={mine} />
       )}
@@ -652,6 +656,7 @@ type MessageRowProps = {
   pinned: boolean;
   showMetadata: boolean;
   hideToolCalls: boolean;
+  reasoningDisplay: ReasoningDisplay;
   onTogglePin: (message: ChatMessage) => void;
   onReply: (message: ChatMessage) => void;
   registerNode: (id: string, node: HTMLDivElement | null) => void;
@@ -667,13 +672,19 @@ const MessageRow = React.memo(function MessageRow({
   pinned,
   showMetadata,
   hideToolCalls,
+  reasoningDisplay,
   onTogglePin,
   onReply,
   registerNode,
 }: MessageRowProps) {
   const blocks = React.useMemo(
-    () => toBlocks(message.parts).filter((block) => !hideToolCalls || block.type !== 'tools'),
-    [message.parts, hideToolCalls]
+    () =>
+      toBlocks(message.parts).filter(
+        (block) =>
+          (block.type !== 'tools' || !hideToolCalls) &&
+          (block.type !== 'reasoning' || reasoningDisplay !== 'hidden')
+      ),
+    [message.parts, hideToolCalls, reasoningDisplay]
   );
   const ref = React.useCallback(
     (node: HTMLDivElement | null) => registerNode(message.id, node),
@@ -688,7 +699,7 @@ const MessageRow = React.memo(function MessageRow({
         highlighted && 'bg-highlight/10 ring-2 ring-highlight/30'
       )}
     >
-      {blocks.map((block) => renderBlock(message, block))}
+      {blocks.map((block) => renderBlock(message, block, reasoningDisplay === 'expanded'))}
       {message.error ? <MessageError error={message.error} /> : null}
       <button
         type="button"
@@ -723,6 +734,7 @@ export default function Transcript({
   activeModelLabel,
   accentColor,
   hideToolCalls,
+  reasoningDisplay,
   pinnedMessageIds,
   focusMessageId,
   focusRequest,
@@ -869,6 +881,7 @@ export default function Transcript({
                 pinned={pinnedMessageIds.has(message.id)}
                 showMetadata={isAssistantTurnEnd(messages, index, turnPending)}
                 hideToolCalls={hideToolCalls}
+                reasoningDisplay={reasoningDisplay}
                 onTogglePin={togglePin}
                 onReply={reply}
                 registerNode={registerNode}

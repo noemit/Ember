@@ -239,6 +239,7 @@ let settings: EmberSettings = {
   blobStyle: 'grok',
   sessionWindowHours: 48,
   hideToolCalls: false,
+  reasoningDisplay: 'collapsed',
   instanceDefaults: {
     local: { markerColor: 0 },
     studio: { markerColor: 7 },

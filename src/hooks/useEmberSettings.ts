@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: EmberSettings = {
   blobStyle: 'grok',
   sessionWindowHours: 48,
   hideToolCalls: false,
+  reasoningDisplay: 'collapsed',
   instanceDefaults: {},
   pinnedMessages: [],
   sessionNotes: {},

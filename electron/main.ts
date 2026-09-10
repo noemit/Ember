@@ -14,6 +14,7 @@ import {
   parseSessionNotes,
   parseStringRecord,
   isBlobStyle,
+  isReasoningDisplay,
   resolveApiUrl,
   type BlobStyle,
   type EmberSettings,
@@ -158,6 +159,7 @@ const readEmberSettings = (): EmberSettings => {
       ? root.sessionWindowHours
       : DEFAULT_SESSION_WINDOW_HOURS,
     hideToolCalls: root.hideToolCalls === true,
+    reasoningDisplay: isReasoningDisplay(root.reasoningDisplay) ? root.reasoningDisplay : 'collapsed',
     instanceDefaults: parseInstanceDefaults(root.instanceDefaults),
     pinnedMessages: Array.isArray(root.pinnedMessages)
       ? root.pinnedMessages.filter((entry): entry is string => typeof entry === 'string').slice(0, 2000)
@@ -448,6 +450,7 @@ const updateSettings = (patch: unknown): EmberSettings => {
   if (isBlobStyle(value.blobStyle)) settings.blobStyle = value.blobStyle;
   if (isWindowHours(value.sessionWindowHours)) settings.sessionWindowHours = value.sessionWindowHours;
   if (typeof value.hideToolCalls === 'boolean') settings.hideToolCalls = value.hideToolCalls;
+  if (isReasoningDisplay(value.reasoningDisplay)) settings.reasoningDisplay = value.reasoningDisplay;
   if (value.instanceDefaults !== undefined) settings.instanceDefaults = parseInstanceDefaults(value.instanceDefaults);
   if (Array.isArray(value.pinnedMessages)) {
     settings.pinnedMessages = value.pinnedMessages

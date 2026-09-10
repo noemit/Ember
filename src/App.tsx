@@ -1566,6 +1566,7 @@ export default function App() {
               reloading={selectedKey ? reloadingKeys.has(selectedKey) : false}
               bypass={bypass}
               hideToolCalls={settings.hideToolCalls}
+              reasoningDisplay={settings.reasoningDisplay}
               pinnedMessageIds={pinnedMessageIds}
               sessionNotes={selectedKey ? settings.sessionNotes[selectedKey] ?? [] : []}
               savedComposerDrafts={settings.composerDrafts}
@@ -1575,6 +1576,7 @@ export default function App() {
               onSaveNote={handleSaveNote}
               onDeleteNote={handleDeleteNote}
               onHideToolCallsChange={(hide) => handleSettings({ hideToolCalls: hide })}
+              onReasoningDisplayChange={(mode) => handleSettings({ reasoningDisplay: mode })}
               onBypassChange={(enabled) => {
                 if (selected) void setYolo(selected, enabled, selectedSession?.directory);
               }}
