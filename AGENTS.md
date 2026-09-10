@@ -83,7 +83,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   are retained in Ember settings. Session/task/project overrides store only curated colour indexes
   and shape names. Project/directory colours use a persisted 64-entry allocation queue (directory-only "projects"
   included, so distinct directories never collide on a hash), exhausting every colour before cycling;
-  optional per-instance underlines use a separate 12-colour marker palette.
+  the queue is pruned to the sessions currently on screen (plus the selected one), so it doesn't grow
+  forever. Optional per-instance underlines use a separate 12-colour marker palette.
   `glyphs.ts` is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}` = colour,
   `{id}` = per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours come from
   `--glyph-0..63`, which `applyTheme` sets after `blob/contrast.ts` nudges each palette colour's

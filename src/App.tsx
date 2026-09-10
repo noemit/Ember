@@ -405,13 +405,17 @@ export default function App() {
   const selectedQueue = selected
     ? (queuesByInstance[selected.instanceId] ?? []).find((queue) => queue.sessionId === selected.sessionId) ?? null
     : null;
-  // Configured projects plus every session's directory, so directory-only "projects" draw from the
-  // same allocation queue instead of colliding on a hash. Collapsed to a stable signature so session
-  // polls (fresh objects every few seconds) don't re-run allocation or re-derive every avatar.
-  const avatarColorKeySignature = React.useMemo(
-    () => avatarColorKeys(projectsByInstance, sessionsByInstance).join('\u0000'),
-    [projectsByInstance, sessionsByInstance]
-  );
+  // Configured projects plus the sessions currently on screen (and the selected one, which the rail
+  // pins even when filtered), so directory-only "projects" draw from the same queue without the
+  // persisted map growing forever. Collapsed to a stable signature so session polls (fresh objects
+  // every few seconds) don't re-run allocation or re-derive every avatar.
+  const avatarColorKeySignature = React.useMemo(() => {
+    const relevant =
+      selectedSession && !sessions.some((session) => sessionKey(session) === sessionKey(selectedSession))
+        ? [...sessions, selectedSession]
+        : sessions;
+    return avatarColorKeys(projectsByInstance, relevant).join('\u0000');
+  }, [projectsByInstance, sessions, selectedSession]);
   const allocatedProjectColors = React.useMemo(
     () =>
       allocateProjectColors(

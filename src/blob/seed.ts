@@ -62,17 +62,27 @@ export const sessionAvatarKey = (session: Session): string => `session:${session
 export const projectIdentityKey = (instanceId: string, projectId: string): string =>
   `project:${instanceId}::${projectId}`;
 
+/**
+ * Assigns each key the least-used colour, keeping existing choices for keys still present. Keys not
+ * in `projectKeys` are dropped, so the persisted map tracks only what's currently on screen instead
+ * of growing forever. A pruned key that returns later may land on a different colour.
+ */
 export const allocateProjectColors = (
   projectKeys: string[],
   current: Record<string, number>
 ): Record<string, number> => {
-  const assignments = { ...current };
+  const unique = [...new Set(projectKeys)].sort();
   const counts = Array.from({ length: AVATAR_COLOR_COUNT }, () => 0);
-  Object.values(assignments).forEach((index) => {
-    if (Number.isInteger(index) && index >= 0 && index < AVATAR_COLOR_COUNT) counts[index] += 1;
+  const assignments: Record<string, number> = {};
+  unique.forEach((key) => {
+    const index = current[key];
+    if (Number.isInteger(index) && index >= 0 && index < AVATAR_COLOR_COUNT) {
+      assignments[key] = index;
+      counts[index] += 1;
+    }
   });
-  [...new Set(projectKeys)].sort().forEach((key) => {
-    if (Number.isInteger(assignments[key])) return;
+  unique.forEach((key) => {
+    if (assignments[key] !== undefined) return;
     const minimum = Math.min(...counts);
     const index = counts.findIndex((count) => count === minimum);
     assignments[key] = index;
@@ -89,21 +99,20 @@ export const projectAvatarKey = (session: Session, project: Project | null): str
 };
 
 /**
- * Every key that should draw a distinct colour: configured projects plus each session's directory.
- * Without the directory keys, directory-only "projects" fall back to a hash and collide.
+ * Every key that should draw a distinct colour: configured projects plus the given sessions'
+ * project/directory keys. Pass only the sessions on screen (plus the selected one) so allocation
+ * stays bounded; directory keys are what stop directory-only "projects" colliding on a hash.
  */
 export const avatarColorKeys = (
   projectsByInstance: Record<string, Project[]>,
-  sessionsByInstance: Record<string, Session[]>
+  sessions: Session[]
 ): string[] => {
   const keys = [
     ...Object.entries(projectsByInstance).flatMap(([instanceId, projects]) =>
       projects.map((project) => projectIdentityKey(instanceId, project.id))
     ),
-    ...Object.entries(sessionsByInstance).flatMap(([instanceId, sessions]) =>
-      sessions.map((session) =>
-        projectAvatarKey(session, projectForSession(session, projectsByInstance[instanceId] ?? []))
-      )
+    ...sessions.map((session) =>
+      projectAvatarKey(session, projectForSession(session, projectsByInstance[session.instanceId] ?? []))
     ),
   ];
   return [...new Set(keys.filter((key): key is string => Boolean(key)))].sort();

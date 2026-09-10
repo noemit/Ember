@@ -48,11 +48,12 @@ describe('blob colours', () => {
     }
   });
 
-  test('allocates every project color before cycling and preserves existing assignments', () => {
+  test('allocates every project color before cycling, keeps current keys, and prunes stale ones', () => {
     const keys = Array.from({ length: 65 }, (_, index) => `project:local::${String(index).padStart(2, '0')}`);
-    const assignments = allocateProjectColors(keys, { [keys[10]]: 42 });
+    const assignments = allocateProjectColors(keys, { [keys[10]]: 42, 'project:local::gone': 7 });
     expect(new Set(keys.slice(0, 64).map((key) => assignments[key])).size).toBe(64);
     expect(assignments[keys[10]]).toBe(42);
+    expect(assignments['project:local::gone']).toBeUndefined();
     expect(Object.values(assignments).every((index) => index >= 0 && index < 64)).toBe(true);
   });
 
@@ -63,7 +64,7 @@ describe('blob colours', () => {
       { id: 'two', instanceId: 'local', directory: '/workspace/habit' },
       { id: 'three', instanceId: 'local', directory: '/workspace/agent' },
     ];
-    const keys = avatarColorKeys({ local: projects }, { local: sessions });
+    const keys = avatarColorKeys({ local: projects }, sessions);
     expect(keys).toContain('project:local::ember');
     expect(keys).toContain('directory:local::/workspace/habit');
     const assignments = allocateProjectColors(keys, {});
