@@ -175,7 +175,7 @@ const SessionRow = React.memo(function SessionRow({
               selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
             )}
           >
-            <div className="mt-0.5">
+            <div className="mt-[7px]">
               {/* Project/task/session identity is resolved once in App so every surface stays aligned,
                   including across instances that reuse session ids. */}
               <Blob style={blobStyle} seed={key} identity={identity} size={55} mood={mood} />

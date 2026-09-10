@@ -163,10 +163,10 @@
     transform: translateY(2%) scale(1.12, 0.86);
   }
   42% {
-    transform: translateY(-26%) scale(0.9, 1.14);
+    transform: translateY(-17%) scale(0.9, 1.14);
   }
   62% {
-    transform: translateY(-26%) scale(0.92, 1.12);
+    transform: translateY(-17%) scale(0.92, 1.12);
   }
   82% {
     transform: translateY(0) scale(1.16, 0.82);
