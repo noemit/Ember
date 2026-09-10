@@ -77,8 +77,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   binding (or session key) picks shape, and the session key picks tilt/motion. OpenChamber task
   bindings come from each project's scheduled-task endpoint and observed `lastSessionId` mappings
   are retained in Ember settings. Session/task/project overrides store only curated colour indexes
-  and shape names. Project colours use a persisted 64-entry allocation queue, exhausting every
-  colour before cycling; optional per-instance underlines use a separate 12-colour marker palette.
+  and shape names. Project/directory colours use a persisted 64-entry allocation queue (directory-only "projects"
+  included, so distinct directories never collide on a hash), exhausting every colour before cycling;
+  optional per-instance underlines use a separate 12-colour marker palette.
   `glyphs.ts` is generated from `~/Downloads/generate_icons.py` (curated subset; `{c}` = colour,
   `{id}` = per-instance id prefix, `#fff` accents → `var(--background)`). Glyph colours come from
   `--glyph-0..63`, which `applyTheme` sets after `blob/contrast.ts` nudges each palette colour's

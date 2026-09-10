@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { blobColor } from './src/blob/color';
 import { contrastRatio, GLYPH_COLORS, glyphPaletteFor, instanceMarkerPaletteFor } from './src/blob/contrast';
-import { allocateProjectColors, hashString, mulberry32, resolveAvatarIdentity } from './src/blob/seed';
+import { allocateProjectColors, avatarColorKeys, hashString, mulberry32, resolveAvatarIdentity } from './src/blob/seed';
 import { GROK_COLORS } from './src/blob/grok';
 import { THEMES } from './src/themes';
 import type { Project, Session } from './src/types';
@@ -54,6 +54,20 @@ describe('blob colours', () => {
     expect(new Set(keys.slice(0, 64).map((key) => assignments[key])).size).toBe(64);
     expect(assignments[keys[10]]).toBe(42);
     expect(Object.values(assignments).every((index) => index >= 0 && index < 64)).toBe(true);
+  });
+
+  test('allocates directory-only projects distinct colors alongside configured projects', () => {
+    const projects: Project[] = [{ id: 'ember', name: 'Ember', path: '/workspace/ember' }];
+    const sessions: Session[] = [
+      { id: 'one', instanceId: 'local', directory: '/workspace/ember' },
+      { id: 'two', instanceId: 'local', directory: '/workspace/habit' },
+      { id: 'three', instanceId: 'local', directory: '/workspace/agent' },
+    ];
+    const keys = avatarColorKeys({ local: projects }, { local: sessions });
+    expect(keys).toContain('project:local::ember');
+    expect(keys).toContain('directory:local::/workspace/habit');
+    const assignments = allocateProjectColors(keys, {});
+    expect(new Set(keys.map((key) => assignments[key])).size).toBe(keys.length);
   });
 
   test('preserves legacy colors when no grouped identity is supplied', () => {

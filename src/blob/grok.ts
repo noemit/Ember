@@ -19,6 +19,18 @@ export const GROK_COLORS: GrokColor[] = [
   { name: 'coral', fill: '#ff7a5c', ink: '#4a1e14' },
   { name: 'lavender', fill: '#b48cff', ink: '#2f1f4a' },
   { name: 'mint', fill: '#5be3a3', ink: '#123a2a' },
+  { name: 'bubblegum', fill: '#ff6ec7', ink: '#4a1038' },
+  { name: 'sky', fill: '#38bdf8', ink: '#082f49' },
+  { name: 'emerald', fill: '#10b981', ink: '#053b2a' },
+  { name: 'sunflower', fill: '#facc15', ink: '#4a3a05' },
+  { name: 'flamingo', fill: '#fb7185', ink: '#4a0f1a' },
+  { name: 'grape', fill: '#a855f7', ink: '#2e0a4a' },
+  { name: 'cyan', fill: '#22d3ee', ink: '#063a44' },
+  { name: 'chartreuse', fill: '#a3e635', ink: '#2a3a05' },
+  { name: 'pumpkin', fill: '#fb923c', ink: '#4a2408' },
+  { name: 'raspberry', fill: '#e11d48', ink: '#4a0815' },
+  { name: 'periwinkle', fill: '#818cf8', ink: '#1e1b4a' },
+  { name: 'spring', fill: '#34d399', ink: '#053a2a' },
 ];
 
 export type GrokShape = {

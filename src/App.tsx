@@ -7,8 +7,8 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { applyTheme } from './themes';
 import {
   allocateProjectColors,
+  avatarColorKeys,
   projectForSession,
-  projectIdentityKey,
   resolveAvatarIdentity,
   seedIdentity,
   sessionAvatarKey,
@@ -398,12 +398,21 @@ export default function App() {
   const selectedQueue = selected
     ? (queuesByInstance[selected.instanceId] ?? []).find((queue) => queue.sessionId === selected.sessionId) ?? null
     : null;
-  const allocatedProjectColors = React.useMemo(() => {
-    const keys = Object.entries(projectsByInstance).flatMap(([instanceId, projects]) =>
-      projects.map((project) => projectIdentityKey(instanceId, project.id))
-    );
-    return allocateProjectColors(keys, settings.projectColorAssignments);
-  }, [projectsByInstance, settings.projectColorAssignments]);
+  // Configured projects plus every session's directory, so directory-only "projects" draw from the
+  // same allocation queue instead of colliding on a hash. Collapsed to a stable signature so session
+  // polls (fresh objects every few seconds) don't re-run allocation or re-derive every avatar.
+  const avatarColorKeySignature = React.useMemo(
+    () => avatarColorKeys(projectsByInstance, sessionsByInstance).join('\u0000'),
+    [projectsByInstance, sessionsByInstance]
+  );
+  const allocatedProjectColors = React.useMemo(
+    () =>
+      allocateProjectColors(
+        avatarColorKeySignature ? avatarColorKeySignature.split('\u0000') : [],
+        settings.projectColorAssignments
+      ),
+    [avatarColorKeySignature, settings.projectColorAssignments]
+  );
   // Every blob renderer memoizes on its identity object, so hand back the previous reference
   // whenever a session's identity hasn't actually changed; otherwise each 10s poll would
   // re-derive traits for every visible avatar.
@@ -1318,13 +1327,13 @@ export default function App() {
 
   React.useEffect(() => {
     if (
-      Object.keys(projectsByInstance).length > 0 &&
+      Object.keys(allocatedProjectColors).length > 0 &&
       !sameNumberRecord(allocatedProjectColors, settings.projectColorAssignments)
     ) {
       handleSettings({ projectColorAssignments: allocatedProjectColors });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSettings is recreated per render; it only needs the compared values
-  }, [projectsByInstance, allocatedProjectColors, settings.projectColorAssignments]);
+  }, [allocatedProjectColors, settings.projectColorAssignments]);
 
   // Scheduled-task identity is one request per project (70+ on a busy instance), so it polls
   // rarely; the `scheduled-task-ran` event covers the moment it actually matters.
