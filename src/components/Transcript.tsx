@@ -17,6 +17,7 @@ import {
   Zap,
 } from 'lucide-react';
 import Linkify from './Linkify';
+import Blob from '../blob/Blob';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -25,7 +26,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import type {
+  AvatarIdentity,
+  BallMood,
   BallState,
+  BlobStyle,
   ChatMessage,
   FileAttachment,
   MessagePart,
@@ -54,8 +58,11 @@ type Props = {
   sending: boolean;
   /** Friendly model name for the turn currently producing output. */
   activeModelLabel?: string;
-  /** CSS colour of the session's blob, so the activity line reads as "this agent is thinking". */
-  accentColor: string;
+  /** The session's blob, shown beside the last message and as the live activity indicator. */
+  blobStyle: BlobStyle;
+  seed: string;
+  identity: AvatarIdentity;
+  mood: BallMood;
   /** Drop tool-call rows from every message. */
   hideToolCalls: boolean;
   /** How thinking blocks render: open, collapsed, or dropped. */
@@ -107,6 +114,18 @@ const toBlocks = (parts: MessagePart[]): Block[] => {
   });
   return blocks;
 };
+
+/** The blocks that survive the current display prefs (hidden thinking/tools drop out). */
+const visibleBlocks = (
+  message: ChatMessage,
+  hideToolCalls: boolean,
+  reasoningDisplay: ReasoningDisplay
+): Block[] =>
+  toBlocks(message.parts).filter(
+    (block) =>
+      (block.type !== 'tools' || !hideToolCalls) &&
+      (block.type !== 'reasoning' || reasoningDisplay !== 'hidden')
+  );
 
 const metaString = (metadata: Record<string, unknown>, keys: string[]): string => {
   for (const key of keys) {
@@ -657,6 +676,12 @@ type MessageRowProps = {
   showMetadata: boolean;
   hideToolCalls: boolean;
   reasoningDisplay: ReasoningDisplay;
+  /** Render the session's blob tucked beside this message. */
+  showBuddy: boolean;
+  blobStyle: BlobStyle;
+  seed: string;
+  identity: AvatarIdentity;
+  mood: BallMood;
   onTogglePin: (message: ChatMessage) => void;
   onReply: (message: ChatMessage) => void;
   registerNode: (id: string, node: HTMLDivElement | null) => void;
@@ -673,18 +698,18 @@ const MessageRow = React.memo(function MessageRow({
   showMetadata,
   hideToolCalls,
   reasoningDisplay,
+  showBuddy,
+  blobStyle,
+  seed,
+  identity,
+  mood,
   onTogglePin,
   onReply,
   registerNode,
 }: MessageRowProps) {
   const blocks = React.useMemo(
-    () =>
-      toBlocks(message.parts).filter(
-        (block) =>
-          (block.type !== 'tools' || !hideToolCalls) &&
-          (block.type !== 'reasoning' || reasoningDisplay !== 'hidden')
-      ),
-    [message.parts, hideToolCalls, reasoningDisplay]
+    () => visibleBlocks(message, hideToolCalls, reasoningDisplay),
+    [message, hideToolCalls, reasoningDisplay]
   );
   const ref = React.useCallback(
     (node: HTMLDivElement | null) => registerNode(message.id, node),
@@ -697,12 +722,26 @@ const MessageRow = React.memo(function MessageRow({
       ref={ref}
       layout="position"
       className={cn(
-        'group/message relative flex w-full flex-col gap-1.5 rounded-xl px-5 transition-[background-color,box-shadow] sm:px-7',
+        'group/message relative flex w-full rounded-xl px-5 transition-[background-color,box-shadow] sm:px-7',
+        showBuddy ? 'items-end gap-2' : 'flex-col gap-1.5',
         highlighted && 'bg-highlight/10 ring-2 ring-highlight/30'
       )}
     >
-      {blocks.map((block) => renderBlock(message, block, reasoningDisplay === 'expanded'))}
-      {message.error ? <MessageError error={message.error} /> : null}
+      {showBuddy ? (
+        <div className="flex-none pb-0.5">
+          <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} interactive={false} />
+        </div>
+      ) : null}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {blocks.map((block) => renderBlock(message, block, reasoningDisplay === 'expanded'))}
+        {message.error ? <MessageError error={message.error} /> : null}
+        <MessageFooter
+          message={message}
+          showMetadata={showMetadata}
+          pinned={pinned}
+          onReply={() => onReply(message)}
+        />
+      </div>
       <button
         type="button"
         onClick={() => onTogglePin(message)}
@@ -716,12 +755,6 @@ const MessageRow = React.memo(function MessageRow({
       >
         {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
       </button>
-      <MessageFooter
-        message={message}
-        showMetadata={showMetadata}
-        pinned={pinned}
-        onReply={() => onReply(message)}
-      />
     </motion.div>
   );
 });
@@ -734,7 +767,10 @@ export default function Transcript({
   state,
   sending,
   activeModelLabel,
-  accentColor,
+  blobStyle,
+  seed,
+  identity,
+  mood,
   hideToolCalls,
   reasoningDisplay,
   pinnedMessageIds,
@@ -826,6 +862,17 @@ export default function Transcript({
     : undefined;
   const blocked = permissions.length > 0 || questions.length > 0;
   const turnPending = busy || blocked;
+  // The last assistant message that actually renders something, so the buddy can settle beside it.
+  const lastAssistantId = React.useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== 'assistant') continue;
+      if (message.error || visibleBlocks(message, hideToolCalls, reasoningDisplay).length > 0) {
+        return message.id;
+      }
+    }
+    return null;
+  }, [messages, hideToolCalls, reasoningDisplay]);
   const [activityNow, setActivityNow] = React.useState(() => Date.now());
   const activeSince = last?.createdAt ?? last?.completedAt;
 
@@ -884,6 +931,11 @@ export default function Transcript({
                 showMetadata={isAssistantTurnEnd(messages, index, turnPending)}
                 hideToolCalls={hideToolCalls}
                 reasoningDisplay={reasoningDisplay}
+                showBuddy={!turnPending && message.id === lastAssistantId}
+                blobStyle={blobStyle}
+                seed={seed}
+                identity={identity}
+                mood={mood}
                 onTogglePin={togglePin}
                 onReply={reply}
                 registerNode={registerNode}
@@ -916,10 +968,9 @@ export default function Transcript({
                 transition={spring}
                 className="flex items-center gap-2 self-start px-1 text-[11.5px] text-muted-foreground"
               >
-                <span className="relative flex size-2 flex-none" style={{ color: accentColor }}>
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60" />
-                  <span className="relative inline-flex size-2 rounded-full bg-current" />
-                </span>
+                <div className="flex-none">
+                  <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} />
+                </div>
                 {runningTool ? <Wrench className="size-3 flex-none" /> : null}
                 <span>{activity}</span>
                 <span className="animate-pulse">…</span>

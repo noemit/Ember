@@ -2,7 +2,6 @@ import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, Box, Brain, ChevronDown, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
 import Blob from '../blob/Blob';
-import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
 import { Input } from '@/components/ui/input';
@@ -627,13 +626,6 @@ export default function ChatView({
             transition={{ duration: 0.16 }}
           >
             <header className="flex h-11 flex-none items-center gap-2.5 border-b px-3 sm:px-4">
-              <Blob
-                style={blobStyle}
-                seed={seed}
-                identity={identity}
-                size={24}
-                mood={mood}
-              />
               <span
                 className="min-w-0 flex-1 truncate text-[13px] font-medium"
                 style={instanceMarkerColor === undefined ? undefined : {
@@ -714,7 +706,10 @@ export default function ChatView({
                 state={state}
                 sending={sending}
                 activeModelLabel={activeModelLabel}
-                accentColor={blobColor(blobStyle, identity)}
+                blobStyle={blobStyle}
+                seed={seed}
+                identity={identity}
+                mood={mood}
                 hideToolCalls={hideToolCalls}
                 reasoningDisplay={reasoningDisplay}
                 pinnedMessageIds={pinnedMessageIds}
