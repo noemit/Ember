@@ -6,6 +6,7 @@
  *   /        shape review (shipped GROK_SHAPES + generated candidates)
  *   /states  alternative input / question / error / thinking visuals
  *   /hop     busy-hop eye-stretch comparison
+ *   /thinking  chat header thinking-toggle icon review
  *
  * Nothing here is imported by the app.
  */
@@ -13,6 +14,7 @@ import { GROK_SHAPES } from '../src/blob/grok';
 import { HOP_PAGE } from './hop';
 import { PAGE } from './page';
 import { STATE_DESIGNS, STATES_PAGE } from './states';
+import { THINKING_PAGE } from './thinking';
 
 const PORT = Number(process.env.BUDDY_PORT || 3004);
 
@@ -26,6 +28,9 @@ const server = Bun.serve({
     }
     if (path === '/hop') {
       return new Response(HOP_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+    if (path === '/thinking') {
+      return new Response(THINKING_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     }
     return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
   },
