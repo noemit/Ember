@@ -66,12 +66,13 @@ export const INSTANCE_MARKER_COLORS = [
   '#3D4EC7', '#A13DB8', '#D13F78', '#C84A3A', '#C66A24', '#9A7A12',
   '#4F8A2F', '#20866F', '#247F9E', '#3474C8', '#6757C2', '#8C4A9E',
 ];
-// Vivid, high-saturation hues spread by the golden angle. Saturation steps toward 1 and a four-stop
-// lightness ramp keep the 64 entries visually distinct rather than a wash of near-duplicates.
+// Vivid, high-saturation hues spread by the golden angle. The saturation and lightness ramps stay
+// wide (deep/muted through bright) so all 64 read as distinct; a narrow "punchy band" makes them
+// look like near-duplicates, which is why this spread was restored once before.
 export const GLYPH_COLORS = Array.from({ length: AVATAR_COLOR_COUNT }, (_, index) => {
   const hue = ((index * 137.508) % 360) / 360;
-  const saturation = Math.min(1, 0.75 + (index % 4) * 0.09);
-  const lightness = 0.44 + (Math.floor(index / 4) % 4) * 0.07;
+  const saturation = Math.min(1, 0.55 + (index % 4) * 0.16);
+  const lightness = 0.34 + (Math.floor(index / 4) % 4) * 0.12;
   return rgbToHex(hslToRgb([hue, saturation, lightness]));
 });
 
