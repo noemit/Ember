@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Brain, BrainCircuit, ChevronDown, EyeOff, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
+import { ArrowUp, Box, Brain, BrainCircuit, ChevronDown, EyeOff, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -653,6 +653,7 @@ export default function ChatView({
               ) : null}
               {instance ? (
                 <Badge variant="secondary" className="hidden font-normal text-muted-foreground sm:inline-flex">
+                  <Box aria-hidden="true" />
                   {instance.label}
                 </Badge>
               ) : null}
