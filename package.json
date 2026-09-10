@@ -14,6 +14,7 @@
     "dev": "bun run build && electron .",
     "dev:web": "vite --port 5179",
     "arena": "bun run glyph-arena/server.ts",
+    "buddy-arena": "bun run buddy-arena/server.ts",
     "test": "bun test",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",

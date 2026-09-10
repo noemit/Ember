@@ -76,7 +76,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   still name them fall back to the default. Renderers memoize on the `identity` object, so App
   hands back the previous reference when nothing changed. Grok pupils track the cursor only while
   it's within `NEAR_RADIUS` (`usePupilTracking.ts`), and active Grok blobs do squash-and-stretch
-  hops with a per-blob occasional somersault (`blob-hop`/`blob-flip` in `blob.css`). `blob/seed.ts`
+  hops with a per-blob occasional somersault (`blob-hop`/`blob-flip` in `blob.css`). `grok.ts` holds
+  the 8 hand-drawn silhouettes plus 24 generated ones (radial harmonics + top/bottom squash, reviewed
+  in `buddy-arena/`; `bun run buddy-arena`). `blob/seed.ts`
   resolves three identity channels: project/directory + instance picks colour, a scheduled-task
   binding (or session key) picks shape, and the session key picks tilt/motion. OpenChamber task
   bindings come from each project's scheduled-task endpoint and observed `lastSessionId` mappings
