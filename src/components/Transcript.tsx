@@ -690,6 +690,8 @@ const MessageRow = React.memo(function MessageRow({
     (node: HTMLDivElement | null) => registerNode(message.id, node),
     [registerNode, message.id]
   );
+  // A row whose every block is hidden (thinking/tools off) shouldn't leave a gap behind.
+  if (blocks.length === 0 && !message.error) return null;
   return (
     <motion.div
       ref={ref}
