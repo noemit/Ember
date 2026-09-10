@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ChevronDown, Menu, RefreshCw, Search, Settings } from 'lucide-react';
+import { ChevronDown, Menu, RefreshCw, Search, Settings, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -23,6 +23,7 @@ type Props = {
   onOpenCommandPalette: () => void;
   onRefresh: () => void;
   onOpenSettings: () => void;
+  onOpenViewOptions: () => void;
 };
 
 const kindLabel: Record<Instance['kind'], string> = {
@@ -57,6 +58,7 @@ export default function InstanceBar({
   onOpenCommandPalette,
   onRefresh,
   onOpenSettings,
+  onOpenViewOptions,
 }: Props) {
   const connected = instances.filter((instance) => instance.attachable).length;
 
@@ -89,6 +91,17 @@ export default function InstanceBar({
       </button>
 
       <div className="flex-1" />
+
+      <button
+        type="button"
+        onClick={onOpenViewOptions}
+        className="no-drag flex h-7 items-center gap-1.5 rounded-full border bg-muted/50 px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        aria-label="View options"
+        title="View options"
+      >
+        <SlidersHorizontal className="size-3.5" />
+        <span className="hidden sm:inline">View</span>
+      </button>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

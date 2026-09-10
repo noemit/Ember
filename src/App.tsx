@@ -75,6 +75,7 @@ import type {
 } from './types';
 
 const SettingsPanel = React.lazy(() => import('./components/SettingsPanel'));
+const ViewOptionsDialog = React.lazy(() => import('./components/ViewOptionsDialog'));
 const AvatarPicker = React.lazy(() => import('./components/AvatarPicker'));
 const CommandPalette = React.lazy(() => import('./components/CommandPalette'));
 
@@ -202,6 +203,8 @@ export default function App() {
   const [autoAcceptByInstance, setAutoAcceptByInstance] = React.useState<Record<string, AutoAcceptPolicy>>({});
   const [failedKeys, setFailedKeys] = React.useState<Set<string>>(() => new Set());
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [viewOptionsOpen, setViewOptionsOpen] = React.useState(false);
+  const [viewOptionsActivated, setViewOptionsActivated] = React.useState(false);
   const [settingsActivated, setSettingsActivated] = React.useState(false);
   const [avatarPickerSession, setAvatarPickerSession] = React.useState<Session | null>(null);
   const [settingsView, setSettingsView] = React.useState<'general' | 'instances'>('general');
@@ -1478,6 +1481,10 @@ export default function App() {
               onToggleNavigation={() => setMobileRailOpen((open) => !open)}
               onOpenCommandPalette={() => setCommandPaletteOpen(true)}
               onRefresh={() => void refreshInstances()}
+              onOpenViewOptions={() => {
+                setViewOptionsActivated(true);
+                setViewOptionsOpen(true);
+              }}
               onOpenSettings={() => {
               setSettingsView('instances');
               setSettingsActivated(true);
@@ -1629,6 +1636,19 @@ export default function App() {
                 modelsByInstance={modelsByInstance}
                 onChange={handleSettings}
                 onOpenChange={setSettingsOpen}
+              />
+            </React.Suspense>
+          ) : null}
+
+          {viewOptionsActivated ? (
+            <React.Suspense fallback={null}>
+              <ViewOptionsDialog
+                open={viewOptionsOpen}
+                onOpenChange={setViewOptionsOpen}
+                hideToolCalls={settings.hideToolCalls}
+                reasoningDisplay={settings.reasoningDisplay}
+                onHideToolCallsChange={(hide) => handleSettings({ hideToolCalls: hide })}
+                onReasoningDisplayChange={(mode) => handleSettings({ reasoningDisplay: mode })}
               />
             </React.Suspense>
           ) : null}
