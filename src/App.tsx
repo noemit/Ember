@@ -650,6 +650,26 @@ export default function App() {
     return hints;
   };
 
+  /**
+   * OpenCode scopes pending prompts by project, so a refresh only sees the directories it asks for.
+   * Keep asking for every directory that already holds a pending permission/question; otherwise
+   * browsing to another session drops the old directory and the prompt vanishes from the UI.
+   */
+  const promptHintsFor = (
+    instanceIds: string[],
+    known: Record<string, Array<{ directory?: string }>>
+  ): Record<string, string[]> => {
+    const hints = directoryHintsFor(instanceIds);
+    instanceIds.forEach((instanceId) => {
+      const directories = new Set(hints[instanceId] ?? []);
+      (known[instanceId] ?? []).forEach((entry) => {
+        if (entry.directory) directories.add(entry.directory);
+      });
+      if (directories.size > 0) hints[instanceId] = [...directories];
+    });
+    return hints;
+  };
+
   const refreshSessions = useStableCallback(async (instanceIds: string[]) => {
     if (instanceIds.length === 0) return;
     try {
@@ -685,13 +705,13 @@ export default function App() {
 
   const refreshPermissions = useStableCallback(async (instanceIds: string[]) => {
     if (instanceIds.length === 0) return;
-    const next = await loadAllPermissions(instanceIds, directoryHintsFor(instanceIds)).catch(() => ({}));
+    const next = await loadAllPermissions(instanceIds, promptHintsFor(instanceIds, permissionsByInstance)).catch(() => ({}));
     setPermissionsByInstance((prev) => ({ ...prev, ...next }));
   });
 
   const refreshQuestions = useStableCallback(async (instanceIds: string[]) => {
     if (instanceIds.length === 0) return;
-    const next = await loadAllQuestions(instanceIds, directoryHintsFor(instanceIds)).catch(() => ({}));
+    const next = await loadAllQuestions(instanceIds, promptHintsFor(instanceIds, questionsByInstance)).catch(() => ({}));
     setQuestionsByInstance((prev) => ({ ...prev, ...next }));
   });
 
