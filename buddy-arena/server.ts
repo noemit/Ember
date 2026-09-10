@@ -5,10 +5,12 @@
  *
  *   /        shape review (shipped GROK_SHAPES + generated candidates)
  *   /states  alternative input / question / error / thinking visuals
+ *   /hop     busy-hop eye-stretch comparison
  *
  * Nothing here is imported by the app.
  */
 import { GROK_SHAPES } from '../src/blob/grok';
+import { HOP_PAGE } from './hop';
 import { PAGE } from './page';
 import { STATE_DESIGNS, STATES_PAGE } from './states';
 
@@ -21,6 +23,9 @@ const server = Bun.serve({
     const path = new URL(request.url).pathname;
     if (path === '/states') {
       return new Response(STATES_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+    if (path === '/hop') {
+      return new Response(HOP_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     }
     return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
   },
