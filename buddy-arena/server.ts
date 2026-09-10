@@ -7,12 +7,14 @@
  *   /states  alternative input / question / error / thinking visuals
  *   /hop     busy-hop eye-stretch comparison
  *   /thinking  chat header thinking-toggle icon review
+ *   /palette   glyph/blob palette yellow comparison
  *
  * Nothing here is imported by the app.
  */
 import { GROK_SHAPES } from '../src/blob/grok';
 import { HOP_PAGE } from './hop';
 import { PAGE } from './page';
+import { PALETTE_PAGE } from './palette';
 import { STATE_DESIGNS, STATES_PAGE } from './states';
 import { THINKING_PAGE } from './thinking';
 
@@ -31,6 +33,9 @@ const server = Bun.serve({
     }
     if (path === '/thinking') {
       return new Response(THINKING_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+    if (path === '/palette') {
+      return new Response(PALETTE_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     }
     return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
   },
