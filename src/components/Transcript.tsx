@@ -722,16 +722,10 @@ const MessageRow = React.memo(function MessageRow({
       ref={ref}
       layout="position"
       className={cn(
-        'group/message relative flex w-full rounded-xl px-5 transition-[background-color,box-shadow] sm:px-7',
-        showBuddy ? 'items-end gap-2' : 'flex-col gap-1.5',
+        'group/message relative flex w-full flex-col gap-1.5 rounded-xl px-5 transition-[background-color,box-shadow] sm:px-7',
         highlighted && 'bg-highlight/10 ring-2 ring-highlight/30'
       )}
     >
-      {showBuddy ? (
-        <div className="flex-none pb-0.5">
-          <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} interactive={false} />
-        </div>
-      ) : null}
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {blocks.map((block) => renderBlock(message, block, reasoningDisplay === 'expanded'))}
         {message.error ? <MessageError error={message.error} /> : null}
@@ -742,6 +736,12 @@ const MessageRow = React.memo(function MessageRow({
           onReply={() => onReply(message)}
         />
       </div>
+      {showBuddy ? (
+        // Out of flow so the bubble keeps its natural position; the blob tucks over its left edge.
+        <div className="pointer-events-none absolute bottom-0.5 left-0 z-10 sm:left-2">
+          <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} interactive={false} />
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={() => onTogglePin(message)}
