@@ -879,6 +879,16 @@ export default function ChatView({
                 }
               }}
               onKeyDown={(event) => {
+                // Cmd/Ctrl+Enter parks the draft as a note; plain Enter sends.
+                if (
+                  event.key === 'Enter' &&
+                  (event.metaKey || event.ctrlKey) &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  saveNote();
+                  return;
+                }
                 if (
                   event.key === 'ArrowUp' &&
                   !event.shiftKey &&
@@ -1086,7 +1096,8 @@ export default function ChatView({
                   disabled={!text.trim()}
                   onClick={saveNote}
                   aria-label="Save as note"
-                  title="Save as note"
+                  aria-keyshortcuts="Meta+Enter Control+Enter"
+                  title="Save as note (⌘/Ctrl+Enter)"
                 >
                   <NotebookPen className="size-3.5" />
                 </Button>
