@@ -75,14 +75,14 @@ type Config = {
   yellowChroma: number;
 };
 
-const CONFIGS: Config[] = [
+export const CONFIGS: Config[] = [
   { id: 'current', name: 'Current (shipped)', desc: 'What ships now: a dark olive yellow that goes muddy on the light theme.', yellowSeed: false, minChroma: 0.07, yellowLightness: 0.45, yellowChroma: 0.07 },
   { id: 'warm', name: 'Warm gold', desc: 'Only the yellow band is sampled brighter; the rest of the palette is unchanged.', yellowSeed: false, minChroma: 0.07, yellowLightness: 0.72, yellowChroma: 0.14 },
   { id: 'vivid', name: 'Vivid yellow', desc: 'Seeds the search with a bright yellow — brightest result, but reshuffles the other hues.', yellowSeed: true, minChroma: 0.07, yellowLightness: 0.72, yellowChroma: 0.14 },
   { id: 'punch', name: 'Punchy all-round', desc: 'No muted colours anywhere, plus the bright yellow. Most saturated palette.', yellowSeed: false, minChroma: 0.11, yellowLightness: 0.72, yellowChroma: 0.15 },
 ];
 
-const buildPalette = (config: Config): string[] => {
+export const buildPalette = (config: Config): string[] => {
   const candidates: Array<{ hex: string; lab: Oklab }> = [];
   const seen = new Set<string>();
   for (let hue = 0; hue < 360; hue += 4) {
@@ -140,6 +140,13 @@ const buildPalette = (config: Config): string[] => {
 
 const STONE = ['#d9d9d5', '#d0d0cb', '#e2e2df'];
 const GRAPHITE = ['#16191d', '#1f2329', '#101214'];
+
+/** The app's three themes, for the standalone preview generator. */
+export const REVIEW_THEMES = [
+  { id: 'stone', name: 'Stone', dark: false, bg: '#e2e2df', panel: '#d9d9d5', elev: '#d0d0cb', text: '#232322', dim: '#50504d' },
+  { id: 'clay', name: 'Clay', dark: true, bg: '#37322d', panel: '#3f3933', elev: '#4a433c', text: '#f1ebe2', dim: '#c2b7a7' },
+  { id: 'graphite', name: 'Graphite', dark: true, bg: '#101214', panel: '#16191d', elev: '#1f2329', text: '#e6e9ed', dim: '#8d96a1' },
+];
 
 const swatches = (colors: string[], surface: string): string =>
   `<div class="swatches" style="background:${surface}">${colors
