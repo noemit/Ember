@@ -1,26 +1,31 @@
 import { GROK_COLORS, GROK_SHAPES, type GrokShape } from '../src/blob/grok';
 
-type EyeStyle = 'normal' | 'wide' | 'x' | 'dizzy' | 'sad' | 'up';
+type EyeStyle = 'normal' | 'wide' | 'x' | 'dizzy' | 'sad' | 'up' | 'roam';
 type OverlayStyle =
   | 'none'
   | 'orbit'
   | 'pulse'
   | 'dashed'
+  | 'dashedSoft'
+  | 'dashedArc'
+  | 'dottedRing'
+  | 'dashedDouble'
   | 'glow'
   | 'exclaim'
+  | 'errorBadge'
   | 'question'
-  | 'key'
+  | 'lock'
   | 'dots'
   | 'sparkle'
   | 'bubble'
   | 'crack'
   | 'tear'
   | 'halo';
-type MotionStyle = 'none' | 'breathe' | 'bounce' | 'wobble' | 'shake' | 'tilt';
+type MotionStyle = 'none' | 'breathe' | 'bounce' | 'hopflip' | 'wobble' | 'shake' | 'tilt';
 
 export type StateDesign = {
   id: string;
-  state: 'thinking' | 'input' | 'question' | 'error';
+  state: 'busy' | 'thinking' | 'input' | 'question' | 'error';
   name: string;
   description: string;
   eyes: EyeStyle;
@@ -30,19 +35,30 @@ export type StateDesign = {
 };
 
 export const STATE_DESIGNS: StateDesign[] = [
-  // Thinking — a new, distinct state from "working".
+  // Busy — the agent is working (tools running). Baseline to compare thinking against.
+  { id: 'b-hop', state: 'busy', name: 'Hop + flip (current)', description: 'The shipped busy state: hops with an occasional somersault.', eyes: 'normal', overlay: 'none', motion: 'hopflip', accent: 'highlight' },
+  { id: 'b-hop-only', state: 'busy', name: 'Hop only', description: 'Steady hops, no somersault.', eyes: 'normal', overlay: 'none', motion: 'bounce', accent: 'highlight' },
+  { id: 'b-breathe', state: 'busy', name: 'Calm breathe', description: 'A quieter working pulse.', eyes: 'normal', overlay: 'none', motion: 'breathe', accent: 'highlight' },
+  { id: 'b-pulse', state: 'busy', name: 'Pulse ring', description: 'A working pulse around the body.', eyes: 'normal', overlay: 'pulse', motion: 'hopflip', accent: 'highlight' },
+
+  // Thinking — model reasoning, distinct from tool work.
   { id: 't-dots', state: 'thinking', name: 'Dots', description: 'Three thought dots rise and fade above the head.', eyes: 'normal', overlay: 'dots', motion: 'breathe', accent: 'highlight' },
-  { id: 't-sparkle', state: 'thinking', name: 'Sparkle', description: 'A twinkle at the shoulder, like an idea forming.', eyes: 'normal', overlay: 'sparkle', motion: 'breathe', accent: 'highlight' },
-  { id: 't-dashed', state: 'thinking', name: 'Dashed ring', description: 'A slowly turning dashed ring reads as "processing".', eyes: 'normal', overlay: 'dashed', motion: 'breathe', accent: 'highlight' },
-  { id: 't-glow', state: 'thinking', name: 'Glow', description: 'A soft pulsing aura behind the body.', eyes: 'normal', overlay: 'glow', motion: 'none', accent: 'highlight' },
   { id: 't-lookup', state: 'thinking', name: 'Looking up', description: 'Pupils drift up while the dots pulse.', eyes: 'up', overlay: 'dots', motion: 'breathe', accent: 'highlight' },
+  { id: 't-roam', state: 'thinking', name: 'Looking around', description: 'Pupils wander in different directions as the dots pulse.', eyes: 'roam', overlay: 'dots', motion: 'breathe', accent: 'highlight' },
+  { id: 't-sparkle', state: 'thinking', name: 'Sparkle', description: 'A twinkle at the shoulder, like an idea forming.', eyes: 'normal', overlay: 'sparkle', motion: 'breathe', accent: 'highlight' },
+  { id: 't-dashed', state: 'thinking', name: 'Dashed ring', description: 'A turning dashed ring reads as "processing".', eyes: 'normal', overlay: 'dashed', motion: 'breathe', accent: 'highlight' },
+  { id: 't-dashed-soft', state: 'thinking', name: 'Dashed · soft', description: 'A faint, slow dashed ring — barely there.', eyes: 'normal', overlay: 'dashedSoft', motion: 'breathe', accent: 'highlight' },
+  { id: 't-dashed-arc', state: 'thinking', name: 'Dashed · arc', description: 'A single soft arc, loading-style.', eyes: 'normal', overlay: 'dashedArc', motion: 'breathe', accent: 'highlight' },
+  { id: 't-dotted', state: 'thinking', name: 'Dotted ring', description: 'A ring of soft dots.', eyes: 'normal', overlay: 'dottedRing', motion: 'breathe', accent: 'highlight' },
+  { id: 't-dashed-double', state: 'thinking', name: 'Dashed · double', description: 'Two faint rings turning opposite ways.', eyes: 'normal', overlay: 'dashedDouble', motion: 'breathe', accent: 'highlight' },
+  { id: 't-glow', state: 'thinking', name: 'Glow', description: 'A soft pulsing aura behind the body.', eyes: 'normal', overlay: 'glow', motion: 'none', accent: 'highlight' },
   { id: 't-bubble', state: 'thinking', name: 'Thought bubble', description: 'A literal bubble with an ellipsis.', eyes: 'normal', overlay: 'bubble', motion: 'breathe', accent: 'highlight' },
 
   // Input — a pending permission/approval.
   { id: 'i-orbit', state: 'input', name: 'Orbit', description: 'The current tilted orbit marker.', eyes: 'normal', overlay: 'orbit', motion: 'none', accent: 'warning' },
   { id: 'i-exclaim', state: 'input', name: 'Alert badge', description: 'An amber "!" badge plus a nervous wobble.', eyes: 'normal', overlay: 'exclaim', motion: 'wobble', accent: 'warning' },
+  { id: 'i-lock', state: 'input', name: 'Lock badge', description: 'A padlock badge for a permission request.', eyes: 'normal', overlay: 'lock', motion: 'wobble', accent: 'warning' },
   { id: 'i-pulse', state: 'input', name: 'Pulse ring', description: 'A ring pulses outward until you answer.', eyes: 'normal', overlay: 'pulse', motion: 'none', accent: 'warning' },
-  { id: 'i-key', state: 'input', name: 'Key badge', description: 'A key badge signals a permission request.', eyes: 'normal', overlay: 'key', motion: 'wobble', accent: 'warning' },
   { id: 'i-halo', state: 'input', name: 'Halo', description: 'A glowing ring hovers overhead.', eyes: 'normal', overlay: 'halo', motion: 'breathe', accent: 'warning' },
 
   // Question — the agent asking something.
@@ -56,7 +72,7 @@ export const STATE_DESIGNS: StateDesign[] = [
   { id: 'e-x', state: 'error', name: 'X eyes', description: 'The current crossed eyes and shake.', eyes: 'x', overlay: 'none', motion: 'shake', accent: 'danger' },
   { id: 'e-dizzy', state: 'error', name: 'Dizzy', description: 'Spiral eyes and a woozy wobble.', eyes: 'dizzy', overlay: 'none', motion: 'wobble', accent: 'danger' },
   { id: 'e-sad', state: 'error', name: 'Sad + tear', description: 'Drooping brows and a single tear.', eyes: 'sad', overlay: 'tear', motion: 'breathe', accent: 'danger' },
-  { id: 'e-badge', state: 'error', name: 'Error badge', description: 'A red "!" badge with a shake.', eyes: 'normal', overlay: 'exclaim', motion: 'shake', accent: 'danger' },
+  { id: 'e-badge', state: 'error', name: 'Warning triangle', description: 'A red triangle badge — distinct from the round input alert.', eyes: 'normal', overlay: 'errorBadge', motion: 'shake', accent: 'danger' },
   { id: 'e-crack', state: 'error', name: 'Cracked', description: 'X eyes with a crack across the body.', eyes: 'x', overlay: 'crack', motion: 'shake', accent: 'danger' },
 ];
 
@@ -76,6 +92,8 @@ const renderEye = (design: StateDesign, x: number): string => {
         return `<ellipse rx="12" ry="13.5" fill="#ffffff" /><circle r="6.5" fill="${COLOR.ink}" /><circle cx="-2.2" cy="-2.4" r="2" fill="#ffffff" /><line x1="-7" y1="-18" x2="5" y2="-14" stroke="${COLOR.ink}" stroke-width="2.4" stroke-linecap="round" />`;
       case 'up':
         return `<ellipse rx="12" ry="13.5" fill="#ffffff" /><g transform="translate(0 -3.4)"><circle r="6.5" fill="${COLOR.ink}" /><circle cx="-2.2" cy="-2.4" r="2" fill="#ffffff" /></g>`;
+      case 'roam':
+        return `<ellipse rx="12" ry="13.5" fill="#ffffff" /><g class="ov-roam"><circle r="6.5" fill="${COLOR.ink}" /><circle cx="-2.2" cy="-2.4" r="2" fill="#ffffff" /></g>`;
       default:
         return `<ellipse rx="12" ry="13.5" fill="#ffffff" /><circle r="6.5" fill="${COLOR.ink}" /><circle cx="-2.2" cy="-2.4" r="2" fill="#ffffff" />`;
     }
@@ -83,7 +101,7 @@ const renderEye = (design: StateDesign, x: number): string => {
   return `<g transform="translate(${x} 0)">${inner}</g>`;
 };
 
-const badge = (glyph: string): string => `
+const roundBadge = (glyph: string): string => `
   <g class="ov-badge">
     <circle cx="79" cy="21" r="13" fill="var(--accent)" stroke="var(--bg)" stroke-width="2.5" />
     <text x="79" y="27" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">${glyph}</text>
@@ -98,33 +116,43 @@ const renderOverlay = (design: StateDesign): { back: string; front: string } => 
         front: `<g transform="rotate(-18 50 50)"><ellipse cx="50" cy="50" rx="56" ry="22" fill="none" stroke="${a}" stroke-width="3.5" opacity="0.85" /><circle cx="106" cy="50" r="4.5" fill="${a}" /></g>`,
       };
     case 'pulse':
-      return {
-        back: `<circle class="ov-pulse" cx="50" cy="50" r="44" fill="none" stroke="${a}" stroke-width="3" />`,
-        front: '',
-      };
+      return { back: `<circle class="ov-pulse" cx="50" cy="50" r="44" fill="none" stroke="${a}" stroke-width="3" />`, front: '' };
     case 'dashed':
+      return { back: '', front: `<circle class="ov-spin" cx="50" cy="50" r="48" fill="none" stroke="${a}" stroke-width="3" stroke-dasharray="6 11" stroke-linecap="round" />` };
+    case 'dashedSoft':
+      return { back: '', front: `<circle class="ov-spin-slow" cx="50" cy="50" r="50" fill="none" stroke="${a}" stroke-width="2" stroke-dasharray="2 15" stroke-linecap="round" opacity="0.55" />` };
+    case 'dashedArc':
+      return { back: '', front: `<circle class="ov-spin" cx="50" cy="50" r="48" fill="none" stroke="${a}" stroke-width="3" stroke-dasharray="64 238" stroke-linecap="round" opacity="0.9" />` };
+    case 'dottedRing':
+      return { back: '', front: `<circle class="ov-spin-slow" cx="50" cy="50" r="50" fill="none" stroke="${a}" stroke-width="2.6" stroke-dasharray="0.5 9" stroke-linecap="round" opacity="0.6" />` };
+    case 'dashedDouble':
       return {
         back: '',
-        front: `<circle class="ov-spin" cx="50" cy="50" r="48" fill="none" stroke="${a}" stroke-width="3" stroke-dasharray="6 11" stroke-linecap="round" />`,
+        front: `<circle class="ov-spin-slow" cx="50" cy="50" r="54" fill="none" stroke="${a}" stroke-width="1.6" stroke-dasharray="1 10" stroke-linecap="round" opacity="0.5" /><circle class="ov-spin-rev" cx="50" cy="50" r="45" fill="none" stroke="${a}" stroke-width="2.4" stroke-dasharray="10 16" stroke-linecap="round" opacity="0.6" />`,
       };
     case 'glow':
-      return {
-        back: `<circle class="ov-glow" cx="50" cy="50" r="42" fill="${a}" opacity="0.28" />`,
-        front: '',
-      };
+      return { back: `<circle class="ov-glow" cx="50" cy="50" r="42" fill="${a}" opacity="0.28" />`, front: '' };
     case 'exclaim':
-      return { back: '', front: badge('!') };
+      return { back: '', front: roundBadge('!') };
     case 'question':
-      return { back: '', front: badge('?') };
-    case 'key':
+      return { back: '', front: roundBadge('?') };
+    case 'errorBadge':
+      return {
+        back: '',
+        front: `
+        <g class="ov-badge">
+          <path d="M79 7 L93 32 H65 Z" fill="${a}" stroke="var(--bg)" stroke-width="2.5" stroke-linejoin="round" />
+          <text x="79" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">!</text>
+        </g>`,
+      };
+    case 'lock':
       return {
         back: '',
         front: `
         <g class="ov-badge">
           <circle cx="79" cy="21" r="13" fill="${a}" stroke="var(--bg)" stroke-width="2.5" />
-          <circle cx="76" cy="18" r="3.6" fill="none" stroke="#ffffff" stroke-width="2.2" />
-          <line x1="78.5" y1="20.5" x2="84" y2="26" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" />
-          <line x1="82" y1="24" x2="84.5" y2="21.5" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" />
+          <rect x="73.5" y="19.5" width="11" height="8.5" rx="1.8" fill="none" stroke="#ffffff" stroke-width="2" />
+          <path d="M75.5 19.5 v-1.5 a3.5 3.5 0 0 1 7 0 V19.5" fill="none" stroke="#ffffff" stroke-width="2" />
         </g>`,
       };
     case 'dots':
@@ -138,10 +166,7 @@ const renderOverlay = (design: StateDesign): { back: string; front: string } => 
         </g>`,
       };
     case 'sparkle':
-      return {
-        back: '',
-        front: `<path class="ov-sparkle" d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="${a}" transform="translate(78 22)" />`,
-      };
+      return { back: '', front: `<path class="ov-sparkle" d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="${a}" transform="translate(78 22)" />` };
     case 'bubble':
       return {
         back: '',
@@ -153,20 +178,11 @@ const renderOverlay = (design: StateDesign): { back: string; front: string } => 
         </g>`,
       };
     case 'crack':
-      return {
-        back: '',
-        front: `<path d="M40 14 L48 38 L38 50 L52 78 L46 84" fill="none" stroke="var(--bg)" stroke-width="2.6" stroke-linejoin="round" opacity="0.85" />`,
-      };
+      return { back: '', front: `<path d="M40 14 L48 38 L38 50 L52 78 L46 84" fill="none" stroke="var(--bg)" stroke-width="2.6" stroke-linejoin="round" opacity="0.85" />` };
     case 'tear':
-      return {
-        back: '',
-        front: `<path class="ov-tear" d="M0 0 C 4.5 6 6 9 0 11 C -6 9 -4.5 6 0 0 Z" fill="#7cc4ff" transform="translate(37 66)" />`,
-      };
+      return { back: '', front: `<path class="ov-tear" d="M0 0 C 4.5 6 6 9 0 11 C -6 9 -4.5 6 0 0 Z" fill="#7cc4ff" transform="translate(37 66)" />` };
     case 'halo':
-      return {
-        back: '',
-        front: `<ellipse class="ov-halo" cx="50" cy="12" rx="19" ry="5.5" fill="none" stroke="${a}" stroke-width="4" />`,
-      };
+      return { back: '', front: `<ellipse class="ov-halo" cx="50" cy="12" rx="19" ry="5.5" fill="none" stroke="${a}" stroke-width="4" />` };
     default:
       return { back: '', front: '' };
   }
@@ -179,10 +195,12 @@ const renderBlob = (design: StateDesign): string => {
     <svg viewBox="0 0 100 100" aria-hidden="true">
       <g class="overlay-back">${overlay.back}</g>
       <g class="hop">
-        <g transform="rotate(3 50 50)">
-          <g class="body"><path d="${SHAPE.path}" fill="${COLOR.fill}" /></g>
-          <g class="eyes" transform="translate(0 ${SHAPE.eyeY}) scale(${SHAPE.eyeScale})">
-            ${renderEye(design, SHAPE.eyeX - SHAPE.eyeGap)}${renderEye(design, SHAPE.eyeX + SHAPE.eyeGap)}
+        <g class="flip">
+          <g transform="rotate(3 50 50)">
+            <g class="body"><path d="${SHAPE.path}" fill="${COLOR.fill}" /></g>
+            <g class="eyes" transform="translate(0 ${SHAPE.eyeY}) scale(${SHAPE.eyeScale})">
+              ${renderEye(design, SHAPE.eyeX - SHAPE.eyeGap)}${renderEye(design, SHAPE.eyeX + SHAPE.eyeGap)}
+            </g>
           </g>
         </g>
       </g>
@@ -257,14 +275,18 @@ export const STATES_PAGE = `<!doctype html>
   .label { font-weight: 600; font-size: 12.5px; }
   .desc { color: var(--dim); font-size: 11px; line-height: 1.35; }
   .blob svg { display: block; width: var(--size); height: var(--size); overflow: visible; transform-origin: 50% 50%; }
-  .blob .hop { transform-box: view-box; transform-origin: 50% 50%; }
+  .blob .hop, .blob .flip { transform-box: view-box; transform-origin: 50% 50%; }
   .blob .overlay-back, .blob .overlay-front { pointer-events: none; }
   .motion-breathe .hop { animation: breathe 3.2s ease-in-out infinite; }
   .motion-bounce .hop { animation: bounce 0.9s cubic-bezier(0.4, 0, 0.5, 1) infinite; }
+  .motion-hopflip .hop { animation: bounce 0.9s cubic-bezier(0.4, 0, 0.5, 1) infinite; }
+  .motion-hopflip .flip { animation: flip 4s cubic-bezier(0.62, 0, 0.38, 1) infinite; }
   .motion-wobble svg { animation: wobble 1.6s ease-in-out infinite; }
   .motion-shake svg { animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite; }
   .motion-tilt svg { animation: tilt 2.6s ease-in-out infinite; }
   .ov-spin { transform-box: view-box; transform-origin: 50% 50%; animation: spin 4s linear infinite; }
+  .ov-spin-slow { transform-box: view-box; transform-origin: 50% 50%; animation: spin 9s linear infinite; }
+  .ov-spin-rev { transform-box: view-box; transform-origin: 50% 50%; animation: spinRev 7s linear infinite; }
   .ov-pulse { transform-box: view-box; transform-origin: 50% 50%; animation: pulse 1.8s ease-out infinite; }
   .ov-glow { transform-box: view-box; transform-origin: 50% 50%; filter: blur(6px); animation: glow 2.4s ease-in-out infinite; }
   .ov-halo { animation: halo 2.2s ease-in-out infinite; }
@@ -272,19 +294,30 @@ export const STATES_PAGE = `<!doctype html>
   .ov-dots circle { animation: dot 1.4s ease-in-out infinite; }
   .ov-dots .d2 { animation-delay: 0.2s; }
   .ov-dots .d3 { animation-delay: 0.4s; }
+  .ov-roam { animation: roam 3.6s ease-in-out infinite; }
   .ov-tear { animation: tear 2s ease-in infinite; }
   .ov-bubble { animation: bob 2.6s ease-in-out infinite; transform-box: view-box; transform-origin: 77px 13px; }
   @keyframes breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.04, 0.96); } }
   @keyframes bounce { 0%, 100% { transform: translateY(0) scale(1, 1); } 40% { transform: translateY(-20%) scale(0.94, 1.1); } 75% { transform: translateY(0) scale(1.08, 0.9); } }
+  @keyframes flip { 0%, 74% { transform: rotate(0deg); } 88% { transform: rotate(360deg); } 100% { transform: rotate(360deg); } }
   @keyframes wobble { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-5deg); } 75% { transform: rotate(5deg); } }
   @keyframes shake { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(2px); } 30%, 50%, 70% { transform: translateX(-3px); } 40%, 60% { transform: translateX(3px); } }
   @keyframes tilt { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg); } }
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes spinRev { to { transform: rotate(-360deg); } }
   @keyframes pulse { 0% { transform: scale(0.82); opacity: 0.85; } 100% { transform: scale(1.22); opacity: 0; } }
   @keyframes glow { 0%, 100% { transform: scale(0.94); opacity: 0.18; } 50% { transform: scale(1.06); opacity: 0.34; } }
   @keyframes halo { 0%, 100% { transform: translateY(0); opacity: 0.85; } 50% { transform: translateY(-3px); opacity: 1; } }
   @keyframes twinkle { 0%, 100% { transform: scale(0.7); opacity: 0.5; } 50% { transform: scale(1.15); opacity: 1; } }
   @keyframes dot { 0%, 100% { transform: translateY(0); opacity: 0.45; } 50% { transform: translateY(-4px); opacity: 1; } }
+  @keyframes roam {
+    0%, 100% { transform: translate(0, -3); }
+    15% { transform: translate(-4, -2); }
+    32% { transform: translate(4, -2); }
+    50% { transform: translate(0, 1); }
+    68% { transform: translate(-4, 1); }
+    85% { transform: translate(4, -1); }
+  }
   @keyframes tear { 0% { transform: translateY(0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(10px); opacity: 0; } }
   @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
   footer {
@@ -306,7 +339,8 @@ export const STATES_PAGE = `<!doctype html>
   </div>
 </header>
 <main>
-  ${section('thinking', 'Thinking', 'A new state for when the model is reasoning, separate from tool work.')}
+  ${section('busy', 'Busy', 'The agent is working (tools running) — the baseline the thinking designs should be distinct from.')}
+  ${section('thinking', 'Thinking', 'The model is reasoning. Includes soft dashed-ring variants and a "looking around" state.')}
   ${section('input', 'Input · permission', 'The agent is blocked on an approval.')}
   ${section('question', 'Question', 'The agent is asking you something.')}
   ${section('error', 'Error', 'The last turn failed.')}

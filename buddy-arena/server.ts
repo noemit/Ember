@@ -28,4 +28,4 @@ const server = Bun.serve({
 
 console.log(`Buddy review → http://localhost:${server.port}`);
 console.log(`  shapes: ${GROK_SHAPES.length} shipped`);
-console.log(`  states: ${STATE_DESIGNS.length} designs across thinking/input/question/error`);
+console.log(`  states: ${STATE_DESIGNS.length} designs across busy/thinking/input/question/error`);
