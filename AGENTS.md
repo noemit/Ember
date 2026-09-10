@@ -77,7 +77,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   still name them fall back to the default. Renderers memoize on the `identity` object, so App
   hands back the previous reference when nothing changed. Grok pupils track the cursor only while
   it's within `NEAR_RADIUS` (`usePupilTracking.ts`), and active Grok blobs do squash-and-stretch
-  hops with a per-blob occasional somersault (`blob-hop`/`blob-flip` in `blob.css`). Visuals key off
+  hops with a per-blob occasional somersault (`blob-hop`/`blob-flip` in `blob.css`); the eyes
+  counter-scale 75% of the hop so they mostly keep their shape (`blob-hop-eyes`). Visuals key off
   a `BallMood` (`blob/mood.ts`): `busy` = hop+flip, `thinking` = breathe + a soft arc, `input` =
   wobble + padlock badge, `question` = tilt + "?" badge, `error` = wobble + warning triangle. App
   derives the mood from the ball state plus the prompt kind (permission vs question) and whether the

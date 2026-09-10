@@ -41,6 +41,12 @@
   animation: blob-hop 0.9s cubic-bezier(0.4, 0, 0.5, 1) infinite;
 }
 
+/* The hop scales body and eyes together, which stretched the eyes with it. Counter-scale the eyes
+   by 75% of the inverse so they mostly keep their shape while the body still squashes. */
+.blob-grok[data-mood='busy'] .blob-eyes {
+  animation: blob-hop-eyes 0.9s cubic-bezier(0.4, 0, 0.5, 1) infinite;
+}
+
 .blob-grok[data-mood='busy'] .blob-flip {
   animation: blob-flip 12s cubic-bezier(0.62, 0, 0.38, 1) infinite;
 }
@@ -167,6 +173,29 @@
   }
   92% {
     transform: translateY(-5%) scale(0.97, 1.04);
+  }
+}
+
+/* 75% of the inverse of each blob-hop scale stop, so the eyes deform a quarter as much. */
+@keyframes blob-hop-eyes {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  10% {
+    transform: scale(0.9196, 1.1221);
+  }
+  42% {
+    transform: scale(1.0833, 0.9079);
+  }
+  62% {
+    transform: scale(1.0652, 0.9196);
+  }
+  82% {
+    transform: scale(0.8966, 1.1646);
+  }
+  92% {
+    transform: scale(1.0232, 0.9712);
   }
 }
 
