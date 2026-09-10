@@ -161,6 +161,10 @@ const responseError = (data: unknown, fallback: string): string =>
 const messagePinKey = (session: SessionRef, messageId: string): string =>
   `${sessionKey(session)}::${messageId}`;
 
+let noteSequence = 0;
+const createNoteId = (): string =>
+  `note-${Date.now().toString(36)}-${(noteSequence = (noteSequence + 1) % 0xffff).toString(36)}`;
+
 export default function App() {
   const [instances, setInstances] = React.useState<Instance[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -1371,13 +1375,23 @@ export default function App() {
     handleSettings({ composerDrafts }, { preserveActionError: true });
   };
 
-  const handleSessionNoteChange = (key: string, text: string) => {
+  const handleSaveNote = (key: string, text: string) => {
     if (!key) return;
-    const clean = text.slice(0, 20_000);
+    const clean = text.trim().slice(0, 20_000);
+    if (!clean) return;
     const current = settingsRef.current.sessionNotes;
-    if ((current[key] ?? '') === clean) return;
+    const notes = [...(current[key] ?? []), { id: createNoteId(), text: clean }].slice(-100);
+    handleSettings({ sessionNotes: { ...current, [key]: notes } });
+  };
+
+  const handleDeleteNote = (key: string, noteId: string) => {
+    if (!key) return;
+    const current = settingsRef.current.sessionNotes;
+    const existing = current[key];
+    if (!existing) return;
+    const notes = existing.filter((note) => note.id !== noteId);
     const sessionNotes = { ...current };
-    if (clean.trim()) sessionNotes[key] = clean;
+    if (notes.length) sessionNotes[key] = notes;
     else delete sessionNotes[key];
     handleSettings({ sessionNotes });
   };
@@ -1553,12 +1567,13 @@ export default function App() {
               bypass={bypass}
               hideToolCalls={settings.hideToolCalls}
               pinnedMessageIds={pinnedMessageIds}
-              sessionNote={selectedKey ? settings.sessionNotes[selectedKey] ?? '' : ''}
+              sessionNotes={selectedKey ? settings.sessionNotes[selectedKey] ?? [] : []}
               savedComposerDrafts={settings.composerDrafts}
               composerDraftsHydrated={settingsLoaded}
               onComposerDraftsChange={handleComposerDraftsChange}
               onTogglePin={handleTogglePin}
-              onSessionNoteChange={handleSessionNoteChange}
+              onSaveNote={handleSaveNote}
+              onDeleteNote={handleDeleteNote}
               onHideToolCallsChange={(hide) => handleSettings({ hideToolCalls: hide })}
               onBypassChange={(enabled) => {
                 if (selected) void setYolo(selected, enabled, selectedSession?.directory);

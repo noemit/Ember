@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, ChevronDown, MessageCircleQuestion, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
@@ -38,13 +38,14 @@ import type {
   QuestionAnswers,
   QuestionRequest,
   Session,
+  SessionNote,
   StoredComposerDraft,
 } from '../types';
 
 const loadModelPicker = () => import('./ModelPicker');
 const ModelPicker = React.lazy(loadModelPicker);
 const Transcript = React.lazy(() => import('./Transcript'));
-const SessionContextPanel = React.lazy(() => import('./SessionContextPanel'));
+const SessionNotes = React.lazy(() => import('./SessionNotes'));
 const ProjectPicker = React.lazy(() => import('./ProjectPicker'));
 const QueuedMessageList = React.lazy(() => import('./QueuedMessageList'));
 const PinnedMessagesDialog = React.lazy(() => import('./PinnedMessagesDialog'));
@@ -82,12 +83,13 @@ type Props = {
   bypass: boolean;
   hideToolCalls: boolean;
   pinnedMessageIds: Set<string>;
-  sessionNote: string;
+  sessionNotes: SessionNote[];
   savedComposerDrafts: Record<string, StoredComposerDraft>;
   composerDraftsHydrated: boolean;
   onComposerDraftsChange: (drafts: Record<string, StoredComposerDraft>) => void;
   onTogglePin: (message: ChatMessage) => void;
-  onSessionNoteChange: (sessionKey: string, text: string) => void;
+  onSaveNote: (sessionKey: string, text: string) => void;
+  onDeleteNote: (sessionKey: string, noteId: string) => void;
   onHideToolCallsChange: (hide: boolean) => void;
   onBypassChange: (enabled: boolean) => void;
   onNewSessionInstanceChange: (instanceId: string) => void;
@@ -219,12 +221,13 @@ export default function ChatView({
   bypass,
   hideToolCalls,
   pinnedMessageIds,
-  sessionNote,
+  sessionNotes,
   savedComposerDrafts,
   composerDraftsHydrated,
   onComposerDraftsChange,
   onTogglePin,
-  onSessionNoteChange,
+  onSaveNote,
+  onDeleteNote,
   onHideToolCallsChange,
   onBypassChange,
   onNewSessionInstanceChange,
@@ -249,7 +252,6 @@ export default function ChatView({
   const [attachments, setAttachments] = React.useState<FileAttachment[]>([]);
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [replyContext, setReplyContext] = React.useState<ChatMessage | null>(null);
-  const [contextOpen, setContextOpen] = React.useState(false);
   const [pinnedOpen, setPinnedOpen] = React.useState(false);
   const [focusMessageId, setFocusMessageId] = React.useState<string | null>(null);
   const [focusRequest, setFocusRequest] = React.useState(0);
@@ -434,7 +436,6 @@ export default function ChatView({
   }, [composerKey]);
 
   React.useEffect(() => {
-    setContextOpen(false);
     setFocusMessageId(null);
     if (!composerKey) return;
     const frame = window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -533,7 +534,34 @@ export default function ChatView({
     setReplyContext(null);
   };
 
-  const openNotes = () => setContextOpen(true);
+  // "Save as note" parks the composer text; a note can send as-is, come back to the composer, or go.
+  const saveNote = () => {
+    if (!composerKey || !session) return;
+    const parked = text.trim();
+    if (!parked) return;
+    onSaveNote(composerKey, parked);
+    updateComposerDraft(composerKey, null);
+    setText('');
+    setAttachmentError(null);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const bringBackNote = (note: SessionNote) => {
+    if (!composerKey) return;
+    const next = text.trim() ? `${text.trimEnd()}\n\n${note.text}` : note.text;
+    setText(next);
+    updateComposerDraft(composerKey, { text: next, modelId, variant, attachments, replyContext });
+    onDeleteNote(composerKey, note.id);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const sendNote = async (note: SessionNote): Promise<boolean> => {
+    if (!composerKey || !session) return false;
+    const input: PromptInput = { text: note.text, model, variant: variant || undefined };
+    const sent = await (shouldQueue ? onQueue : onSend)(input);
+    if (sent) onDeleteNote(composerKey, note.id);
+    return sent;
+  };
 
   const replyToMessage = (message: ChatMessage) => {
     setReplyContext(message);
@@ -682,19 +710,6 @@ export default function ChatView({
 
       {composerKey ? (
         <div className="safe-composer flex-none border-t bg-card p-2.5 sm:p-3">
-          <div className="flex w-full items-stretch gap-2">
-            {session ? (
-            <React.Suspense fallback={null}>
-              <SessionContextPanel
-                open={contextOpen}
-                sessionKey={composerKey ?? ''}
-                note={sessionNote}
-                onClose={() => setContextOpen(false)}
-                onOpen={openNotes}
-                onNoteChange={onSessionNoteChange}
-              />
-            </React.Suspense>
-            ) : null}
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             {draftInstance ? (
               <div className="flex items-center gap-1.5 px-0.5" aria-label="New agent options">
@@ -740,6 +755,19 @@ export default function ChatView({
                   <X />
                 </Button>
               </div>
+            ) : null}
+            {session ? (
+            <React.Suspense fallback={null}>
+              <SessionNotes
+                key={`notes-${composerKey ?? 'none'}`}
+                notes={sessionNotes}
+                onSend={sendNote}
+                onBringBack={bringBackNote}
+                onDelete={(note) => {
+                  if (composerKey) onDeleteNote(composerKey, note.id);
+                }}
+              />
+            </React.Suspense>
             ) : null}
             {session ? (
             <React.Suspense fallback={null}>
@@ -978,6 +1006,20 @@ export default function ChatView({
                 ) : null}
               </AnimatePresence>
 
+              {session ? (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="size-7 rounded-full text-muted-foreground"
+                  disabled={!text.trim()}
+                  onClick={saveNote}
+                  aria-label="Save as note"
+                  title="Save as note"
+                >
+                  <NotebookPen className="size-3.5" />
+                </Button>
+              ) : null}
+
               <Button
                 size="icon-sm"
                 className="size-7 rounded-full"
@@ -990,7 +1032,6 @@ export default function ChatView({
               </Button>
             </div>
             </motion.div>
-          </div>
           </div>
         </div>
       ) : null}

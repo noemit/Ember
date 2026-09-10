@@ -96,12 +96,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   output/diff), collapsed reasoning, file parts, permission + question cards, model-named live
   activity line (suppressed until initial history resolves), pin-to-bottom scrolling (ResizeObserver +
   `scrollend`), and message jump/highlight support.
-- `src/components/SessionContextPanel.tsx` — one freeform note per session, rendered as a
-  composer-style input (no header, no scroll region) beside the composer. Edits are debounced and
-  flushed on blur, unmount, or session switch; the note is stored in Ember settings keyed by
-  session. `PinnedMessagesDialog.tsx` shows the selected session's pinned messages in a modal,
-  opened from the pin chip in the chat header; its Jump/Reply/Unpin actions reuse the transcript
-  handlers and change no OpenChamber data.
+- `src/components/SessionNotes.tsx` — notes parked from the composer, listed above it like the
+  queue but never dispatched on their own. The composer's save-as-note button (next to send) stores
+  the text in Ember settings keyed by session; each row can send as-is, bring the text back into the
+  composer (which consumes the note), or delete it. `PinnedMessagesDialog.tsx` shows the selected
+  session's pinned messages in a modal, opened from the pin chip in the chat header; its
+  Jump/Reply/Unpin actions reuse the transcript handlers and change no OpenChamber data.
 - `src/components/Markdown.tsx` — assistant prose via `react-markdown` + `remark-gfm` (no raw
   HTML). A small rehype plugin reuses `Linkify.tsx`'s tokenizer to link bare local paths; all
   anchors route through `window.ember.openExternal`.
