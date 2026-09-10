@@ -36,6 +36,40 @@ const CHIP = `<rect x="2.5" y="2.5" width="19" height="19" rx="5.5" fill="curren
   (d) => `<path d="${d}" stroke="${CASING}"/>`
 ).join('')}`;
 
+/** A ray segment; inherits the icon's stroke. */
+const ray = (x1: number, y1: number, x2: number, y2: number): string =>
+  `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/>`;
+
+/** Evenly spaced rays radiating outward from (cx, cy), starting at the top. */
+const rays = (count: number, inner: number, outer: number, cx = 12, cy = 12.2): string =>
+  Array.from({ length: count }, (_, index) => {
+    const angle = (index / count) * Math.PI * 2 - Math.PI / 2;
+    return ray(
+      cx + inner * Math.cos(angle),
+      cy + inner * Math.sin(angle),
+      cx + outer * Math.cos(angle),
+      cy + outer * Math.sin(angle)
+    );
+  }).join('');
+
+/** Rays at explicit angles, for a top-only "crown". */
+const fan = (angles: number[], inner: number, outer: number, cx = 12, cy = 12.6): string =>
+  angles
+    .map((degrees) => {
+      const angle = (degrees * Math.PI) / 180;
+      return ray(
+        cx + inner * Math.cos(angle),
+        cy + inner * Math.sin(angle),
+        cx + outer * Math.cos(angle),
+        cy + outer * Math.sin(angle)
+      );
+    })
+    .join('');
+
+/** The brain scaled down and nudged, leaving room for rays around it. */
+const shrunk = (scale: number, cy = 12.2): string =>
+  `<g transform="translate(12 ${cy}) scale(${scale}) translate(-12 -12)">${BRAIN}</g>`;
+
 const icon = (body: string): string =>
   `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 
@@ -91,6 +125,36 @@ export const OPTIONS: Option[] = [
       expanded: BRAIN,
       collapsed: `${BRAIN}${CASED_BAR}`,
       hidden: `${BRAIN}${CASED_CROSS}`,
+    },
+  },
+  {
+    id: 'rays-8',
+    name: 'E · Rays ×8 / plain / slash',
+    desc: 'Expanded: a full sunburst radiating from the brain. Collapsed: plain brain. Hidden: slash.',
+    icons: {
+      expanded: `${shrunk(0.62)}${rays(8, 8.4, 11.6)}`,
+      collapsed: BRAIN,
+      hidden: `${BRAIN}${CASED_SLASH}`,
+    },
+  },
+  {
+    id: 'rays-4',
+    name: 'F · Rays ×4 / plain / slash',
+    desc: 'Four chunkier rays (top, right, bottom, left) — the most legible at 14px.',
+    icons: {
+      expanded: `${shrunk(0.66)}${rays(4, 8.6, 11.8)}`,
+      collapsed: BRAIN,
+      hidden: `${BRAIN}${CASED_SLASH}`,
+    },
+  },
+  {
+    id: 'rays-crown',
+    name: 'G · Crown rays / plain / slash',
+    desc: 'Three rays fanning off the top only, like an idea sparking.',
+    icons: {
+      expanded: `${shrunk(0.74, 12.8)}${fan([-90, -135, -45], 7.8, 11.4)}`,
+      collapsed: BRAIN,
+      hidden: `${BRAIN}${CASED_SLASH}`,
     },
   },
 ];
