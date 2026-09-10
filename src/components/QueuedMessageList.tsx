@@ -86,7 +86,7 @@ export default function QueuedMessageList({
               {queueItems.length} queued {queueItems.length === 1 ? 'message' : 'messages'}
             </span>
             <span className="min-w-0 flex-1 truncate">
-              {queue?.sendingId ? 'Sending the next one…' : 'They send when this agent is idle.'}
+              {queue?.sendingId ? 'Sending the next one…' : null}
             </span>
             <ChevronDown
               className={cn('size-3.5 flex-none transition-transform', !open && '-rotate-90')}
