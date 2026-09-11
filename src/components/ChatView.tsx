@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Box, ChevronDown, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, Wrench, X } from 'lucide-react';
+import { ArrowUp, Box, ChevronDown, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
@@ -43,6 +43,7 @@ import type {
   StoredComposerDraft,
 } from '../types';
 import ThinkingIcon from './ThinkingIcon';
+import ToolCallsIcon from './ToolCallsIcon';
 
 const loadModelPicker = () => import('./ModelPicker');
 const ModelPicker = React.lazy(loadModelPicker);
@@ -694,7 +695,7 @@ export default function ChatView({
                 title={hideToolCalls ? 'Tool calls hidden — click to show' : 'Hide tool calls'}
                 className="h-7 px-2 text-xs data-[state=on]:bg-muted data-[state=on]:text-foreground"
               >
-                <Wrench className="size-3.5" />
+                <ToolCallsIcon hidden={hideToolCalls} casing="var(--muted)" className="size-3.5" />
               </Toggle>
             </header>
 

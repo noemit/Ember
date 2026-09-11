@@ -1,5 +1,5 @@
-import { Wrench } from 'lucide-react';
 import ThinkingIcon from './ThinkingIcon';
+import ToolCallsIcon from './ToolCallsIcon';
 import {
   Dialog,
   DialogContent,
@@ -52,7 +52,7 @@ export default function ViewOptionsDialog({
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
             <div className="flex min-w-0 items-start gap-2.5">
-              <Wrench className="mt-0.5 size-4 flex-none text-muted-foreground" />
+              <ToolCallsIcon hidden={hideToolCalls} className="mt-0.5 size-4 flex-none text-muted-foreground" />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="font-medium">Show tool calls</span>
                 <span className="text-[11px] text-muted-foreground">
