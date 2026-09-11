@@ -727,7 +727,28 @@ const MessageRow = React.memo(function MessageRow({
       )}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        {blocks.map((block) => renderBlock(message, block, reasoningDisplay === 'expanded'))}
+        {blocks.map((block, index) => {
+          const content = renderBlock(message, block, reasoningDisplay === 'expanded');
+          if (!showBuddy || index !== blocks.length - 1) return content;
+          // Anchor the blob to the last block, not the row: for a text bubble that puts it at the
+          // bottom of the bubble instead of down beside the metadata row. Tool/reasoning rows keep
+          // their content on the left, so the blob moves to the right side there rather than
+          // covering them.
+          const rightAligned = block.type !== 'text';
+          return (
+            <div key={block.id} className="relative flex flex-col">
+              {content}
+              <div
+                className={cn(
+                  'pointer-events-none absolute bottom-0 z-10',
+                  rightAligned ? 'right-0' : '-left-5'
+                )}
+              >
+                <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} interactive={false} />
+              </div>
+            </div>
+          );
+        })}
         {message.error ? <MessageError error={message.error} /> : null}
         <MessageFooter
           message={message}
@@ -736,8 +757,8 @@ const MessageRow = React.memo(function MessageRow({
           onReply={() => onReply(message)}
         />
       </div>
-      {showBuddy ? (
-        // Out of flow so the bubble keeps its natural position; the blob tucks over its left edge.
+      {showBuddy && blocks.length === 0 ? (
+        // No content block to anchor to (an errored empty message); fall back to the row corner.
         <div className="pointer-events-none absolute bottom-0.5 left-0 z-10 sm:left-2">
           <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} interactive={false} />
         </div>
