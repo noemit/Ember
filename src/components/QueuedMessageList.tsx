@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ModelPickerFallback } from './ModelPickerFallback';
-import { cn } from '@/lib/utils';
 import { springTransition } from '@/lib/animation';
 import type { MessageQueueSession, ModelOption, QueuedMessage } from '../types';
 
@@ -92,12 +91,9 @@ export default function QueuedMessageList({
               aria-expanded={open}
               aria-label={`Queued messages (${queueItems.length})`}
               title={open ? 'Collapse queued messages' : 'Expand queued messages'}
-              className="flex flex-none flex-row items-center gap-2 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              className="flex flex-none items-center rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
             >
               {rail}
-              <ChevronDown
-                className={cn('size-3 flex-none transition-transform', !open && '-rotate-90')}
-              />
             </button>
           ) : (
             <div className="flex flex-none items-center px-1.5 py-1 text-muted-foreground">{rail}</div>

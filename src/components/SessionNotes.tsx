@@ -1,9 +1,8 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, CornerUpLeft, Loader2, NotebookPen, Send, X } from 'lucide-react';
+import { CornerUpLeft, Loader2, NotebookPen, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 import { springTransition } from '@/lib/animation';
 import type { SessionNote } from '../types';
 
@@ -56,12 +55,9 @@ export default function SessionNotes({ open, notes, onOpenChange, onSend, onBrin
             aria-expanded={open}
             aria-label={`Notes (${notes.length})`}
             title={open ? 'Collapse notes' : 'Expand notes'}
-            className="flex flex-none flex-row items-center gap-2 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            className="flex flex-none items-center rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
           >
             {rail}
-            <ChevronDown
-              className={cn('size-3 flex-none transition-transform', !open && '-rotate-90')}
-            />
           </button>
         ) : (
           <div className="flex flex-none items-center px-1.5 py-1 text-muted-foreground">{rail}</div>
