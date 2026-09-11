@@ -717,6 +717,10 @@ const MessageRow = React.memo(function MessageRow({
   );
   // A row whose every block is hidden (thinking/tools off) shouldn't leave a gap behind.
   if (blocks.length === 0 && !message.error) return null;
+  // Text ends use the row's bottom corner (level with the metadata row); tool/reasoning ends tuck
+  // the blob to the right of the last block instead, where it reads as "after the tool call".
+  const lastBlock = blocks[blocks.length - 1];
+  const blobOnRow = showBuddy && (!lastBlock || lastBlock.type === 'text');
   return (
     <motion.div
       ref={ref}
@@ -729,22 +733,13 @@ const MessageRow = React.memo(function MessageRow({
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {blocks.map((block, index) => {
           const content = renderBlock(message, block, reasoningDisplay === 'expanded');
-          if (!showBuddy || index !== blocks.length - 1) return content;
-          // Anchor the blob to the last block, not the row: for a text bubble that puts it at the
-          // bottom of the bubble instead of down beside the metadata row. Tool/reasoning rows keep
-          // their content on the left, so the blob moves to the right side there rather than
-          // covering them.
-          const rightAligned = block.type !== 'text';
+          // Left-aligned rows (tools, reasoning, files) keep their content on the left, so the blob
+          // tucks to the right of the last one rather than covering it.
+          if (!showBuddy || blobOnRow || index !== blocks.length - 1) return content;
           return (
             <div key={block.id} className="relative flex flex-col">
               {content}
-              <div
-                className={cn(
-                  // Sit on the text's bottom rather than the card's padded bottom.
-                  'pointer-events-none absolute bottom-1 z-10',
-                  rightAligned ? 'right-0' : '-left-5'
-                )}
-              >
+              <div className="pointer-events-none absolute right-0 bottom-1 z-10">
                 <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} interactive={false} />
               </div>
             </div>
@@ -758,9 +753,10 @@ const MessageRow = React.memo(function MessageRow({
           onReply={() => onReply(message)}
         />
       </div>
-      {showBuddy && blocks.length === 0 ? (
-        // No content block to anchor to (an errored empty message); fall back to the row corner.
-        <div className="pointer-events-none absolute bottom-0.5 left-0 z-10 sm:left-2">
+      {blobOnRow ? (
+        // Text (and block-less) messages: sit the blob in the row's bottom-left corner, level with
+        // the bottom of the row rather than up at the bubble's padded edge.
+        <div className="pointer-events-none absolute bottom-1 left-0 z-10 sm:left-2">
           <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} interactive={false} />
         </div>
       ) : null}
