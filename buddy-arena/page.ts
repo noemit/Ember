@@ -67,50 +67,50 @@ const TEDDY_IDEAS: GrokShape[] = [
 ];
 const teddyCards = TEDDY_IDEAS.map((shape, index) => card(shape, index + 2, TILTS[index % TILTS.length])).join('');
 
-/** Five fresh, friendlier silhouettes for a second pass: soft ears, cheeks, and rounded bottoms. */
-const NEW_FRIENDLY_IDEAS: GrokShape[] = [
+/** Five wildcard silhouettes that break out of the round-blob mould: cat, ghost, cloud, egg, mushroom. */
+const NEW_CREATIVE_IDEAS: GrokShape[] = [
   {
-    name: 'friendly-bearlet',
-    path: 'M50 31 C53 19 61 13 68 17 C75 21 76 31 73 38 C83 42 88 51 87 61 C85 77 69 87 50 87 C31 87 15 77 13 61 C12 51 17 42 27 38 C24 31 25 21 32 17 C39 13 47 19 50 31 Z',
+    name: 'idea-cat',
+    path: 'M50 34 C48 24 41 13 34 9 C30 18 27 26 26 33 C16 38 10 48 10 59 C10 75 28 87 50 87 C72 87 90 75 90 59 C90 48 84 38 74 33 C73 26 70 18 66 9 C59 13 52 24 50 34 Z',
     eyeX: 50,
-    eyeY: 57,
-    eyeGap: 16,
-    eyeScale: 1,
-  },
-  {
-    name: 'friendly-bunny',
-    path: 'M50 27 C43 21 34 18 29 23 C25 27 28 35 34 39 C22 41 14 50 14 61 C14 77 30 87 50 87 C70 87 86 77 86 61 C86 50 78 41 66 39 C72 35 75 27 71 23 C66 18 57 21 50 27 Z',
-    eyeX: 50,
-    eyeY: 56,
+    eyeY: 60,
     eyeGap: 15,
     eyeScale: 1,
   },
   {
-    name: 'friendly-cushion',
-    path: 'M50 18 C64 18 79 25 84 38 C91 56 83 75 67 83 C57 88 43 88 33 83 C17 75 9 56 16 38 C21 25 36 18 50 18 Z',
+    name: 'idea-ghost',
+    path: 'M50 12 C67 12 81 27 81 50 L81 78 C77 73 73 73 69 78 C65 83 60 83 56 78 C52 73 48 73 44 78 C40 83 35 83 31 78 C27 73 23 73 19 78 L19 50 C19 27 33 12 50 12 Z',
     eyeX: 50,
-    eyeY: 54,
+    eyeY: 48,
     eyeGap: 15,
     eyeScale: 1,
   },
   {
-    name: 'friendly-sprout',
-    path: 'M50 28 C44 22 35 20 30 25 C25 30 29 37 36 41 C22 43 14 52 15 64 C16 79 31 88 50 88 C69 88 84 79 85 64 C86 52 78 43 64 41 C71 37 75 30 70 25 C65 20 56 22 50 28 Z',
+    name: 'idea-cloud',
+    path: 'M28 72 C16 72 8 64 8 53 C8 43 16 35 27 35 C30 23 41 15 52 15 C63 15 74 23 77 35 C88 35 96 43 96 53 C96 64 88 72 76 72 Z',
     eyeX: 50,
-    eyeY: 57,
-    eyeGap: 16,
+    eyeY: 50,
+    eyeGap: 15,
     eyeScale: 1,
   },
   {
-    name: 'friendly-puff',
-    path: 'M50 22 C58 17 68 20 71 28 C80 26 88 33 87 42 C94 50 91 63 83 68 C81 80 69 88 57 85 C48 91 35 88 31 80 C19 81 11 70 16 60 C8 51 13 38 23 35 C25 24 36 18 45 23 C47 22 48 22 50 22 Z',
+    name: 'idea-egg',
+    path: 'M50 10 C64 10 78 34 78 56 C78 76 65 90 50 90 C35 90 22 76 22 56 C22 34 36 10 50 10 Z',
     eyeX: 50,
-    eyeY: 56,
+    eyeY: 60,
+    eyeGap: 14,
+    eyeScale: 1,
+  },
+  {
+    name: 'idea-mushroom',
+    path: 'M50 14 C70 14 88 28 88 46 C88 54 82 58 74 58 L66 58 L66 78 C66 84 59 88 50 88 C41 88 34 84 34 78 L34 58 L26 58 C18 58 12 54 12 46 C12 28 30 14 50 14 Z',
+    eyeX: 50,
+    eyeY: 40,
     eyeGap: 15,
     eyeScale: 1,
   },
 ];
-const newFriendlyCards = NEW_FRIENDLY_IDEAS
+const newCreativeCards = NEW_CREATIVE_IDEAS
   .map((shape, index) => card(shape, index + 5, TILTS[(index + 2) % TILTS.length]))
   .join('');
 
@@ -217,8 +217,8 @@ export const PAGE = `<!doctype html>
   <div class="grid">${candidateCards}</div>
   <h2>New ideas · Teddy · ${TEDDY_IDEAS.length}</h2>
   <div class="grid">${teddyCards}</div>
-  <h2>New ideas · Friendly shapes · ${NEW_FRIENDLY_IDEAS.length}</h2>
-  <div class="grid">${newFriendlyCards}</div>
+  <h2>New ideas · Wildcards · ${NEW_CREATIVE_IDEAS.length}</h2>
+  <div class="grid">${newCreativeCards}</div>
 </main>
 <footer>
   <span class="picks" id="picks"></span>
