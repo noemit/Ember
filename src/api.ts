@@ -236,6 +236,27 @@ export const compactSession = async (
   return response.ok;
 };
 
+/** Seeded into a forked session so the agent opens the new one with a written handoff brief. */
+export const HANDOFF_PROMPT =
+  'You are continuing in a new session forked from a previous one. Before we carry on, write a concise handoff summary: what we were working on, the tools and skills you used, and the current state plus the next step. Then stop and wait for my instruction.';
+
+/**
+ * Fork a session into a new one and seed it with a handoff prompt (OpenChamber's
+ * `/api/openchamber/sessions/:id/fork`). The source session is left untouched, so it stays around
+ * for reference while the new session carries the summarized context. Returns the new session id.
+ */
+export const forkSession = async (session: Session, prompt: string): Promise<string | null> => {
+  const response = await window.ember.request(
+    session.instanceId,
+    'POST',
+    `/api/openchamber/sessions/${encodeURIComponent(session.id)}/fork`,
+    { directory: session.directory, prompt, agent: session.agent }
+  );
+  if (!response.ok) return null;
+  const data = asRecord(response.data);
+  return typeof data.sessionId === 'string' ? data.sessionId : null;
+};
+
 /**
  * Load sessions from every instance. Returns a map keyed by instance id so a failing
  * instance leaves its previous sessions untouched instead of erasing them.

@@ -521,6 +521,30 @@ const bridge: EmberBridge = {
       list.unshift(created);
       return delay(ok({ id: created.id, title: created.title }));
     }
+    const forkMatch = url.pathname.match(/^\/api\/openchamber\/sessions\/([^/]+)\/fork$/);
+    if (forkMatch && method === 'POST') {
+      const source = list.find((s) => s.id === decodeURIComponent(forkMatch[1]));
+      if (!source) return { ok: false, status: 404, data: null };
+      // Fork the conversation into a new session, as the control plane does, and have the agent
+      // open it with a handoff summary.
+      const forked: MockSession = {
+        id: `ses_${Math.random().toString(36).slice(2, 8)}`,
+        title: `${source.title ?? source.id} (handoff)`,
+        directory: source.directory,
+        updated: Date.now(),
+        status: 'idle',
+        model: source.model,
+        messages: [
+          ...source.messages,
+          {
+            role: 'assistant',
+            text: 'Handoff summary: here is what we were working on, the tools used so far, and the current state. Waiting for your next instruction.',
+          },
+        ],
+      };
+      list.unshift(forked);
+      return delay(ok({ sessionId: forked.id, directory: forked.directory, sourceSessionId: source.id, promptDispatched: true }));
+    }
     if (path === '/api/sessions/status') {
       return delay(ok({ sessions: Object.fromEntries(list.map((s) => [s.id, { status: s.status }])) }));
     }

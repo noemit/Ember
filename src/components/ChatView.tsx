@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Box, ChevronDown, ListOrdered, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, Box, ChevronDown, GitFork, ListOrdered, Loader2, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -125,6 +126,9 @@ type Props = {
   /** True while this session's context is being compacted. */
   compacting: boolean;
   onCompact: () => void;
+  /** True while this session is being forked into a handoff session. */
+  handoffing: boolean;
+  onHandoff: () => void;
 };
 
 
@@ -267,6 +271,8 @@ export default function ChatView({
   onQuestion,
   compacting,
   onCompact,
+  handoffing,
+  onHandoff,
 }: Props) {
   const [text, setText] = React.useState('');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
@@ -1162,6 +1168,27 @@ export default function ChatView({
                   compacting={compacting}
                   onCompact={onCompact}
                 />
+              ) : null}
+
+              {session ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={onHandoff}
+                      disabled={handoffing}
+                      aria-label="Start a new session from a handoff summary"
+                      className="flex size-7 flex-none items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                    >
+                      {handoffing ? <Loader2 className="size-3.5 animate-spin" /> : <GitFork className="size-3.5" />}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {handoffing
+                      ? 'Starting a new session…'
+                      : 'New session from a handoff summary — keeps this one'}
+                  </TooltipContent>
+                </Tooltip>
               ) : null}
 
               <AnimatePresence>

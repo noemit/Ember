@@ -43,6 +43,8 @@ import {
   setAutoAccept,
   setSessionArchived,
   compactSession,
+  forkSession,
+  HANDOFF_PROMPT,
   type AutoAcceptPolicy,
   type ModelList,
   type PromptInput,
@@ -203,6 +205,7 @@ export default function App() {
   const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
   const [archivingKeys, setArchivingKeys] = React.useState<Set<string>>(() => new Set());
   const [compactingKeys, setCompactingKeys] = React.useState<Set<string>>(() => new Set());
+  const [handoffKeys, setHandoffKeys] = React.useState<Set<string>>(() => new Set());
   // Local fallback for instances whose OpenChamber predates server-side auto-accept.
   const [bypassOverrides, setBypassOverrides] = React.useState<Record<string, boolean>>({});
   const [autoAcceptByInstance, setAutoAcceptByInstance] = React.useState<Record<string, AutoAcceptPolicy>>({});
@@ -1439,6 +1442,36 @@ export default function App() {
     }
   };
 
+  // Fork the session into a fresh one seeded with a handoff prompt, leaving the source untouched.
+  const handleHandoff = async (session: Session) => {
+    const key = sessionKey(session);
+    if (handoffKeys.has(key)) return;
+    showActionError(null);
+    setHandoffKeys((current) => new Set(current).add(key));
+    try {
+      const forkedId = await forkSession(session, HANDOFF_PROMPT);
+      if (!forkedId) {
+        showActionError('Could not start a new session from this one.', () => void handleHandoff(session));
+        return;
+      }
+      await refreshSessions([session.instanceId]);
+      setSelected({ instanceId: session.instanceId, sessionId: forkedId });
+      setActionNotice({ message: 'Started a new session from a handoff summary.' });
+    } catch (err) {
+      console.error('Handoff failed', err);
+      showActionError(
+        err instanceof Error ? err.message : 'Could not start the new session.',
+        () => void handleHandoff(session)
+      );
+    } finally {
+      setHandoffKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
   const handleAvatarOverride = (scopeKey: string, override: AvatarOverride | null) => {
     const next = { ...settings.avatarOverrides };
     if (override) next[scopeKey] = override;
@@ -1721,6 +1754,10 @@ export default function App() {
               compacting={selectedSession ? compactingKeys.has(sessionKey(selectedSession)) : false}
               onCompact={() => {
                 if (selectedSession) void handleCompact(selectedSession);
+              }}
+              handoffing={selectedSession ? handoffKeys.has(sessionKey(selectedSession)) : false}
+              onHandoff={() => {
+                if (selectedSession) void handleHandoff(selectedSession);
               }}
             />
           </div>
