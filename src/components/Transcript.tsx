@@ -741,7 +741,7 @@ const MessageRow = React.memo(function MessageRow({
               <div
                 className={cn(
                   // Sit on the text's bottom rather than the card's padded bottom.
-                  'pointer-events-none absolute bottom-2 z-10',
+                  'pointer-events-none absolute bottom-1 z-10',
                   rightAligned ? 'right-0' : '-left-5'
                 )}
               >
@@ -770,9 +770,8 @@ const MessageRow = React.memo(function MessageRow({
         title={pinned ? 'Unpin message' : 'Pin this message'}
         aria-label={pinned ? 'Unpin message' : 'Pin this message'}
         className={cn(
-          'absolute top-1 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-50 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 sm:opacity-0 sm:group-hover/message:opacity-100',
-          message.role === 'user' ? 'right-0' : 'left-0',
-          pinned && 'text-highlight'
+            'absolute top-1 right-0 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-50 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 sm:opacity-0 sm:group-hover/message:opacity-100',
+            pinned && 'text-highlight'
         )}
       >
         {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
