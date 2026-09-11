@@ -604,6 +604,21 @@ export default function ChatView({
     return true;
   };
 
+  // Pull a queued message out of the server queue and into the composer to edit and re-send.
+  const editQueuedItem = async (itemId: string): Promise<boolean> => {
+    if (!composerKey) return false;
+    const item = queueItems.find((entry) => entry.id === itemId);
+    const queuedText = item ? item.text.trim() || item.content.trim() : '';
+    if (!queuedText) return false;
+    const removed = await onRemoveQueued(itemId);
+    if (!removed) return false;
+    const next = text.trim() ? `${text.trimEnd()}\n\n${queuedText}` : queuedText;
+    setText(next);
+    updateComposerDraft(composerKey, { text: next, modelId, variant, attachments, replyContext });
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+    return true;
+  };
+
   const replyToMessage = (message: ChatMessage) => {
     setReplyContext(message);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -835,6 +850,7 @@ export default function ChatView({
                 onMoveQueued={onMoveQueued}
                 onRemoveQueued={onRemoveQueued}
                 onParkQueued={parkQueuedItem}
+                onEditQueued={editQueuedItem}
               />
             </React.Suspense>
             ) : null}

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronUp, ListOrdered, Loader2, NotebookPen } from 'lucide-react';
+import { ChevronDown, ChevronUp, ListOrdered, Loader2, NotebookPen, Pencil } from 'lucide-react';
 import { modelRefKey } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ type Props = {
   onMoveQueued: (itemId: string, direction: -1 | 1) => Promise<boolean>;
   onRemoveQueued: (itemId: string) => Promise<boolean>;
   onParkQueued: (itemId: string) => Promise<boolean>;
+  onEditQueued: (itemId: string) => Promise<boolean>;
 };
 
 /**
@@ -41,6 +42,7 @@ export default function QueuedMessageList({
   onMoveQueued,
   onRemoveQueued,
   onParkQueued,
+  onEditQueued,
 }: Props) {
   const [queueModelPickerItemId, setQueueModelPickerItemId] = React.useState<string | null>(null);
   // Queue mutations round-trip to the server; lock the row so a double-click can't fire two.
@@ -187,6 +189,19 @@ export default function QueuedMessageList({
                         className="px-1.5 text-[11px] text-muted-foreground hover:text-highlight"
                       >
                         Send now
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        disabled={busy || !(item.text.trim() || item.content.trim())}
+                        onClick={() => void runQueueAction(item.id, () => onEditQueued(item.id))}
+                        aria-label={`Edit queued message: ${preview.slice(0, 60)}`}
+                        title="Edit in composer"
+                        className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil />
+                        Edit
                       </Button>
                       <Button
                         type="button"
