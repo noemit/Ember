@@ -67,6 +67,53 @@ const TEDDY_IDEAS: GrokShape[] = [
 ];
 const teddyCards = TEDDY_IDEAS.map((shape, index) => card(shape, index + 2, TILTS[index % TILTS.length])).join('');
 
+/** Five fresh, friendlier silhouettes for a second pass: soft ears, cheeks, and rounded bottoms. */
+const NEW_FRIENDLY_IDEAS: GrokShape[] = [
+  {
+    name: 'friendly-bearlet',
+    path: 'M50 31 C53 19 61 13 68 17 C75 21 76 31 73 38 C83 42 88 51 87 61 C85 77 69 87 50 87 C31 87 15 77 13 61 C12 51 17 42 27 38 C24 31 25 21 32 17 C39 13 47 19 50 31 Z',
+    eyeX: 50,
+    eyeY: 57,
+    eyeGap: 16,
+    eyeScale: 1,
+  },
+  {
+    name: 'friendly-bunny',
+    path: 'M50 27 C43 21 34 18 29 23 C25 27 28 35 34 39 C22 41 14 50 14 61 C14 77 30 87 50 87 C70 87 86 77 86 61 C86 50 78 41 66 39 C72 35 75 27 71 23 C66 18 57 21 50 27 Z',
+    eyeX: 50,
+    eyeY: 56,
+    eyeGap: 15,
+    eyeScale: 1,
+  },
+  {
+    name: 'friendly-cushion',
+    path: 'M50 18 C64 18 79 25 84 38 C91 56 83 75 67 83 C57 88 43 88 33 83 C17 75 9 56 16 38 C21 25 36 18 50 18 Z',
+    eyeX: 50,
+    eyeY: 54,
+    eyeGap: 15,
+    eyeScale: 1,
+  },
+  {
+    name: 'friendly-sprout',
+    path: 'M50 28 C44 22 35 20 30 25 C25 30 29 37 36 41 C22 43 14 52 15 64 C16 79 31 88 50 88 C69 88 84 79 85 64 C86 52 78 43 64 41 C71 37 75 30 70 25 C65 20 56 22 50 28 Z',
+    eyeX: 50,
+    eyeY: 57,
+    eyeGap: 16,
+    eyeScale: 1,
+  },
+  {
+    name: 'friendly-puff',
+    path: 'M50 22 C58 17 68 20 71 28 C80 26 88 33 87 42 C94 50 91 63 83 68 C81 80 69 88 57 85 C48 91 35 88 31 80 C19 81 11 70 16 60 C8 51 13 38 23 35 C25 24 36 18 45 23 C47 22 48 22 50 22 Z',
+    eyeX: 50,
+    eyeY: 56,
+    eyeGap: 15,
+    eyeScale: 1,
+  },
+];
+const newFriendlyCards = NEW_FRIENDLY_IDEAS
+  .map((shape, index) => card(shape, index + 5, TILTS[(index + 2) % TILTS.length]))
+  .join('');
+
 export const PAGE = `<!doctype html>
 <html lang="en">
 <head>
@@ -170,6 +217,8 @@ export const PAGE = `<!doctype html>
   <div class="grid">${candidateCards}</div>
   <h2>New ideas · Teddy · ${TEDDY_IDEAS.length}</h2>
   <div class="grid">${teddyCards}</div>
+  <h2>New ideas · Friendly shapes · ${NEW_FRIENDLY_IDEAS.length}</h2>
+  <div class="grid">${newFriendlyCards}</div>
 </main>
 <footer>
   <span class="picks" id="picks"></span>
