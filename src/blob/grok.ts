@@ -107,10 +107,18 @@ const BASE_GROK_SHAPES: GrokShape[] = [
   },
   {
     name: 'dumpling',
-    path: 'M36 20 C 44 14 52 20 50 24 C 54 18 66 16 72 24 C 86 34 94 54 88 72 C 82 88 62 92 50 92 C 36 92 16 88 10 72 C 4 54 14 30 36 20 Z',
+    path: 'M36 20 C44 14 52 20 50 24 C54 18 66 16 72 24 C86 34 94 54 88 72 C82 88 62 92 50 92 C36 92 16 88 10 72 C4 54 14 30 36 20 Z',
     eyeX: 50,
     eyeY: 56,
     eyeGap: 15,
+    eyeScale: 1,
+  },
+  {
+    name: 'teddy',
+    path: 'M50 26 C55 13 66 9 73 16 C80 23 80 34 76 40 C88 47 92 59 88 68 C82 82 67 90 50 90 C33 90 18 82 12 68 C8 59 12 47 24 40 C20 34 20 23 27 16 C34 9 45 13 50 26 Z',
+    eyeX: 50,
+    eyeY: 57,
+    eyeGap: 16,
     eyeScale: 1,
   },
 ];
@@ -193,7 +201,7 @@ const generatedShape = (seed: number): Omit<GrokShape, 'name'> => {
 };
 
 const GENERATED_GROK_SHAPES: GrokShape[] = [
-  2, 3, 4, 5, 6, 9, 10, 12, 14, 15, 16, 19, 20, 21, 22, 23, 24,
+  2, 3, 4, 5, 6, 9, 12, 15, 19, 20, 21, 22, 24,
 ].map((seed) => ({
   name: `c${String(seed).padStart(2, '0')}`,
   ...generatedShape(seed),
