@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Box, ChevronDown, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, Box, ChevronDown, ListOrdered, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
@@ -42,6 +42,7 @@ import type {
   SessionNote,
   StoredComposerDraft,
 } from '../types';
+import ContextMeter from './ContextMeter';
 import ThinkingIcon from './ThinkingIcon';
 import ToolCallsIcon from './ToolCallsIcon';
 
@@ -121,6 +122,9 @@ type Props = {
   onAbort: () => void;
   onPermission: (request: PermissionRequest, reply: PermissionReply) => Promise<boolean>;
   onQuestion: (request: QuestionRequest, answers: QuestionAnswers | null) => Promise<boolean>;
+  /** True while this session's context is being compacted. */
+  compacting: boolean;
+  onCompact: () => void;
 };
 
 
@@ -261,6 +265,8 @@ export default function ChatView({
   onAbort,
   onPermission,
   onQuestion,
+  compacting,
+  onCompact,
 }: Props) {
   const [text, setText] = React.useState('');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
@@ -494,6 +500,16 @@ export default function ChatView({
   const queueItems = queue?.items ?? [];
   const shouldQueue = Boolean(session && (busy || queueItems.length > 0));
   const reasoningMeta = REASONING_META[reasoningDisplay];
+  // Composer context meter: the last assistant turn's prompt + output against the selected model's
+  // window. Providers that don't report usage leave this null, so the ring just doesn't render.
+  const contextUsage = React.useMemo(() => {
+    const last = [...messages].reverse().find((message) => message.role === 'assistant' && message.tokens);
+    const limit = model?.details.contextTokens;
+    if (!last?.tokens || !limit || limit <= 0) return null;
+    const t = last.tokens;
+    const used = t.input + t.cacheRead + t.cacheWrite + t.output;
+    return used > 0 ? { used, limit } : null;
+  }, [messages, model]);
   // Up-arrow history: recall the most recent thing the user sent, like a shell.
   const lastSentMessage = React.useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -1077,6 +1093,38 @@ export default function ChatView({
                 <Paperclip />
               </Button>
 
+              {session && !notesOpen && sessionNotes.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="relative size-7 overflow-visible"
+                  aria-label={`Restore notes (${sessionNotes.length})`}
+                  title={`Show ${sessionNotes.length} minimized ${sessionNotes.length === 1 ? 'note' : 'notes'}`}
+                  onClick={() => setNotesOpen(true)}
+                >
+                  <NotebookPen className="size-3.5 text-highlight" />
+                  <span className="pointer-events-none absolute -top-0.5 -right-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
+                    {sessionNotes.length}
+                  </span>
+                </Button>
+              ) : null}
+
+              {session && !queueOpen && queueItems.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="relative size-7 overflow-visible"
+                  aria-label={`Restore queued messages (${queueItems.length})`}
+                  title={`Show ${queueItems.length} minimized queued ${queueItems.length === 1 ? 'message' : 'messages'}`}
+                  onClick={() => setQueueOpen(true)}
+                >
+                  <ListOrdered className="size-3.5 text-highlight" />
+                  <span className="pointer-events-none absolute -top-0.5 -right-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
+                    {queueItems.length}
+                  </span>
+                </Button>
+              ) : null}
+
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
                 <AnimatePresence>
                   {attachments.map((file, index) => (
@@ -1106,6 +1154,15 @@ export default function ChatView({
                   <span className="flex-none text-[11px] text-destructive">{attachmentError}</span>
                 ) : null}
               </div>
+
+              {session && contextUsage ? (
+                <ContextMeter
+                  used={contextUsage.used}
+                  limit={contextUsage.limit}
+                  compacting={compacting}
+                  onCompact={onCompact}
+                />
+              ) : null}
 
               <AnimatePresence>
                 {busy && session ? (

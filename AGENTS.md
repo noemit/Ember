@@ -66,8 +66,11 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   hidden) using `ThinkingIcon` — one brain, with a bar for collapsed and a slash for hidden, cut out
   of the glyph with a background-coloured casing (reviewed in `buddy-arena/`, `/thinking`). Pressing
   Up on an empty composer recalls the last message the user sent, Alt/Option+Enter skips the
-  busy-session queue and sends now, and Cmd/Ctrl+Enter saves the draft as a note. The same two
-  display settings are also editable from the top bar's View options dialog (`ViewOptionsDialog.tsx`).
+  busy-session queue and sends now, and Cmd/Ctrl+Enter saves the draft as a note. A context-usage
+  ring (`ContextMeter.tsx`) shows the last turn's tokens against the selected model's window and
+  compacts the session on click (`POST /api/session/:id/compact`, the instance's summarize). The
+  same two display settings are also editable from the top bar's View options dialog
+  (`ViewOptionsDialog.tsx`).
 - `src/components/LeftRail.tsx` — session list. Rows are a memoized `SessionRow`; the timestamp is
   a self-ticking `RelativeTime`. Archive/restore is decided per row from `session.archived`, not the
   view toggle, because the selected session is pinned into the list even when filters hide it.

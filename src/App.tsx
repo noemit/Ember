@@ -42,6 +42,7 @@ import {
   sendPrompt,
   setAutoAccept,
   setSessionArchived,
+  compactSession,
   type AutoAcceptPolicy,
   type ModelList,
   type PromptInput,
@@ -201,6 +202,7 @@ export default function App() {
   const [sendingKeys, setSendingKeys] = React.useState<Set<string>>(() => new Set());
   const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
   const [archivingKeys, setArchivingKeys] = React.useState<Set<string>>(() => new Set());
+  const [compactingKeys, setCompactingKeys] = React.useState<Set<string>>(() => new Set());
   // Local fallback for instances whose OpenChamber predates server-side auto-accept.
   const [bypassOverrides, setBypassOverrides] = React.useState<Record<string, boolean>>({});
   const [autoAcceptByInstance, setAutoAcceptByInstance] = React.useState<Record<string, AutoAcceptPolicy>>({});
@@ -1396,6 +1398,47 @@ export default function App() {
     }
   };
 
+  // Summarize/compact the session's context on the instance, then pull the rewritten transcript.
+  const handleCompact = async (session: Session) => {
+    const key = sessionKey(session);
+    if (compactingKeys.has(key)) return;
+    showActionError(null);
+    setCompactingKeys((current) => new Set(current).add(key));
+    try {
+      const ok = await compactSession(session);
+      if (!ok) {
+        showActionError('Could not compact this session.', () => void handleCompact(session));
+        return;
+      }
+      const next = await loadMessages(session.instanceId, session.id, session.directory);
+      cacheMessages(key, next);
+      if (selectedKeyRef.current === key) {
+        setTranscript((current) =>
+          current.key === key
+            ? {
+                key,
+                messages: sameMessages(current.messages, next) ? current.messages : next,
+                status: 'ready',
+              }
+            : current
+        );
+      }
+      setActionNotice({ message: 'Context compacted.' });
+    } catch (err) {
+      console.error('Compact failed', err);
+      showActionError(
+        err instanceof Error ? err.message : 'Could not compact this session.',
+        () => void handleCompact(session)
+      );
+    } finally {
+      setCompactingKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
   const handleAvatarOverride = (scopeKey: string, override: AvatarOverride | null) => {
     const next = { ...settings.avatarOverrides };
     if (override) next[scopeKey] = override;
@@ -1675,6 +1718,10 @@ export default function App() {
               onAbort={() => void handleAbort()}
               onPermission={handlePermission}
               onQuestion={handleQuestion}
+              compacting={selectedSession ? compactingKeys.has(sessionKey(selectedSession)) : false}
+              onCompact={() => {
+                if (selectedSession) void handleCompact(selectedSession);
+              }}
             />
           </div>
 

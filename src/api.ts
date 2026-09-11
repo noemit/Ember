@@ -219,6 +219,24 @@ export const setSessionArchived = async (
 };
 
 /**
+ * Compact a session's context. OpenChamber's `/compact` maps to OpenCode's `session.summarize`:
+ * older turns are summarized and a recent tail kept, per the instance's `compaction` config
+ * (`auto`, `prune`, `tail_turns`, `preserve_recent_tokens`, `reserved`). Returns whether the
+ * instance accepted it; the transcript updates when the next poll sees the compaction.
+ */
+export const compactSession = async (
+  session: Session
+): Promise<boolean> => {
+  const response = await window.ember.request(
+    session.instanceId,
+    'POST',
+    `/api/session/${encodeURIComponent(session.id)}/compact${directoryQuery(session.directory)}`,
+    {}
+  );
+  return response.ok;
+};
+
+/**
  * Load sessions from every instance. Returns a map keyed by instance id so a failing
  * instance leaves its previous sessions untouched instead of erasing them.
  */

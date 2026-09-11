@@ -569,6 +569,18 @@ const bridge: EmberBridge = {
       }
       return delay(ok(true));
     }
+    const compactMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/compact$/);
+    if (compactMatch && method === 'POST') {
+      const session = list.find((s) => s.id === decodeURIComponent(compactMatch[1]));
+      if (session && session.messages.length > 2) {
+        // Summarize the older turns and keep the tail, mirroring what the server does.
+        session.messages = [
+          { role: 'assistant', text: 'Compacted the earlier turns into a summary to free up context.' },
+          ...session.messages.slice(-2),
+        ];
+      }
+      return delay({ ok: true, status: 204, data: null });
+    }
     if (url.pathname === '/api/permission' && method === 'GET') return delay(ok(permissions[instanceId] ?? []));
     const replyMatch = url.pathname.match(/^\/api\/permission\/([^/]+)\/reply$/);
     if (replyMatch && method === 'POST') {
