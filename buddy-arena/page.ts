@@ -46,6 +46,35 @@ const candidateCards = generated
   .map((shape, index) => card(shape, index + handDrawn.length, TILTS[(index + 3) % TILTS.length]))
   .join('');
 
+/** Teddy-bear head ideas: round head, two ear lobes on top, eyes low and wide. */
+const TEDDY_IDEAS: GrokShape[] = [
+  {
+    name: 'teddy-a',
+    path: 'M50 24 C54 15 62 11 68 15 C75 19 77 28 74 35 C85 41 89 52 87 60 C83 75 68 85 50 85 C32 85 17 75 13 60 C11 52 15 41 26 35 C23 28 25 19 32 15 C38 11 46 15 50 24 Z',
+    eyeX: 50,
+    eyeY: 54,
+    eyeGap: 15,
+    eyeScale: 1,
+  },
+  {
+    name: 'teddy-b',
+    path: 'M50 26 C55 13 66 9 73 16 C80 23 80 34 76 40 C88 47 92 59 88 68 C82 82 67 90 50 90 C33 90 18 82 12 68 C8 59 12 47 24 40 C20 34 20 23 27 16 C34 9 45 13 50 26 Z',
+    eyeX: 50,
+    eyeY: 57,
+    eyeGap: 16,
+    eyeScale: 1,
+  },
+  {
+    name: 'teddy-c',
+    path: 'M50 22 C53 13 61 10 67 14 C73 18 75 26 71 32 C84 38 90 50 87 61 C83 77 68 88 50 88 C32 88 17 77 13 61 C10 50 16 38 29 32 C25 26 27 18 33 14 C39 10 47 13 50 22 Z',
+    eyeX: 50,
+    eyeY: 56,
+    eyeGap: 14,
+    eyeScale: 1,
+  },
+];
+const teddyCards = TEDDY_IDEAS.map((shape, index) => card(shape, index + 2, TILTS[index % TILTS.length])).join('');
+
 export const PAGE = `<!doctype html>
 <html lang="en">
 <head>
@@ -147,6 +176,8 @@ export const PAGE = `<!doctype html>
   <div class="grid">${currentCards}</div>
   <h2>Generated · ${generated.length}</h2>
   <div class="grid">${candidateCards}</div>
+  <h2>New ideas · Teddy · ${TEDDY_IDEAS.length}</h2>
+  <div class="grid">${teddyCards}</div>
 </main>
 <footer>
   <span class="picks" id="picks"></span>
