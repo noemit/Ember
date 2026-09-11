@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CornerUpLeft, Loader2, NotebookPen, Send, X } from 'lucide-react';
+import { Loader2, NotebookPen, Pencil, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { springTransition } from '@/lib/animation';
@@ -55,12 +55,12 @@ export default function SessionNotes({ open, notes, onOpenChange, onSend, onBrin
             aria-expanded={open}
             aria-label={`Notes (${notes.length})`}
             title={open ? 'Collapse notes' : 'Expand notes'}
-            className="flex flex-none items-center rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            className="flex flex-none items-center self-center rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
           >
             {rail}
           </button>
         ) : (
-          <div className="flex flex-none items-center px-1.5 py-1 text-muted-foreground">{rail}</div>
+          <div className="flex flex-none items-center self-center px-1.5 py-1 text-muted-foreground">{rail}</div>
         )}
         {open || !collapsible ? (
         <ol className="flex min-w-0 max-h-28 flex-1 flex-col gap-1 overflow-y-auto">
@@ -88,12 +88,12 @@ export default function SessionNotes({ open, notes, onOpenChange, onSend, onBrin
                       size="xs"
                       disabled={busy}
                       onClick={() => onBringBack(note)}
-                      aria-label={`Bring note back to composer: ${note.text.slice(0, 60)}`}
-                      title="Bring back to composer"
+                      aria-label={`Edit note in composer: ${note.text.slice(0, 60)}`}
+                      title="Edit in composer"
                       className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
                     >
-                      <CornerUpLeft />
-                      Bring back
+                      <Pencil />
+                      Edit
                     </Button>
                     <Button
                       type="button"

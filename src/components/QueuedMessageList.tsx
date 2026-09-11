@@ -91,12 +91,12 @@ export default function QueuedMessageList({
               aria-expanded={open}
               aria-label={`Queued messages (${queueItems.length})`}
               title={open ? 'Collapse queued messages' : 'Expand queued messages'}
-              className="flex flex-none items-center rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              className="flex flex-none items-center self-center rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
             >
               {rail}
             </button>
           ) : (
-            <div className="flex flex-none items-center px-1.5 py-1 text-muted-foreground">{rail}</div>
+            <div className="flex flex-none items-center self-center px-1.5 py-1 text-muted-foreground">{rail}</div>
           )}
           {open || !collapsible ? (
           <ol className="flex min-w-0 max-h-28 flex-1 flex-col gap-1 overflow-y-auto">
