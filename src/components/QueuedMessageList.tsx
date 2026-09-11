@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronUp, ListOrdered, Loader2, NotebookPen, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronUp, ListOrdered, Loader2, Minus, NotebookPen, Pencil } from 'lucide-react';
 import { modelRefKey } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -69,10 +69,8 @@ export default function QueuedMessageList({
     return item.sendConfig.variant ? `${name} · ${item.sendConfig.variant}` : name;
   };
 
-  if (queueItems.length === 0) return null;
+  if (queueItems.length === 0 || !open) return null;
 
-  // A single queued message isn't worth collapsing; the rail is just the icon.
-  const collapsible = queueItems.length > 1;
   const rail = (
     <span className="relative inline-flex">
       <ListOrdered className="size-3.5 text-highlight" />
@@ -84,23 +82,20 @@ export default function QueuedMessageList({
 
   return (
     <>
-      <Card className="bg-background/80 shadow-sm">
+      <Card className="group/card relative bg-background/80 shadow-sm">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-xs"
+          onClick={() => onOpenChange(false)}
+          aria-label="Minimize queued messages"
+          title="Minimize queued messages"
+          className="absolute -top-2 -right-2 z-10 size-5 rounded-full bg-background text-muted-foreground opacity-60 shadow-xs transition-opacity hover:text-foreground focus-visible:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100"
+        >
+          <Minus className="size-3" />
+        </Button>
         <CardContent className="flex items-stretch gap-1.5 p-2 text-[11.5px]">
-          {collapsible ? (
-            <button
-              type="button"
-              onClick={() => onOpenChange(!open)}
-              aria-expanded={open}
-              aria-label={`Queued messages (${queueItems.length})`}
-              title={open ? 'Collapse queued messages' : 'Expand queued messages'}
-              className="flex flex-none items-center self-center rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-            >
-              {rail}
-            </button>
-          ) : (
-            <div className="flex flex-none items-center self-center px-1.5 py-1 text-muted-foreground">{rail}</div>
-          )}
-          {open || !collapsible ? (
+          <div className="flex flex-none items-center self-center px-1.5 py-1 text-muted-foreground">{rail}</div>
           <ol className="flex min-w-0 max-h-28 flex-1 flex-col gap-1 overflow-y-auto">
             <AnimatePresence initial={false} mode="popLayout">
               {queueItems.map((item, index) => {
@@ -221,7 +216,6 @@ export default function QueuedMessageList({
               })}
             </AnimatePresence>
           </ol>
-          ) : null}
         </CardContent>
       </Card>
       {queueModelPickerItem ? (
