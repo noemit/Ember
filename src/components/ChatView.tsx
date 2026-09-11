@@ -943,14 +943,14 @@ export default function ChatView({
                   });
                   return;
                 }
-                // Shift+Enter skips the queue and sends now. Only while there's a queue to skip —
-                // otherwise it inserts a newline as usual.
+                // Alt/Option+Enter skips the queue and sends now. Only while there's a queue to
+                // skip — otherwise plain Enter already sends. Shift+Enter stays a newline.
                 if (
                   event.key === 'Enter' &&
-                  event.shiftKey &&
+                  event.altKey &&
                   !event.metaKey &&
                   !event.ctrlKey &&
-                  !event.altKey &&
+                  !event.shiftKey &&
                   shouldQueue &&
                   !event.nativeEvent.isComposing
                 ) {
@@ -1150,7 +1150,7 @@ export default function ChatView({
                 disabled={!canSend}
                 onClick={() => submit()}
                 aria-label={shouldQueue ? 'Queue message' : 'Send'}
-                title={shouldQueue ? 'Queue message — Shift+Enter sends now' : 'Send'}
+                title={shouldQueue ? 'Queue message — Alt/Option+Enter sends now' : 'Send'}
               >
                 <ArrowUp className={cn(sending && 'animate-pulse')} />
               </Button>
