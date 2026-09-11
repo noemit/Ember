@@ -740,7 +740,8 @@ const MessageRow = React.memo(function MessageRow({
               {content}
               <div
                 className={cn(
-                  'pointer-events-none absolute bottom-0 z-10',
+                  // Sit on the text's bottom rather than the card's padded bottom.
+                  'pointer-events-none absolute bottom-2 z-10',
                   rightAligned ? 'right-0' : '-left-5'
                 )}
               >
