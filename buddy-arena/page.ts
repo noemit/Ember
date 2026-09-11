@@ -67,53 +67,6 @@ const TEDDY_IDEAS: GrokShape[] = [
 ];
 const teddyCards = TEDDY_IDEAS.map((shape, index) => card(shape, index + 2, TILTS[index % TILTS.length])).join('');
 
-/** Five wildcard silhouettes that break out of the round-blob mould: cat, ghost, cloud, egg, mushroom. */
-const NEW_CREATIVE_IDEAS: GrokShape[] = [
-  {
-    name: 'idea-cat',
-    path: 'M50 34 C48 24 41 13 34 9 C30 18 27 26 26 33 C16 38 10 48 10 59 C10 75 28 87 50 87 C72 87 90 75 90 59 C90 48 84 38 74 33 C73 26 70 18 66 9 C59 13 52 24 50 34 Z',
-    eyeX: 50,
-    eyeY: 60,
-    eyeGap: 15,
-    eyeScale: 1,
-  },
-  {
-    name: 'idea-ghost',
-    path: 'M50 12 C67 12 81 27 81 50 L81 78 C77 73 73 73 69 78 C65 83 60 83 56 78 C52 73 48 73 44 78 C40 83 35 83 31 78 C27 73 23 73 19 78 L19 50 C19 27 33 12 50 12 Z',
-    eyeX: 50,
-    eyeY: 48,
-    eyeGap: 15,
-    eyeScale: 1,
-  },
-  {
-    name: 'idea-cloud',
-    path: 'M28 72 C16 72 8 64 8 53 C8 43 16 35 27 35 C30 23 41 15 52 15 C63 15 74 23 77 35 C88 35 96 43 96 53 C96 64 88 72 76 72 Z',
-    eyeX: 50,
-    eyeY: 50,
-    eyeGap: 15,
-    eyeScale: 1,
-  },
-  {
-    name: 'idea-egg',
-    path: 'M50 10 C64 10 78 34 78 56 C78 76 65 90 50 90 C35 90 22 76 22 56 C22 34 36 10 50 10 Z',
-    eyeX: 50,
-    eyeY: 60,
-    eyeGap: 14,
-    eyeScale: 1,
-  },
-  {
-    name: 'idea-mushroom',
-    path: 'M50 14 C70 14 88 28 88 46 C88 54 82 58 74 58 L66 58 L66 78 C66 84 59 88 50 88 C41 88 34 84 34 78 L34 58 L26 58 C18 58 12 54 12 46 C12 28 30 14 50 14 Z',
-    eyeX: 50,
-    eyeY: 40,
-    eyeGap: 15,
-    eyeScale: 1,
-  },
-];
-const newCreativeCards = NEW_CREATIVE_IDEAS
-  .map((shape, index) => card(shape, index + 5, TILTS[(index + 2) % TILTS.length]))
-  .join('');
-
 export const PAGE = `<!doctype html>
 <html lang="en">
 <head>
@@ -217,8 +170,6 @@ export const PAGE = `<!doctype html>
   <div class="grid">${candidateCards}</div>
   <h2>New ideas · Teddy · ${TEDDY_IDEAS.length}</h2>
   <div class="grid">${teddyCards}</div>
-  <h2>New ideas · Wildcards · ${NEW_CREATIVE_IDEAS.length}</h2>
-  <div class="grid">${newCreativeCards}</div>
 </main>
 <footer>
   <span class="picks" id="picks"></span>

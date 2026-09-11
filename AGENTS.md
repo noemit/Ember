@@ -85,7 +85,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   wobble + padlock badge, `question` = tilt + "?" badge, `error` = wobble + warning triangle. App
   derives the mood from the ball state plus the prompt kind (permission vs question) and whether the
   last assistant turn is reasoning (`isThinkingMessages`). `grok.ts` holds
-  the 9 hand-drawn silhouettes (including the ear-lobed teddy) plus 13 generated ones (radial harmonics + top/bottom squash, reviewed
+  the 16 hand-drawn silhouettes (the original 8 plus teddy, sprout, puff, cat, ghost, cloud, egg and
+  mushroom) plus 11 generated ones (radial harmonics + top/bottom squash, reviewed
   in `buddy-arena/`; `bun run buddy-arena`). `blob/seed.ts`
   resolves three identity channels: project/directory + instance picks colour, a scheduled-task
   binding (or session key) picks shape, and the session key picks tilt/motion. OpenChamber task
