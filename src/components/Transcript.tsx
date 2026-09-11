@@ -622,7 +622,12 @@ const MessageFooter = ({
   );
 };
 
-const renderBlock = (message: ChatMessage, block: Block, reasoningExpanded: boolean) => {
+const renderBlock = (
+  message: ChatMessage,
+  block: Block,
+  reasoningExpanded: boolean,
+  overlay?: React.ReactNode
+) => {
   const mine = message.role === 'user';
   if (block.type === 'text') {
     return (
@@ -633,7 +638,7 @@ const renderBlock = (message: ChatMessage, block: Block, reasoningExpanded: bool
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={spring}
         className={cn(
-          'max-w-[85%] rounded-xl px-3.5 py-2 text-[13px] leading-relaxed',
+          'relative max-w-[85%] rounded-xl px-3.5 py-2 text-[13px] leading-relaxed',
           mine
             ? 'self-end whitespace-pre-wrap break-words rounded-br-sm bg-user-bubble text-user-bubble-foreground'
             : 'self-start rounded-bl-sm bg-muted text-foreground'
@@ -646,6 +651,7 @@ const renderBlock = (message: ChatMessage, block: Block, reasoningExpanded: bool
             <Markdown text={block.text} />
           </React.Suspense>
         )}
+        {overlay}
       </motion.div>
     );
   }
@@ -721,6 +727,24 @@ const MessageRow = React.memo(function MessageRow({
   // the blob to the right of the last block instead, where it reads as "after the tool call".
   const lastBlock = blocks[blocks.length - 1];
   const blobOnRow = showBuddy && (!lastBlock || lastBlock.type === 'text');
+  // Anchor the pin to the message's text card rather than the full-width row, so a left-aligned
+  // reply's pin sits at the card's top-right instead of out in the empty right margin.
+  const pinHostIndex = blocks.findIndex((block) => block.type === 'text');
+  const renderPin = (positionClass: string) => (
+    <button
+      type="button"
+      onClick={() => onTogglePin(message)}
+      title={pinned ? 'Unpin message' : 'Pin this message'}
+      aria-label={pinned ? 'Unpin message' : 'Pin this message'}
+      className={cn(
+        'absolute flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-50 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 sm:opacity-0 sm:group-hover/message:opacity-100',
+        positionClass,
+        pinned && 'text-highlight'
+      )}
+    >
+      {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+    </button>
+  );
   return (
     <motion.div
       ref={ref}
@@ -732,7 +756,12 @@ const MessageRow = React.memo(function MessageRow({
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         {blocks.map((block, index) => {
-          const content = renderBlock(message, block, reasoningDisplay === 'expanded');
+          const content = renderBlock(
+            message,
+            block,
+            reasoningDisplay === 'expanded',
+            index === pinHostIndex ? renderPin('top-1 -right-6') : undefined
+          );
           // Left-aligned rows (tools, reasoning, files) keep their content on the left, so the blob
           // tucks to the right of the last one rather than covering it.
           if (!showBuddy || blobOnRow || index !== blocks.length - 1) return content;
@@ -760,18 +789,7 @@ const MessageRow = React.memo(function MessageRow({
           <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} interactive={false} />
         </div>
       ) : null}
-      <button
-        type="button"
-        onClick={() => onTogglePin(message)}
-        title={pinned ? 'Unpin message' : 'Pin this message'}
-        aria-label={pinned ? 'Unpin message' : 'Pin this message'}
-        className={cn(
-            'absolute top-1 right-0 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-50 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 sm:opacity-0 sm:group-hover/message:opacity-100',
-            pinned && 'text-highlight'
-        )}
-      >
-        {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-      </button>
+      {pinHostIndex < 0 ? renderPin('top-1 right-0') : null}
     </motion.div>
   );
 });
