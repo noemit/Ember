@@ -65,8 +65,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   transcript, and a cyclical thinking button cycles `reasoningDisplay` (expanded → collapsed →
   hidden) using `ThinkingIcon` — one brain, with a bar for collapsed and a slash for hidden, cut out
   of the glyph with a background-coloured casing (reviewed in `buddy-arena/`, `/thinking`). Pressing
-  Up on an empty composer recalls the last message the user sent, and
-  Cmd/Ctrl+Enter saves the draft as a note. The same two
+  Up on an empty composer recalls the last message the user sent, Shift+Enter skips the busy-session
+  queue and sends now, and Cmd/Ctrl+Enter saves the draft as a note. The same two
   display settings are also editable from the top bar's View options dialog (`ViewOptionsDialog.tsx`).
 - `src/components/LeftRail.tsx` — session list. Rows are a memoized `SessionRow`; the timestamp is
   a self-ticking `RelativeTime`. Archive/restore is decided per row from `session.archived`, not the

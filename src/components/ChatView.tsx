@@ -503,7 +503,7 @@ export default function ChatView({
     return null;
   }, [messages]);
 
-  const submit = () => {
+  const submit = (options?: { forceSend?: boolean }) => {
     if (!canSend) return;
     const submitted: ComposerState = { text: text.trim(), modelId, variant, attachments, replyContext };
     const submittedKey = composerKey;
@@ -531,7 +531,7 @@ export default function ChatView({
         input
       );
     } else {
-      result = (shouldQueue ? onQueue : onSend)(input);
+      result = (shouldQueue && !options?.forceSend ? onQueue : onSend)(input);
     }
     result.then((sent) => {
       if (sent) return;
@@ -943,6 +943,21 @@ export default function ChatView({
                   });
                   return;
                 }
+                // Shift+Enter skips the queue and sends now. Only while there's a queue to skip —
+                // otherwise it inserts a newline as usual.
+                if (
+                  event.key === 'Enter' &&
+                  event.shiftKey &&
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !event.altKey &&
+                  shouldQueue &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  submit({ forceSend: true });
+                  return;
+                }
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   submit();
@@ -1133,9 +1148,9 @@ export default function ChatView({
                 size="icon-sm"
                 className="size-7 rounded-full"
                 disabled={!canSend}
-                onClick={submit}
+                onClick={() => submit()}
                 aria-label={shouldQueue ? 'Queue message' : 'Send'}
-                title={shouldQueue ? 'Queue message' : 'Send'}
+                title={shouldQueue ? 'Queue message — Shift+Enter sends now' : 'Send'}
               >
                 <ArrowUp className={cn(sending && 'animate-pulse')} />
               </Button>
