@@ -59,14 +59,18 @@ export default function AvatarPicker({
   const firstScopeKey = scopes[0]?.key ?? '';
   const scopeKind = scopes.find((scope) => scope.key === scopeKey)?.kind ?? 'session';
   const scopeSignature = scopes.map((scope) => scope.key).join('\u0000');
+  // Read the latest overrides without making them an effect dependency: the settings map gets a
+  // fresh reference after any app settings write, which must not wipe an in-progress selection.
+  const overridesRef = React.useRef(overrides);
+  overridesRef.current = overrides;
 
   React.useEffect(() => {
     if (open) setScopeKey(firstScopeKey);
   }, [open, identity.sessionKey, firstScopeKey, scopeSignature]);
 
   React.useEffect(() => {
-    if (open && scopeKey) setDraft({ ...(overrides[scopeKey] ?? {}) });
-  }, [open, scopeKey, overrides]);
+    if (open && scopeKey) setDraft({ ...(overridesRef.current[scopeKey] ?? {}) });
+  }, [open, scopeKey]);
 
   const previewIdentity = (patch: AvatarOverride): AvatarIdentity => ({
     ...identity,
