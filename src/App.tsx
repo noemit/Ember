@@ -10,6 +10,7 @@ import {
   allocateProjectColors,
   avatarColorKeys,
   projectForSession,
+  projectIdentityKey,
   resolveAvatarIdentity,
   seedIdentity,
   sessionAvatarKey,
@@ -58,6 +59,7 @@ import { useFeedback } from './hooks/useFeedback';
 import { mergePolledQueues, useMessageQueue, type QueueTarget } from './hooks/useMessageQueue';
 import { usePoll } from './hooks/usePoll';
 import { newSessionDirectoryPrefill, newSessionModelPrefill } from './lib/newSessionDefaults';
+import { notesKeyForSession } from './lib/projectGroups';
 import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
 import {
   MAX_OPEN_SESSIONS,
@@ -880,6 +882,32 @@ export default function App() {
     setActiveSession(next.active);
     setMinimizedSessions(new Set(next.minimized));
   }, [sessionsByInstance, instances, instancesLoaded, openSessions, activeSession, minimizedSessions]);
+
+  // Notes used to be stored per session. Move a project session's old notes onto the shared
+  // project key once that session is known. Idempotent: after the move there's nothing to find.
+  React.useEffect(() => {
+    if (!settingsLoaded) return;
+    const current = settingsRef.current.sessionNotes;
+    const next: typeof current = { ...current };
+    let changed = false;
+    Object.entries(current).forEach(([key, notes]) => {
+      const ref = parseSessionKey(key);
+      if (!ref) return;
+      const session = (sessionsByInstance[ref.instanceId] ?? []).find(
+        (entry) => entry.id === ref.sessionId
+      );
+      if (!session) return;
+      const project = projectForSession(session, projectsByInstance[session.instanceId] ?? []);
+      if (!project) return;
+      const projectKey = projectIdentityKey(session.instanceId, project.id);
+      if (projectKey === key) return;
+      next[projectKey] = [...(next[projectKey] ?? []), ...notes].slice(-100);
+      delete next[key];
+      changed = true;
+    });
+    if (changed) handleSettings({ sessionNotes: next });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- idempotent; sessions/projects loading is what retriggers it
+  }, [settingsLoaded, sessionsByInstance, projectsByInstance]);
 
   // Per-instance data that rarely changes: projects, models.
   React.useEffect(() => {
@@ -1950,6 +1978,7 @@ export default function App() {
     const instance = instances.find((entry) => entry.id === ref.instanceId) ?? null;
     const transcript = transcripts[key];
     const cached = messageCacheRef.current.get(key);
+    const notesKey = notesKeyForSession(session, projectsByInstance[ref.instanceId] ?? []);
     const columnPermissions = permissions.filter(
       (request) => request.instanceId === ref.instanceId && request.sessionId === ref.sessionId
     );
@@ -1992,7 +2021,8 @@ export default function App() {
           hideToolCalls={settings.hideToolCalls}
           reasoningDisplay={settings.reasoningDisplay}
           pinnedMessageIds={pinnedMessageIdsFor(ref)}
-          sessionNotes={settings.sessionNotes[key] ?? []}
+          sessionNotes={settings.sessionNotes[notesKey] ?? []}
+          notesKey={notesKey}
           savedComposerDrafts={settings.composerDrafts}
           composerDraftsHydrated={settingsLoaded}
           onComposerDraftsChange={handleComposerDraftsChange}
@@ -2150,6 +2180,7 @@ export default function App() {
                   reasoningDisplay={settings.reasoningDisplay}
                   pinnedMessageIds={NO_PINS}
                   sessionNotes={[]}
+                  notesKey=""
                   savedComposerDrafts={settings.composerDrafts}
                   composerDraftsHydrated={settingsLoaded}
                   onComposerDraftsChange={handleComposerDraftsChange}
@@ -2195,6 +2226,7 @@ export default function App() {
               sessions={allSessions}
               states={states}
               instances={instances}
+              projectsByInstance={projectsByInstance}
               sessionNotes={settings.sessionNotes}
               onOpenChange={setCommandPaletteOpen}
               onSelectSession={(session) => {

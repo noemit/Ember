@@ -164,7 +164,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   the turn is done it tucks in beside the last assistant message.
 - `src/components/SessionNotes.tsx` — notes parked from the composer, listed above it like the
   queue but never dispatched on their own. The composer's save-as-note button (next to send) stores
-  the text in Ember settings keyed by session; each row can send as-is, bring the text back into the
+  the text in Ember settings under a notes key: a session inside a configured project shares the
+  project's notes (so they appear in, and can be sent to, every session in the project), while a
+  standalone session keeps its own (`notesKeyForSession` in `src/lib/projectGroups.ts`; ChatView takes
+  an explicit `notesKey`). Each row can send as-is, bring the text back into the
   composer (which consumes the note), or delete it. Both cards keep a static icon and count in their
   left rail and reveal a minimize badge at the upper-right on hover. When minimized, their clickable
   icon and count move beside the composer's attachment button to restore the card. Rows carry no

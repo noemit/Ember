@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { blobStripLayout, buildRailEntries } from './src/lib/projectGroups';
+import { blobStripLayout, buildRailEntries, notesKeyForSession } from './src/lib/projectGroups';
 import type { Project, Session } from './src/types';
 
 const session = (overrides: Partial<Session> & Pick<Session, 'id'>): Session => ({
@@ -70,6 +70,13 @@ describe('buildRailEntries', () => {
     expect(
       buildRailEntries([], { local: [{ id: 'nopath', name: 'No path' }, { id: 'empty', name: 'Empty', path: '/work/empty' }] })
     ).toEqual([]);
+  });
+
+  test('shares notes across a project but keeps standalone notes per session', () => {
+    const keyFor = (value: Session) => notesKeyForSession(value, projects.local ?? []);
+    expect(keyFor(session({ id: 'a', directory: '/work/habit' }))).toBe('project:local::p1');
+    expect(keyFor(session({ id: 'b', directory: '/work/habit/src' }))).toBe('project:local::p1');
+    expect(keyFor(session({ id: 'c', directory: '/tmp/x' }))).toBe('local::c');
   });
 });
 

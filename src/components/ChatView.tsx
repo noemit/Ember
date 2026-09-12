@@ -100,6 +100,8 @@ type Props = {
   reasoningDisplay: ReasoningDisplay;
   pinnedMessageIds: Set<string>;
   sessionNotes: SessionNote[];
+  /** Settings key the notes are stored under; project sessions share one across the project. */
+  notesKey: string;
   savedComposerDrafts: Record<string, StoredComposerDraft>;
   composerDraftsHydrated: boolean;
   onComposerDraftsChange: (drafts: Record<string, StoredComposerDraft>) => void;
@@ -253,6 +255,7 @@ export default function ChatView({
   reasoningDisplay,
   pinnedMessageIds,
   sessionNotes,
+  notesKey,
   savedComposerDrafts,
   composerDraftsHydrated,
   onComposerDraftsChange,
@@ -598,7 +601,7 @@ export default function ChatView({
     if (!composerKey || !session) return;
     const parked = text.trim();
     if (!parked) return;
-    onSaveNote(composerKey, parked);
+    onSaveNote(notesKey, parked);
     updateComposerDraft(composerKey, null);
     setText('');
     setAttachmentError(null);
@@ -610,7 +613,7 @@ export default function ChatView({
     const next = text.trim() ? `${text.trimEnd()}\n\n${note.text}` : note.text;
     setText(next);
     updateComposerDraft(composerKey, { text: next, modelId, variant, attachments, replyContext });
-    onDeleteNote(composerKey, note.id);
+    onDeleteNote(notesKey, note.id);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
@@ -618,7 +621,7 @@ export default function ChatView({
     if (!composerKey || !session) return false;
     const input: PromptInput = { text: note.text, model, variant: variant || undefined };
     const sent = await (shouldQueue ? onQueue : onSend)(input);
-    if (sent) onDeleteNote(composerKey, note.id);
+    if (sent) onDeleteNote(notesKey, note.id);
     return sent;
   };
 
@@ -630,7 +633,7 @@ export default function ChatView({
     if (!text) return false;
     const removed = await onRemoveQueued(itemId);
     if (!removed) return false;
-    onSaveNote(composerKey, text);
+    onSaveNote(notesKey, text);
     return true;
   };
 
@@ -887,14 +890,14 @@ export default function ChatView({
             {session ? (
             <React.Suspense fallback={null}>
               <SessionNotes
-                key={`notes-${composerKey ?? 'none'}`}
+                key={`notes-${notesKey || 'none'}`}
                 open={notesOpen}
                 notes={sessionNotes}
                 onOpenChange={setNotesOpen}
                 onSend={sendNote}
                 onBringBack={bringBackNote}
                 onDelete={(note) => {
-                  if (composerKey) onDeleteNote(composerKey, note.id);
+                  if (notesKey) onDeleteNote(notesKey, note.id);
                 }}
               />
             </React.Suspense>

@@ -115,3 +115,13 @@ export const blobStripLayout = (
   }
   return { size, visible, overflow: count - visible };
 };
+
+/**
+ * Where a session's notes live. A session inside a configured project shares its notes with every
+ * other session in that project (so a note saved in one shows up in them all); a standalone session
+ * keeps its own notes under its session key.
+ */
+export const notesKeyForSession = (session: Session, projects: Project[]): string => {
+  const project = projectForSession(session, projects);
+  return project ? projectIdentityKey(session.instanceId, project.id) : sessionKey(session);
+};

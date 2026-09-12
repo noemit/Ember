@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { springTransition } from '@/lib/animation';
-import type { BallState, EmberSettings, Instance, Session } from '../types';
+import { notesKeyForSession } from '@/lib/projectGroups';
+import type { BallState, EmberSettings, Instance, Project, Session } from '../types';
 import { sessionKey } from '../types';
 
 type PaletteItem =
@@ -30,6 +31,7 @@ type Props = {
   sessions: Session[];
   states: Record<string, BallState>;
   instances: Instance[];
+  projectsByInstance: Record<string, Project[]>;
   sessionNotes: EmberSettings['sessionNotes'];
   onOpenChange: (open: boolean) => void;
   onSelectSession: (session: Session) => void;
@@ -48,6 +50,7 @@ export default function CommandPalette({
   sessions,
   states,
   instances,
+  projectsByInstance,
   sessionNotes,
   onOpenChange,
   onSelectSession,
@@ -61,7 +64,10 @@ export default function CommandPalette({
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
       .map((session): PaletteItem => {
         const key = sessionKey(session);
-        const notes = (sessionNotes[key] ?? []).map((note) => note.text).join('\n');
+        const notes =
+          (sessionNotes[notesKeyForSession(session, projectsByInstance[session.instanceId] ?? [])] ?? [])
+            .map((note) => note.text)
+            .join('\n');
         const instance = instances.find((candidate) => candidate.id === session.instanceId);
         return {
           type: 'session',
@@ -88,7 +94,7 @@ export default function CommandPalette({
         searchable: `new agent ${instance.label} ${instance.kind}`.toLowerCase(),
       }));
     return [...sessionItems, ...agentItems].slice(0, 60);
-  }, [instances, sessionNotes, sessions]);
+  }, [instances, projectsByInstance, sessionNotes, sessions]);
 
   const sessionItems = items.filter((item): item is PaletteItem & { type: 'session' } => item.type === 'session');
   const agentItems = items.filter((item): item is PaletteItem & { type: 'new-agent' } => item.type === 'new-agent');
@@ -173,7 +179,10 @@ export default function CommandPalette({
                   <CommandGroup heading="Sessions">
                     {sessionItems.map((item) => {
                       const key = sessionKey(item.session);
-                      const noteCount = sessionNotes[key]?.length ?? 0;
+                      const noteCount =
+                        sessionNotes[
+                          notesKeyForSession(item.session, projectsByInstance[item.session.instanceId] ?? [])
+                        ]?.length ?? 0;
                       return (
                         <CommandItem
                           key={item.id}
