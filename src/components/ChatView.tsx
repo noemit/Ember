@@ -480,13 +480,11 @@ export default function ChatView({
 
   const model = models.find((entry) => modelRefKey(entry) === modelId);
   const defaultModel = defaultModelId ? models.find((entry) => modelRefKey(entry) === defaultModelId) : undefined;
-  const variantModel = model ?? (modelId === DEFAULT_MODEL ? defaultModel : undefined);
   const modelButtonLabel = model
     ? `${model.details.providerName} / ${model.details.name}${modelId === defaultModelId ? ' (Default)' : ''}`
     : defaultModel
       ? `${defaultModel.details.providerName} / ${defaultModel.details.name} (Default)`
       : 'Server default';
-  const variantOptions = variantModel?.details.variants ?? [];
   const lastMessage = messages[messages.length - 1];
   const activeModelRef: ModelRef | undefined =
     (lastMessage?.role === 'user' ? lastMessage.model : undefined) ??
@@ -1017,14 +1015,10 @@ export default function ChatView({
                     models={models}
                     recentModels={recentModels}
                     value={modelId}
+                    variant={variant}
                     defaultModelId={defaultModelId}
                     collapseProviders
-                    onSelect={(next) => {
-                      const nextModel = models.find((entry) => modelRefKey(entry) === next);
-                      const nextVariants =
-                        nextModel?.details.variants ??
-                        (next === DEFAULT_MODEL ? defaultModel?.details.variants ?? [] : []);
-                      const nextVariant = variant && nextVariants.includes(variant) ? variant : '';
+                    onSelect={(next, nextVariant) => {
                       setModelId(next);
                       setVariant(nextVariant);
                       updateComposerChoices({ modelId: next, variant: nextVariant });
@@ -1032,33 +1026,6 @@ export default function ChatView({
                     onOpenChange={setPickerOpen}
                   />
                 </React.Suspense>
-              ) : null}
-
-              {variantOptions.length ? (
-                <Select
-                  value={variant || '__default'}
-                  onValueChange={(value) => {
-                    const nextVariant = value === '__default' ? '' : value;
-                    setVariant(nextVariant);
-                    updateComposerChoices({ variant: nextVariant });
-                  }}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    aria-label="Reasoning level"
-                    className="h-7 border-none bg-transparent px-2 text-xs capitalize shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted"
-                  >
-                    <SelectValue placeholder="Reasoning" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__default">Reasoning: default</SelectItem>
-                    {variantOptions.map((option) => (
-                      <SelectItem key={option} value={option} className="capitalize">
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               ) : null}
 
               <Toggle

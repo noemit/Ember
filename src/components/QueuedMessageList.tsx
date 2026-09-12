@@ -20,7 +20,7 @@ type Props = {
   defaultModelId: string | null;
   onOpenChange: (open: boolean) => void;
   onSendQueued: (itemId: string) => Promise<boolean>;
-  onQueuedModelChange: (itemId: string, model: ModelOption) => Promise<boolean>;
+  onQueuedModelChange: (itemId: string, model: ModelOption, variant?: string) => Promise<boolean>;
   onMoveQueued: (itemId: string, direction: -1 | 1) => Promise<boolean>;
   onRemoveQueued: (itemId: string) => Promise<boolean>;
   onParkQueued: (itemId: string) => Promise<boolean>;
@@ -270,13 +270,16 @@ export default function QueuedMessageList({
             models={models}
             recentModels={recentModels}
             value={modelRefKey(queueModelPickerItem.sendConfig)}
+            variant={queueModelPickerItem.sendConfig.variant ?? ''}
             defaultModelId={defaultModelId}
             collapseProviders
-            onSelect={(next) => {
+            onSelect={(next, nextVariant) => {
               const nextModel = models.find((entry) => modelRefKey(entry) === next);
               const itemId = queueModelPickerItem.id;
               setQueueModelPickerItemId(null);
-              if (nextModel) void runQueueAction(itemId, () => onQueuedModelChange(itemId, nextModel));
+              if (nextModel) {
+                void runQueueAction(itemId, () => onQueuedModelChange(itemId, nextModel, nextVariant || undefined));
+              }
             }}
             onOpenChange={(open) => {
               if (!open) setQueueModelPickerItemId(null);

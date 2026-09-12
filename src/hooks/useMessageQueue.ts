@@ -344,7 +344,11 @@ export const useMessageQueue = ({
     }
   };
 
-  const changeQueuedModel = async (itemId: string, nextModel: ModelOption): Promise<boolean> => {
+  const changeQueuedModel = async (
+    itemId: string,
+    nextModel: ModelOption,
+    nextVariant?: string
+  ): Promise<boolean> => {
     if (!selected || !selectedQueue) return false;
     showActionError(null);
     const { instanceId, sessionId } = selected;
@@ -352,9 +356,13 @@ export const useMessageQueue = ({
     const originalIndex = selectedQueue.items.findIndex((item) => item.id === itemId);
     if (!directory || originalIndex < 0) return false;
     const queuedItem = selectedQueue.items[originalIndex];
+    const validNextVariant = nextVariant && nextModel.details.variants.includes(nextVariant)
+      ? nextVariant
+      : undefined;
     if (
       queuedItem.sendConfig.providerID === nextModel.providerID &&
-      queuedItem.sendConfig.modelID === nextModel.modelID
+      queuedItem.sendConfig.modelID === nextModel.modelID &&
+      queuedItem.sendConfig.variant === validNextVariant
     ) return true;
     if (selectedQueue.sendingId) {
       showActionError('Wait until the current queued message finishes sending before changing models.');
@@ -385,15 +393,11 @@ export const useMessageQueue = ({
       applyQueueMutation(instanceId, taken.data);
       takenItem = taken.data.item;
 
-      const nextVariant =
-        takenItem.sendConfig.variant && nextModel.details.variants.includes(takenItem.sendConfig.variant)
-          ? takenItem.sendConfig.variant
-          : undefined;
       const changed = await enqueueMessage(
         instanceId,
         sessionId,
         directory,
-        queuedMessageInput(instanceId, takenItem, nextModel, nextVariant)
+        queuedMessageInput(instanceId, takenItem, nextModel, validNextVariant)
       );
       if (!changed.ok || !changed.data) {
         const restored = await restore();
@@ -428,7 +432,7 @@ export const useMessageQueue = ({
       }
       showActionError(
         err instanceof Error ? err.message : 'Could not change the queued message model.',
-        takenItem ? undefined : () => void changeQueuedModel(itemId, nextModel)
+        takenItem ? undefined : () => void changeQueuedModel(itemId, nextModel, nextVariant)
       );
       return false;
     }

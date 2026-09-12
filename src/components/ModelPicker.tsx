@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelOption } from '../types';
 
@@ -15,10 +16,12 @@ type Props = {
   recentModels: string[];
   /** Selected key, or DEFAULT_MODEL to let the instance decide. */
   value: string;
+  /** Selected reasoning effort, or an empty string for the model default. */
+  variant?: string;
   /** Default key OpenCode resolves when value is DEFAULT_MODEL. */
   defaultModelId?: string | null;
   collapseProviders?: boolean;
-  onSelect: (key: string) => void;
+  onSelect: (key: string, variant: string) => void;
   onOpenChange: (open: boolean) => void;
 };
 
@@ -138,6 +141,7 @@ export default function ModelPicker({
   models,
   recentModels,
   value,
+  variant = '',
   defaultModelId = null,
   collapseProviders = false,
   onSelect,
@@ -146,6 +150,8 @@ export default function ModelPicker({
   const [query, setQuery] = React.useState('');
   const [hovered, setHovered] = React.useState<string | null>(null);
   const [expandedProviders, setExpandedProviders] = React.useState<Set<string>>(() => new Set());
+  const [selectedKey, setSelectedKey] = React.useState(value);
+  const [selectedVariant, setSelectedVariant] = React.useState(variant);
   const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -153,10 +159,12 @@ export default function ModelPicker({
       setQuery('');
       setHovered(null);
       setExpandedProviders(new Set());
+      setSelectedKey(value);
+      setSelectedVariant(variant);
       // Radix moves focus after mount; wait a tick so ours wins.
       window.setTimeout(() => searchRef.current?.focus(), 30);
     }
-  }, [open]);
+  }, [open, value, variant]);
 
   const byKey = React.useMemo(() => new Map(models.map((model) => [modelRefKey(model), model])), [models]);
   const defaultModel = defaultModelId ? byKey.get(defaultModelId) ?? null : null;
@@ -184,12 +192,22 @@ export default function ModelPicker({
     return recent.length ? [{ id: 'recent', title: 'Recent', models: recent }, ...providers] : providers;
   }, [models, recentModels, byKey, query]);
 
-  const activeKey = hovered ?? (value !== DEFAULT_MODEL ? value : null);
+  const selectedModel = selectedKey === DEFAULT_MODEL ? defaultModel : byKey.get(selectedKey) ?? null;
+  const variantOptions = selectedModel?.details.variants ?? [];
+  const validSelectedVariant = variantOptions.includes(selectedVariant) ? selectedVariant : '';
+  const activeKey = hovered ?? (selectedKey !== DEFAULT_MODEL ? selectedKey : null);
   const activeModel = activeKey ? byKey.get(activeKey) ?? null : null;
   const total = groups.reduce((sum, group) => sum + (group.id === 'recent' ? 0 : group.models.length), 0);
 
   const pick = (key: string) => {
-    onSelect(key);
+    const nextModel = key === DEFAULT_MODEL ? defaultModel : byKey.get(key) ?? null;
+    setSelectedKey(key);
+    setSelectedVariant((current) => nextModel?.details.variants.includes(current) ? current : '');
+    setHovered(key === DEFAULT_MODEL ? null : key);
+  };
+
+  const apply = () => {
+    onSelect(selectedKey, validSelectedVariant);
     onOpenChange(false);
   };
 
@@ -208,7 +226,7 @@ export default function ModelPicker({
       >
         <DialogTitle className="sr-only">Choose a model</DialogTitle>
         <DialogDescription className="sr-only">
-          Pick the model for this session, or leave it on the instance default.
+          Pick the model and reasoning effort for this session, or leave them on their defaults.
         </DialogDescription>
 
         <div className="flex min-h-0 flex-1">
@@ -245,12 +263,12 @@ export default function ModelPicker({
                   onClick={() => pick(DEFAULT_MODEL)}
                   className={cn(
                     'mb-1 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px]',
-                    value === DEFAULT_MODEL ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                    selectedKey === DEFAULT_MODEL ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                   )}
                 >
                   <Sparkles className="size-3.5 flex-none" />
                   <span className="flex-1 truncate">{defaultLabel}</span>
-                  {value === DEFAULT_MODEL ? <Check className="size-3.5 flex-none text-highlight" /> : null}
+                  {selectedKey === DEFAULT_MODEL ? <Check className="size-3.5 flex-none text-highlight" /> : null}
                 </button>
               ) : null}
 
@@ -287,7 +305,7 @@ export default function ModelPicker({
                         <Row
                           key={`${group.id}:${key}`}
                           model={model}
-                          selected={key === value}
+                          selected={key === selectedKey}
                           active={key === activeKey}
                           isDefault={key === defaultModelId}
                           onHover={() => setHovered(key)}
@@ -326,6 +344,33 @@ export default function ModelPicker({
               </div>
             )}
           </div>
+        </div>
+        <div className="flex flex-none items-center gap-2 border-t p-2.5">
+          <span className="text-[11px] font-medium text-muted-foreground">Reasoning</span>
+          <Select
+            value={validSelectedVariant || '__default'}
+            disabled={variantOptions.length === 0}
+            onValueChange={(next) => setSelectedVariant(next === '__default' ? '' : next)}
+          >
+            <SelectTrigger size="sm" aria-label="Reasoning level" className="h-7 min-w-32 text-xs capitalize">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__default">Default</SelectItem>
+              {variantOptions.map((option) => (
+                <SelectItem key={option} value={option} className="capitalize">
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="min-w-0 flex-1" />
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={apply}>
+            Done
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
