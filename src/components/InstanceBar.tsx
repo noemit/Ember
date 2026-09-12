@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Archive, ChevronDown, Menu, RefreshCw, Search, Settings, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Menu, RefreshCw, Search, Settings, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -18,12 +18,9 @@ type Props = {
   /** Instances whose event stream is up; the rest fall back to fast polling. */
   live: Record<string, boolean>;
   refreshing: boolean;
-  /** Archived sessions across connected instances, for the archive screen. */
-  archivedCount: number;
   onToggle: (instanceId: string) => void;
   onToggleNavigation: () => void;
   onOpenCommandPalette: () => void;
-  onOpenArchive: () => void;
   onRefresh: () => void;
   onOpenSettings: () => void;
   onOpenViewOptions: () => void;
@@ -56,11 +53,9 @@ export default function InstanceBar({
   hidden,
   live,
   refreshing,
-  archivedCount,
   onToggle,
   onToggleNavigation,
   onOpenCommandPalette,
-  onOpenArchive,
   onRefresh,
   onOpenSettings,
   onOpenViewOptions,
@@ -96,22 +91,6 @@ export default function InstanceBar({
       </button>
 
       <div className="flex-1" />
-
-      <button
-        type="button"
-        onClick={onOpenArchive}
-        className="no-drag flex h-7 items-center gap-1.5 rounded-full border bg-muted/50 px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Archived sessions"
-        title="Archived sessions"
-      >
-        <Archive className="size-3.5" />
-        <span className="hidden sm:inline">Archived</span>
-        {archivedCount > 0 ? (
-          <span className="rounded-full bg-background px-1.5 text-[10px] tabular-nums text-muted-foreground">
-            {archivedCount}
-          </span>
-        ) : null}
-      </button>
 
       <button
         type="button"

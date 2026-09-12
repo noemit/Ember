@@ -399,6 +399,15 @@ export default function App() {
     [readyIds, sessionsByInstance]
   );
 
+  // Active + archived, ignoring the recency window, for the rail's broadened search.
+  const everySession = React.useMemo(
+    () =>
+      Object.entries(sessionsByInstance)
+        .filter(([instanceId]) => readyIds.includes(instanceId) && !hidden.has(instanceId))
+        .flatMap(([, list]) => list),
+    [readyIds, sessionsByInstance, hidden]
+  );
+
   const allSessions = React.useMemo(
     () =>
       Object.entries(sessionsByInstance)
@@ -2070,11 +2079,9 @@ export default function App() {
             hidden={hidden}
             live={liveInstances}
             refreshing={refreshing}
-            archivedCount={archivedSessions.length}
             onToggle={toggleInstance}
             onToggleNavigation={() => setMobileRailOpen((open) => !open)}
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-            onOpenArchive={() => setArchiveOpen(true)}
             onRefresh={() => void refreshInstances()}
             onOpenViewOptions={() => {
               setViewOptionsActivated(true);
@@ -2101,6 +2108,7 @@ export default function App() {
               projectsByInstance={projectsByInstance}
               instanceDefaults={settings.instanceDefaults}
               sessions={sessions}
+              everySession={everySession}
               moods={moods}
               previews={previews}
               selectedKey={selectedKey}
@@ -2117,6 +2125,8 @@ export default function App() {
               }
               showScheduled={showScheduled}
               onShowScheduled={setShowScheduled}
+              archivedCount={archivedSessions.length}
+              onOpenArchive={() => setArchiveOpen(true)}
               onSelectSession={(session) => {
                 openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
                 setMobileRailOpen(false);

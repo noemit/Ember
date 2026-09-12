@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, LayoutGroup } from 'motion/react';
-import { ChevronDown, Clock3, Plus, Search, Settings, X } from 'lucide-react';
+import { Archive, ChevronDown, Clock3, Plus, Search, Settings, X } from 'lucide-react';
 import { projectForSession } from '../blob/seed';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
@@ -29,6 +29,8 @@ type Props = {
   projectsByInstance: Record<string, Project[]>;
   instanceDefaults: Record<string, InstanceDefaults>;
   sessions: Session[];
+  /** Every session (active and archived, ignoring the recency window) for broadened search. */
+  everySession: Session[];
   moods: Record<string, BallMood>;
   previews: Record<string, string>;
   selectedKey: string | null;
@@ -44,6 +46,9 @@ type Props = {
   windowLabel: string | null;
   showScheduled: boolean;
   onShowScheduled: (value: boolean) => void;
+  /** Archived sessions across instances; opens the archive screen. */
+  archivedCount: number;
+  onOpenArchive: () => void;
   onSelectSession: (session: Session) => void;
   /** Opens a project: its sessions become the open list (recent as columns, rest as tabs). */
   onOpenProject: (instanceId: string, project: Project) => void;
@@ -62,6 +67,7 @@ export default function LeftRail({
   projectsByInstance,
   instanceDefaults,
   sessions,
+  everySession,
   moods,
   previews,
   selectedKey,
@@ -75,6 +81,8 @@ export default function LeftRail({
   windowLabel,
   showScheduled,
   onShowScheduled,
+  archivedCount,
+  onOpenArchive,
   onSelectSession,
   onOpenProject,
   onReload,
@@ -84,6 +92,16 @@ export default function LeftRail({
   onOpenSettings,
 }: Props) {
   const [query, setQuery] = React.useState('');
+  // Search starts scoped to the current view; the empty state can widen it to all time/archived.
+  const [searchAllTime, setSearchAllTime] = React.useState(false);
+  const [searchArchived, setSearchArchived] = React.useState(false);
+
+  React.useEffect(() => {
+    if (query) return;
+    // Clearing the box returns the next search to the default scope.
+    setSearchAllTime(false);
+    setSearchArchived(false);
+  }, [query]);
 
   const instanceById = React.useMemo(
     () => Object.fromEntries(instances.map((instance) => [instance.id, instance])),
@@ -92,6 +110,15 @@ export default function LeftRail({
   const ready = React.useMemo(() => instances.filter((instance) => instance.attachable), [instances]);
   const multiInstance = ready.length > 1;
   const needle = query.trim().toLowerCase();
+
+  const activeEverywhere = React.useMemo(
+    () => everySession.filter((session) => !session.archived),
+    [everySession]
+  );
+  const archivedEverywhere = React.useMemo(
+    () => everySession.filter((session) => session.archived),
+    [everySession]
+  );
 
   // The selected session is pinned into the rail even when a filter would hide it.
   const itemSessions = React.useMemo(
@@ -126,25 +153,31 @@ export default function LeftRail({
     [previews, instanceById, projectsByInstance, needle]
   );
 
-  const railEntries = React.useMemo(() => {
-    if (!needle) return entries;
-    return entries.flatMap((entry): RailEntry[] => {
-      if (entry.kind === 'session') return matchesSession(entry.session) ? [entry] : [];
-      // A project-name hit shows the whole project; otherwise only its matching sessions.
-      const projectMatches = entry.project.name.toLowerCase().includes(needle);
-      const matched = entry.sessions.filter(matchesSession);
-      const matchedSessions = projectMatches ? entry.sessions : matched;
-      if (matchedSessions.length === 0) return [];
-      return [{ ...entry, sessions: matchedSessions }];
-    });
-  }, [entries, matchesSession, needle]);
+  // Search pools: active matches keep the project grouping; archived matches stay individual rows.
+  const activeMatches = React.useMemo(() => {
+    if (!needle) return [];
+    const pool = searchAllTime ? activeEverywhere : itemSessions;
+    return pool.filter(matchesSession);
+  }, [needle, searchAllTime, activeEverywhere, itemSessions, matchesSession]);
+
+  const archivedMatches = React.useMemo(() => {
+    if (!needle || !searchArchived) return [];
+    return archivedEverywhere.filter(matchesSession);
+  }, [needle, searchArchived, archivedEverywhere, matchesSession]);
+
+  const railEntries = React.useMemo(
+    () => (needle ? buildRailEntries(activeMatches, projectsByInstance) : entries),
+    [needle, entries, activeMatches, projectsByInstance]
+  );
 
   const scheduledSessions = React.useMemo(
     () => (needle ? itemSessions.filter(matchesSession) : itemSessions),
     [itemSessions, matchesSession, needle]
   );
 
-  const hasItems = showScheduled ? scheduledSessions.length > 0 : railEntries.length > 0;
+  const hasItems = showScheduled
+    ? scheduledSessions.length > 0
+    : railEntries.length > 0 || archivedMatches.length > 0;
 
   // Default target for "New agent": whichever instance was active most recently.
   const defaultInstanceId =
@@ -235,6 +268,32 @@ export default function LeftRail({
         archivingKeys={archivingKeys}
         onOpenProject={openProject}
         onNewAgent={newAgent}
+        onReload={reloadSession}
+        onArchive={archiveSession}
+        onCustomizeAppearance={customizeAppearance}
+      />
+    );
+  };
+
+  // Archived search hits are individual rows; clicking one restores it (archived can't stay open).
+  const renderArchivedSession = (session: Session) => {
+    const key = sessionKey(session);
+    const instance = instanceById[session.instanceId];
+    return (
+      <SessionRow
+        key={key}
+        session={session}
+        instanceLabel={multiInstance ? instance?.label : undefined}
+        projectName={projectForSession(session, projectsByInstance[session.instanceId] ?? [])?.name}
+        preview={previews[key]}
+        selected={false}
+        mood={moods[key] ?? 'idle'}
+        reloading={reloadingKeys.has(key)}
+        archiving={archivingKeys.has(key)}
+        markerColor={instanceDefaults[session.instanceId]?.markerColor}
+        identity={avatarIdentities[key]}
+        blobStyle={blobStyle}
+        onSelect={() => archiveSession(session, false)}
         onReload={reloadSession}
         onArchive={archiveSession}
         onCustomizeAppearance={customizeAppearance}
@@ -333,6 +392,26 @@ export default function LeftRail({
             </TooltipTrigger>
             <TooltipContent>{showScheduled ? 'Back to active sessions' : 'Show scheduled sessions'}</TooltipContent>
           </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenArchive}
+                aria-label="Archived sessions"
+                className="relative w-8 justify-center px-0"
+              >
+                <Archive className="size-4" />
+                {archivedCount > 0 ? (
+                  <span className="pointer-events-none absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
+                    {archivedCount}
+                  </span>
+                ) : null}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Archived sessions</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -342,6 +421,15 @@ export default function LeftRail({
             {showScheduled ? scheduledSessions.map(renderSession) : railEntries.map(renderEntry)}
           </AnimatePresence>
         </LayoutGroup>
+
+        {!showScheduled && archivedMatches.length > 0 ? (
+          <div className="mt-2 flex flex-col gap-0.5 border-t pt-2">
+            <span className="px-2.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              Archived
+            </span>
+            {archivedMatches.map(renderArchivedSession)}
+          </div>
+        ) : null}
 
         {!hasItems ? (
           <div className="px-3 py-8">
@@ -375,6 +463,20 @@ export default function LeftRail({
               >
                 Show active sessions
               </Button>
+            ) : null}
+            {needle && !showScheduled ? (
+              <div className="mt-3 flex flex-col items-stretch gap-1.5">
+                {!searchAllTime && activeEverywhere.length > 0 ? (
+                  <Button size="xs" variant="outline" onClick={() => setSearchAllTime(true)}>
+                    Search all time
+                  </Button>
+                ) : null}
+                {!searchArchived && archivedEverywhere.length > 0 ? (
+                  <Button size="xs" variant="outline" onClick={() => setSearchArchived(true)}>
+                    Search archived sessions
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
           </div>
         ) : null}

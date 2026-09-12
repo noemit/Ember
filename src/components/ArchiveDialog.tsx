@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { buildRailEntries } from '@/lib/projectGroups';
+import { projectForSession } from '../blob/seed';
 import SessionRow from './SessionRow';
 import { sessionKey } from '../types';
 import type {
@@ -40,7 +40,7 @@ type Props = {
   onCustomizeAppearance: (session: Session) => void;
 };
 
-/** Global archive: every archived session, grouped by project, with restore. */
+/** Global archive: every archived session as an individual row, newest first, with restore. */
 export default function ArchiveDialog({
   open,
   onOpenChange,
@@ -65,19 +65,19 @@ export default function ArchiveDialog({
   );
   const multiInstance = instances.filter((instance) => instance.attachable).length > 1;
 
-  const entries = React.useMemo(
-    () => buildRailEntries(sessions, projectsByInstance),
-    [sessions, projectsByInstance]
+  const ordered = React.useMemo(
+    () => [...sessions].sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)),
+    [sessions]
   );
 
-  const renderSession = (session: Session, projectName: string | undefined) => {
+  const renderSession = (session: Session) => {
     const key = sessionKey(session);
     return (
       <SessionRow
         key={key}
         session={session}
         instanceLabel={multiInstance ? instanceById[session.instanceId]?.label : undefined}
-        projectName={projectName}
+        projectName={projectForSession(session, projectsByInstance[session.instanceId] ?? [])?.name}
         preview={previews[key]}
         selected={false}
         mood={moods[key] ?? 'idle'}
@@ -100,39 +100,17 @@ export default function ArchiveDialog({
         <DialogHeader>
           <DialogTitle>Archived sessions</DialogTitle>
           <DialogDescription>
-            Restore a session to bring it back to its project on the rail.
+            Restore a session to bring it back to the rail.
           </DialogDescription>
         </DialogHeader>
 
         <div className="-mx-2 min-h-0 flex-1 overflow-y-auto px-2">
-          {entries.length === 0 ? (
+          {ordered.length === 0 ? (
             <p className="px-3 py-8 text-center text-[12px] text-muted-foreground">
               No archived sessions.
             </p>
           ) : (
-            <div className="flex flex-col gap-3">
-              {entries.map((entry) =>
-                entry.kind === 'project' ? (
-                  <div key={entry.id} className="flex flex-col gap-0.5">
-                    <div className="flex items-baseline gap-1.5 px-2.5 pt-1">
-                      <span className="truncate text-[11.5px] font-semibold text-foreground">
-                        {entry.project.name}
-                      </span>
-                      {multiInstance ? (
-                        <span className="truncate text-[10px] text-muted-foreground">
-                          {instanceById[entry.instanceId]?.label}
-                        </span>
-                      ) : null}
-                    </div>
-                    {entry.sessions.map((session) => renderSession(session, entry.project.name))}
-                  </div>
-                ) : (
-                  <div key={entry.id} className="flex flex-col gap-0.5">
-                    {renderSession(entry.session, undefined)}
-                  </div>
-                )
-              )}
-            </div>
+            <div className="flex flex-col gap-0.5">{ordered.map(renderSession)}</div>
           )}
         </div>
       </DialogContent>

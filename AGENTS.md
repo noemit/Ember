@@ -49,7 +49,7 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   The transcript poll and `isLoaded` predicate cover the visible columns. Open/minimized keys are
   persisted in Ember settings and pruned when their instance or session is archived/gone
   (`pruneWorkspace`). The rail lists active sessions only; archived ones are collected into
-  `archivedSessions` behind the top bar's archive screen, and a project's `+` seeds the new-agent
+  `archivedSessions` behind the rail's archive screen, and a project's `+` seeds the new-agent
   draft with `newSessionDirectory`. Ember keeps one project in the workspace at a time: `openProject`
   loads a project's sessions (most recent as columns, the rest as tabs) and `openSession` replaces the
   group when the session belongs to a different project, so two projects' columns never mix by
@@ -98,7 +98,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   sessions are omitted — start one from New agent. Standalone (root/chat) sessions are always
   `SessionRow`s. Cards and rows interleave by most-recent activity. Clicking a project body opens the
   whole project — see App's `openProject`; the blobs are display-only (their right-click menu still
-  reloads/archives that session). The toolbar is just New agent + search + the scheduled toggle; the
+  reloads/archives that session). The toolbar is New agent + search + the scheduled toggle + the
+  archive button. Search is scoped to the current view by default; when it comes up empty it offers
+  "Search all time" and "Search archived sessions", the latter listing archived hits as individual
+  rows under an Archived heading (clearing the box resets the scope). The
   selected session is pinned into the list even when filters hide it.
 - `src/components/ProjectCard.tsx` — a multi-session project: name, `+`, and a row of 48px
   mood-carrying blobs that shrink then overflow to `+N`. The whole card is the click target (opens
@@ -108,8 +111,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   Optional `titleOverride`/`onNewAgent` turn it into the one-session project row. Memoized; the
   timestamp is a self-ticking `RelativeTime`. Archive/restore is decided per row from
   `session.archived`.
-- `src/components/ArchiveDialog.tsx` — the top-bar archive screen (`archivedSessions`): every
-  archived session grouped by project (or as a standalone row), with restore.
+- `src/components/ArchiveDialog.tsx` — the rail's archive screen (`archivedSessions`): every
+  archived session as an individual row, newest first, with restore. Opened from the rail toolbar's
+  archive button (`archivedCount`).
 - `src/components/ColumnTabStrip.tsx` — the numbered open-session strip above the columns (to the
   right of the rail, aligned with the session header). Columns
   and overflow/minimized sessions share one numbering (1-based `openSessions` order); a tab click
