@@ -54,7 +54,7 @@ import { copyText } from '@/lib/clipboard';
 import { sameMessages } from '@/lib/messageSignature';
 import { useEmberSettings } from './hooks/useEmberSettings';
 import { useFeedback } from './hooks/useFeedback';
-import { useMessageQueue } from './hooks/useMessageQueue';
+import { mergePolledQueues, useMessageQueue } from './hooks/useMessageQueue';
 import { usePoll } from './hooks/usePoll';
 import { newSessionDirectoryPrefill, newSessionModelPrefill } from './lib/newSessionDefaults';
 import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
@@ -724,7 +724,7 @@ export default function App() {
   const refreshQueues = useStableCallback(async (instanceIds: string[]) => {
     if (instanceIds.length === 0) return;
     const next = await loadAllMessageQueues(instanceIds).catch(() => ({}));
-    setQueuesByInstance((prev) => ({ ...prev, ...next }));
+    setQueuesByInstance((prev) => mergePolledQueues(prev, next));
   });
 
   /** Refetch one transcript; applies to the open view only if it's still the selected session. */
@@ -1745,6 +1745,8 @@ export default function App() {
               onQueuedModelChange={queue.changeQueuedModel}
               onMoveQueued={queue.moveQueued}
               onRemoveQueued={queue.removeQueued}
+              onRetryQueued={queue.retryQueued}
+              onDiscardQueued={queue.discardQueued}
               onReload={() => {
                 if (selectedSession) void handleReloadSession(selectedSession);
               }}

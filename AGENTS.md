@@ -184,7 +184,9 @@ from an event payload.
   instance default before queueing. Each row shows its assigned model/variant and can change it by
   taking the full item, re-enqueueing with the new `sendConfig`, then restoring its order. The
   server dispatches items once the session is idle, while Ember's per-item send-now action takes
-  the item and sends it directly so it can steer the active turn.
+  the item and sends it directly so it can steer the active turn. Enqueueing is optimistic: the row
+  appears at once with a loader (`pending`), a failed enqueue keeps it with the error plus
+  Retry/Cancel, and `mergePolledQueues` folds those local rows back into each polled snapshot.
 - "Recent" models in the composer are derived from the instance's own sessions (`session.model`
   from the list endpoint, newest `time.updated` first) — nothing is stored on the Ember side.
 - Permissions: `GET /api/permission` lists pending requests; Ember merges the global response with

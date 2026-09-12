@@ -119,6 +119,8 @@ type Props = {
   onQueuedModelChange: (itemId: string, model: ModelOption) => Promise<boolean>;
   onMoveQueued: (itemId: string, direction: -1 | 1) => Promise<boolean>;
   onRemoveQueued: (itemId: string) => Promise<boolean>;
+  onRetryQueued: (itemId: string) => Promise<boolean>;
+  onDiscardQueued: (itemId: string) => boolean;
   onReload: () => void;
   onAbort: () => void;
   onPermission: (request: PermissionRequest, reply: PermissionReply) => Promise<boolean>;
@@ -265,6 +267,8 @@ export default function ChatView({
   onQueuedModelChange,
   onMoveQueued,
   onRemoveQueued,
+  onRetryQueued,
+  onDiscardQueued,
   onReload,
   onAbort,
   onPermission,
@@ -873,6 +877,8 @@ export default function ChatView({
                 onRemoveQueued={onRemoveQueued}
                 onParkQueued={parkQueuedItem}
                 onEditQueued={editQueuedItem}
+                onRetryQueued={onRetryQueued}
+                onDiscardQueued={onDiscardQueued}
               />
             </React.Suspense>
             ) : null}

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ModelPickerFallback } from './ModelPickerFallback';
+import { cn } from '@/lib/utils';
 import { springTransition } from '@/lib/animation';
 import type { MessageQueueSession, ModelOption, QueuedMessage } from '../types';
 
@@ -24,6 +25,8 @@ type Props = {
   onRemoveQueued: (itemId: string) => Promise<boolean>;
   onParkQueued: (itemId: string) => Promise<boolean>;
   onEditQueued: (itemId: string) => Promise<boolean>;
+  onRetryQueued: (itemId: string) => Promise<boolean>;
+  onDiscardQueued: (itemId: string) => boolean;
 };
 
 /**
@@ -43,6 +46,8 @@ export default function QueuedMessageList({
   onRemoveQueued,
   onParkQueued,
   onEditQueued,
+  onRetryQueued,
+  onDiscardQueued,
 }: Props) {
   const [queueModelPickerItemId, setQueueModelPickerItemId] = React.useState<string | null>(null);
   // Queue mutations round-trip to the server; lock the row so a double-click can't fire two.
@@ -100,7 +105,9 @@ export default function QueuedMessageList({
             <AnimatePresence initial={false} mode="popLayout">
               {queueItems.map((item, index) => {
                 const sendingItem = queue?.sendingId === item.id;
-                const busy = sendingItem || busyQueueItemId === item.id;
+                const pending = Boolean(item.pending);
+                const failed = Boolean(item.error);
+                const busy = sendingItem || busyQueueItemId === item.id || pending;
                 const reorderLocked = Boolean(queue?.sendingId) || busyQueueItemId !== null;
                 const preview =
                   item.text.trim() ||
@@ -114,23 +121,32 @@ export default function QueuedMessageList({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.96 }}
                     transition={springTransition}
-                    className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5"
+                    className={cn(
+                      'flex items-center gap-2 rounded-md px-2 py-1.5',
+                      failed ? 'bg-destructive/10' : 'bg-muted/50'
+                    )}
                   >
                     {busy ? <Loader2 className="size-3 flex-none animate-spin text-highlight" /> : null}
                     <div className="min-w-0 flex-1">
                       <span className="block truncate" title={preview}>
                         {preview}
                       </span>
-                      <button
-                        type="button"
-                        disabled={busy || models.length === 0}
-                        onClick={() => setQueueModelPickerItemId(item.id)}
-                        aria-label={`Change model for queued message: ${preview.slice(0, 60)}`}
-                        title="Change queued message model"
-                        className="mt-0.5 block max-w-full truncate rounded text-[10.5px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {queuedModelLabel(item)}
-                      </button>
+                      {failed ? (
+                        <span className="mt-0.5 block truncate text-[10.5px] text-destructive" title={item.error}>
+                          {item.error}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busy || models.length === 0}
+                          onClick={() => setQueueModelPickerItemId(item.id)}
+                          aria-label={`Change model for queued message: ${preview.slice(0, 60)}`}
+                          title="Change queued message model"
+                          className="mt-0.5 block max-w-full truncate rounded text-[10.5px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {queuedModelLabel(item)}
+                        </button>
+                      )}
                     </div>
                     {item.attachments.length ? (
                       <Badge variant="secondary" className="flex-none px-1 py-0 text-[10px]">
@@ -138,78 +154,107 @@ export default function QueuedMessageList({
                       </Badge>
                     ) : null}
                     <div className="flex flex-none items-center gap-0.5">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        disabled={reorderLocked || index === 0}
-                        onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, -1))}
-                        aria-label={`Move queued message up: ${preview.slice(0, 60)}`}
-                        title="Move up"
-                      >
-                        <ChevronUp />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        disabled={reorderLocked || index === queueItems.length - 1}
-                        onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, 1))}
-                        aria-label={`Move queued message down: ${preview.slice(0, 60)}`}
-                        title="Move down"
-                      >
-                        <ChevronDown />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        disabled={busy || !(item.text.trim() || item.content.trim())}
-                        onClick={() => void runQueueAction(item.id, () => onParkQueued(item.id))}
-                        aria-label={`Park queued message as a note: ${preview.slice(0, 60)}`}
-                        title="Park it as a note"
-                        className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
-                      >
-                        <NotebookPen />
-                        Park it
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        disabled={busy}
-                        onClick={() => void runQueueAction(item.id, () => onSendQueued(item.id))}
-                        aria-label={`Send queued message now: ${preview.slice(0, 60)}`}
-                        title="Send now and steer the current turn"
-                        className="px-1.5 text-[11px] text-muted-foreground hover:text-highlight"
-                      >
-                        Send now
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        disabled={busy || !(item.text.trim() || item.content.trim())}
-                        onClick={() => void runQueueAction(item.id, () => onEditQueued(item.id))}
-                        aria-label={`Edit queued message: ${preview.slice(0, 60)}`}
-                        title="Edit in composer"
-                        className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
-                      >
-                        <Pencil />
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        disabled={busy}
-                        onClick={() => void runQueueAction(item.id, () => onRemoveQueued(item.id))}
-                        aria-label={`Cancel queued message: ${preview.slice(0, 60)}`}
-                        title={sendingItem ? 'Cannot cancel while this message is being sent' : 'Cancel queued message'}
-                        className="px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
-                      >
-                        Cancel
-                      </Button>
+                      {failed ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => void runQueueAction(item.id, () => onRetryQueued(item.id))}
+                            aria-label={`Retry queueing this message: ${preview.slice(0, 60)}`}
+                            title="Retry queueing this message"
+                            className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+                          >
+                            Retry
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => onDiscardQueued(item.id)}
+                            aria-label={`Discard this message: ${preview.slice(0, 60)}`}
+                            title="Discard this message"
+                            className="px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : pending ? null : (
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={reorderLocked || index === 0}
+                            onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, -1))}
+                            aria-label={`Move queued message up: ${preview.slice(0, 60)}`}
+                            title="Move up"
+                          >
+                            <ChevronUp />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={reorderLocked || index === queueItems.length - 1}
+                            onClick={() => void runQueueAction(item.id, () => onMoveQueued(item.id, 1))}
+                            aria-label={`Move queued message down: ${preview.slice(0, 60)}`}
+                            title="Move down"
+                          >
+                            <ChevronDown />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            disabled={busy || !(item.text.trim() || item.content.trim())}
+                            onClick={() => void runQueueAction(item.id, () => onParkQueued(item.id))}
+                            aria-label={`Park queued message as a note: ${preview.slice(0, 60)}`}
+                            title="Park it as a note"
+                            className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+                          >
+                            <NotebookPen />
+                            Park it
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            disabled={busy}
+                            onClick={() => void runQueueAction(item.id, () => onSendQueued(item.id))}
+                            aria-label={`Send queued message now: ${preview.slice(0, 60)}`}
+                            title="Send now and steer the current turn"
+                            className="px-1.5 text-[11px] text-muted-foreground hover:text-highlight"
+                          >
+                            Send now
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            disabled={busy || !(item.text.trim() || item.content.trim())}
+                            onClick={() => void runQueueAction(item.id, () => onEditQueued(item.id))}
+                            aria-label={`Edit queued message: ${preview.slice(0, 60)}`}
+                            title="Edit in composer"
+                            className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil />
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            disabled={busy}
+                            onClick={() => void runQueueAction(item.id, () => onRemoveQueued(item.id))}
+                            aria-label={`Cancel queued message: ${preview.slice(0, 60)}`}
+                            title={sendingItem ? 'Cannot cancel while this message is being sent' : 'Cancel queued message'}
+                            className="px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </motion.li>
                 );

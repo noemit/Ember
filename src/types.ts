@@ -233,6 +233,10 @@ export type QueuedMessage = {
   context: QueuedMessageContext[];
   sendConfig: QueuedMessageSendConfig;
   agentMention?: string;
+  /** Local only: the item is still being enqueued on the instance (show a loader). */
+  pending?: boolean;
+  /** Local only: enqueue failed; show the error with retry/cancel. */
+  error?: string;
 };
 
 export type MessageQueueSession = {

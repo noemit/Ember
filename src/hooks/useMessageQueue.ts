@@ -17,6 +17,45 @@ import type {
   SessionRef,
 } from '../types';
 
+/**
+ * Keep local-only rows (still enqueuing, or failed) when a poll replaces the server queue snapshot
+ * with fresh data, so an in-flight message doesn't vanish before its request settles.
+ */
+export const mergePolledQueues = (
+  prev: Record<string, MessageQueueSession[]>,
+  next: Record<string, MessageQueueSession[]>
+): Record<string, MessageQueueSession[]> => {
+  const merged: Record<string, MessageQueueSession[]> = {};
+  const instanceIds = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  instanceIds.forEach((instanceId) => {
+    const local = prev[instanceId] ?? [];
+    const server = next[instanceId];
+    if (!server) {
+      merged[instanceId] = local;
+      return;
+    }
+    const serverSessionIds = new Set(server.map((queue) => queue.sessionId));
+    const result = server.map((queue) => {
+      const locals = (local.find((entry) => entry.sessionId === queue.sessionId)?.items ?? []).filter(
+        (item) => item.pending || item.error
+      );
+      if (locals.length === 0) return queue;
+      const serverIds = new Set(queue.items.map((item) => item.id));
+      return {
+        ...queue,
+        items: [...locals.filter((item) => !serverIds.has(item.id)), ...queue.items],
+      };
+    });
+    local.forEach((queue) => {
+      if (serverSessionIds.has(queue.sessionId)) return;
+      const locals = queue.items.filter((item) => item.pending || item.error);
+      if (locals.length > 0) result.push({ ...queue, items: locals });
+    });
+    merged[instanceId] = result;
+  });
+  return merged;
+};
+
 type Options = {
   selected: SessionRef | null;
   selectedSession: Session | null;
@@ -119,6 +158,84 @@ export const useMessageQueue = ({
         ? 'That queued message is no longer available.'
         : 'Could not take the queued message.';
 
+  // Optimistic queue rows live in the same state as server rows, marked `pending`/`error`. Their
+  // original input is kept here so Retry can replay it after a failure.
+  const pendingInputsRef = React.useRef(new Map<string, QueueMessageInput>());
+
+  const updateSelectedQueue = (updater: (queue: MessageQueueSession | null) => MessageQueueSession | null) => {
+    if (!selected) return;
+    const { instanceId, sessionId } = selected;
+    setQueuesByInstance((prev) => {
+      const list = prev[instanceId] ?? [];
+      const current = list.find((entry) => entry.sessionId === sessionId) ?? null;
+      const next = updater(current);
+      const without = list.filter((entry) => entry.sessionId !== sessionId);
+      return { ...prev, [instanceId]: next ? [next, ...without] : without };
+    });
+  };
+
+  const insertLocalItem = (item: QueuedMessage) => {
+    if (!selected) return;
+    updateSelectedQueue((queue) => {
+      const base = queue ?? {
+        sessionId: selected.sessionId,
+        directory: selectedSession?.directory ?? '',
+        items: [],
+        sendingId: null,
+      };
+      return { ...base, items: [...base.items, item] };
+    });
+  };
+
+  const patchLocalItem = (itemId: string, patch: Partial<QueuedMessage>) => {
+    updateSelectedQueue((queue) =>
+      queue
+        ? { ...queue, items: queue.items.map((item) => (item.id === itemId ? { ...item, ...patch } : item)) }
+        : queue
+    );
+  };
+
+  const removeLocalItem = (itemId: string) => {
+    updateSelectedQueue((queue) => {
+      if (!queue) return queue;
+      const items = queue.items.filter((item) => item.id !== itemId);
+      return items.length > 0 || queue.sendingId ? { ...queue, items } : null;
+    });
+  };
+
+  const enqueueLocal = async (
+    localId: string,
+    instanceId: string,
+    sessionId: string,
+    directory: string,
+    input: QueueMessageInput
+  ): Promise<boolean> => {
+    try {
+      const queued = await enqueueMessage(instanceId, sessionId, directory, input);
+      if (!queued.ok || !queued.data) {
+        if (queued.status === 404) {
+          pendingInputsRef.current.delete(localId);
+          removeLocalItem(localId);
+          showActionError('This OpenChamber instance does not support message queueing yet.');
+        } else {
+          patchLocalItem(localId, { pending: false, error: 'Could not queue this message.' });
+        }
+        return false;
+      }
+      pendingInputsRef.current.delete(localId);
+      removeLocalItem(localId);
+      applyQueueMutation(instanceId, queued.data);
+      return true;
+    } catch (err) {
+      console.error('Queue failed', err);
+      patchLocalItem(localId, {
+        pending: false,
+        error: err instanceof Error ? err.message : 'Could not queue this message.',
+      });
+      return false;
+    }
+  };
+
   const queueMessage = async (input: PromptInput): Promise<boolean> => {
     if (!selected) return false;
     showActionError(null);
@@ -137,27 +254,47 @@ export const useMessageQueue = ({
       return false;
     }
 
-    try {
-      const queued = await enqueueMessage(instanceId, sessionId, directory, { ...input, model });
-      if (!queued.ok || !queued.data) {
-        showActionError(
-          queued.status === 404
-            ? 'This OpenChamber instance does not support message queueing yet.'
-            : 'Message could not be queued.',
-          queued.status === 404 ? undefined : () => void queueMessage(input)
-        );
-        return false;
-      }
-      applyQueueMutation(instanceId, queued.data);
-      return true;
-    } catch (err) {
-      console.error('Queue failed', err);
-      showActionError(
-        err instanceof Error ? err.message : 'Message could not be queued.',
-        () => void queueMessage(input)
-      );
-      return false;
-    }
+    const localId = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const queuedInput: QueueMessageInput = { ...input, model };
+    pendingInputsRef.current.set(localId, queuedInput);
+    insertLocalItem({
+      id: localId,
+      createdAt: Date.now(),
+      text: input.text,
+      content: input.text,
+      attachments: (input.attachments ?? []).map((file) => ({
+        filename: file.filename,
+        mimeType: file.mime,
+        dataUrl: file.url,
+      })),
+      context: input.queuedContext ?? [],
+      sendConfig: {
+        providerID: model.providerID,
+        modelID: model.modelID,
+        agent: input.mode,
+        variant: input.variant,
+      },
+      agentMention: input.agentMention,
+      pending: true,
+    });
+    return enqueueLocal(localId, instanceId, sessionId, directory, queuedInput);
+  };
+
+  const retryQueued = async (itemId: string): Promise<boolean> => {
+    if (!selected) return false;
+    const input = pendingInputsRef.current.get(itemId);
+    const directory = selectedSession?.directory;
+    if (!input || !directory) return false;
+    showActionError(null);
+    patchLocalItem(itemId, { pending: true, error: undefined });
+    return enqueueLocal(itemId, selected.instanceId, selected.sessionId, directory, input);
+  };
+
+  const discardQueued = (itemId: string): boolean => {
+    if (!pendingInputsRef.current.has(itemId)) return false;
+    pendingInputsRef.current.delete(itemId);
+    removeLocalItem(itemId);
+    return true;
   };
 
   const sendQueuedMessage = async (itemId: string): Promise<boolean> => {
@@ -371,5 +508,14 @@ export const useMessageQueue = ({
     }
   };
 
-  return { applyQueueMutation, queueMessage, sendQueuedMessage, changeQueuedModel, removeQueued, moveQueued };
+  return {
+    applyQueueMutation,
+    queueMessage,
+    sendQueuedMessage,
+    changeQueuedModel,
+    removeQueued,
+    moveQueued,
+    retryQueued,
+    discardQueued,
+  };
 };
