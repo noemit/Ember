@@ -65,12 +65,10 @@ export default function ArchiveDialog({
   );
   const multiInstance = instances.filter((instance) => instance.attachable).length > 1;
 
-  const entries = React.useMemo(() => {
-    const instanceIds = [...new Set(sessions.map((session) => session.instanceId))];
-    return buildRailEntries(sessions, projectsByInstance, instanceIds).filter(
-      (entry) => entry.kind === 'session' || entry.sessions.length > 0
-    );
-  }, [sessions, projectsByInstance]);
+  const entries = React.useMemo(
+    () => buildRailEntries(sessions, projectsByInstance),
+    [sessions, projectsByInstance]
+  );
 
   const renderSession = (session: Session, projectName: string | undefined) => {
     const key = sessionKey(session);

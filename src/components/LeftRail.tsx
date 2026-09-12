@@ -106,8 +106,8 @@ export default function LeftRail({
     () =>
       showScheduled
         ? []
-        : buildRailEntries(itemSessions, projectsByInstance, ready.map((instance) => instance.id)),
-    [itemSessions, projectsByInstance, ready, showScheduled]
+        : buildRailEntries(itemSessions, projectsByInstance),
+    [itemSessions, projectsByInstance, showScheduled]
   );
 
   const matchesSession = React.useCallback(

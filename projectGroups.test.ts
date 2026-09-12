@@ -23,8 +23,7 @@ describe('buildRailEntries', () => {
         session({ id: 'b', directory: '/work/habit/src', updated: 300 }),
         session({ id: 'c', directory: '/tmp/scratch', updated: 200 }),
       ],
-      projects,
-      ['local']
+      projects
     );
 
     const habit = entries.find((entry) => entry.kind === 'project' && entry.project.id === 'p1');
@@ -33,8 +32,8 @@ describe('buildRailEntries', () => {
     expect(habit.sessions.map((entry) => entry.id)).toEqual(['b', 'a']);
     expect(habit.updated).toBe(300);
 
-    // The empty configured project is still present, ordered last.
-    expect(entries.map((entry) => entry.id)).toEqual(['project:local::p1', 'local::c', 'project:local::p2']);
+    // The configured project with no sessions (Ember) is absent.
+    expect(entries.map((entry) => entry.id)).toEqual(['project:local::p1', 'local::c']);
   });
 
   test('puts a fork in the source project (same directory)', () => {
@@ -43,8 +42,7 @@ describe('buildRailEntries', () => {
         session({ id: 'source', directory: '/work/habit', updated: 100 }),
         session({ id: 'fork', directory: '/work/habit', updated: 400, parentId: undefined }),
       ],
-      projects,
-      ['local']
+      projects
     );
     const habit = entries.find((entry) => entry.kind === 'project' && entry.project.id === 'p1');
     if (habit?.kind !== 'project') throw new Error('expected habit project');
@@ -58,8 +56,7 @@ describe('buildRailEntries', () => {
         session({ id: 'habit', directory: '/work/habit', updated: 300 }),
         session({ id: 'ember', directory: '/work/ember', updated: 400 }),
       ],
-      projects,
-      ['local']
+      projects
     );
     expect(entries.map((entry) => entry.id)).toEqual([
       'local::standalone',
@@ -68,18 +65,11 @@ describe('buildRailEntries', () => {
     ]);
   });
 
-  test('only lists configured projects for instances in view', () => {
-    const entries = buildRailEntries([], projects, ['remote']);
-    expect(entries.map((entry) => entry.id)).toEqual(['project:remote::p3']);
-  });
-
-  test('skips configured projects without a path', () => {
-    const entries = buildRailEntries(
-      [],
-      { local: [{ id: 'nopath', name: 'No path' }] },
-      ['local']
-    );
-    expect(entries).toEqual([]);
+  test('omits configured projects that own no sessions', () => {
+    expect(buildRailEntries([], projects)).toEqual([]);
+    expect(
+      buildRailEntries([], { local: [{ id: 'nopath', name: 'No path' }, { id: 'empty', name: 'Empty', path: '/work/empty' }] })
+    ).toEqual([]);
   });
 });
 

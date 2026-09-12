@@ -94,11 +94,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/components/LeftRail.tsx` — the rail is a single recency-ordered list from
   `src/lib/projectGroups.ts` (`buildRailEntries`). A configured project with one active session
   renders as a plain `SessionRow` whose title is the project name (a hover `+` starts a new session
-  there); a project with two or more sessions renders as a `ProjectCard`. Standalone (root/chat)
-  sessions are always `SessionRow`s. Cards and rows interleave by most-recent activity. Clicking a
-  project body opens the whole project — see App's `openProject`; the blobs are display-only (their
-  right-click menu still reloads/archives that session). The toolbar is just New agent + search +
-  the scheduled toggle; the selected session is pinned into the list even when filters hide it.
+  there); a project with two or more sessions renders as a `ProjectCard`. Projects with no active
+  sessions are omitted — start one from New agent. Standalone (root/chat) sessions are always
+  `SessionRow`s. Cards and rows interleave by most-recent activity. Clicking a project body opens the
+  whole project — see App's `openProject`; the blobs are display-only (their right-click menu still
+  reloads/archives that session). The toolbar is just New agent + search + the scheduled toggle; the
+  selected session is pinned into the list even when filters hide it.
 - `src/components/ProjectCard.tsx` — a multi-session project: name, `+`, and a row of 48px
   mood-carrying blobs that shrink then overflow to `+N`. The whole card is the click target (opens
   the project); the blobs aren't individually clickable.

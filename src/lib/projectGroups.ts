@@ -34,13 +34,13 @@ const nameOf = (entry: RailEntry): string =>
  * (`projectForSession`) group under that project's card; everything else stays a standalone row.
  * Project cards and standalone rows interleave by most-recent activity.
  *
- * `instanceIds` is the set of instances currently in view; configured projects on those
- * instances get a card even with no active sessions, so their `+` can start one.
+ * Only projects that own at least one of the given sessions appear: an empty project has nothing
+ * to open, and starting one is the New-agent flow's job. The archive screen groups archived
+ * sessions the same way.
  */
 export const buildRailEntries = (
   sessions: Session[],
-  projectsByInstance: Record<string, Project[]>,
-  instanceIds: readonly string[]
+  projectsByInstance: Record<string, Project[]>
 ): RailEntry[] => {
   const projects = new Map<string, ProjectEntry>();
   const standalone: SessionEntry[] = [];
@@ -71,28 +71,11 @@ export const buildRailEntries = (
     }
   });
 
-  // A configured project with no sessions has no directory in `sessions` to be discovered from.
-  instanceIds.forEach((instanceId) => {
-    (projectsByInstance[instanceId] ?? []).forEach((project) => {
-      if (!project.path) return;
-      const id = projectIdentityKey(instanceId, project.id);
-      if (projects.has(id)) return;
-      projects.set(id, {
-        kind: 'project',
-        id,
-        instanceId,
-        project,
-        sessions: [],
-        updated: project.lastOpenedAt ?? 0,
-      });
-    });
-  });
-
   const entries: RailEntry[] = [...projects.values(), ...standalone];
   entries.forEach((entry) => {
-    if (entry.kind !== 'project' || entry.sessions.length === 0) return;
+    if (entry.kind !== 'project') return;
     entry.sessions.sort(byRecency);
-    entry.updated = entry.sessions[0].updated ?? 0;
+    entry.updated = entry.sessions[0]?.updated ?? 0;
   });
   entries.sort((a, b) => {
     if (b.updated !== a.updated) return b.updated - a.updated;
