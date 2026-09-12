@@ -446,6 +446,25 @@ describe('session creation and model metadata', () => {
     setRequest(async () => ({ ok: false, status: 500, data: { error: 'boom' } }));
     expect(await loadModels('local')).toBeNull();
   });
+
+  test('falls back to /config/providers when /provider yields no models', async () => {
+    setRequest(async (_instanceId, _method, path) =>
+      path === '/api/provider'
+        ? { ok: true, status: 200, data: { all: [], connected: [] } }
+        : {
+            ok: true,
+            status: 200,
+            data: {
+              providers: [
+                { id: 'deepseek', name: 'DeepSeek', models: { 'deepseek-v4': { id: 'deepseek-v4', name: 'DeepSeek V4' } } },
+              ],
+            },
+          }
+    );
+    const list = await loadModels('local');
+    expect(list?.models[0]?.providerID).toBe('deepseek');
+    expect(list?.models[0]?.modelID).toBe('deepseek-v4');
+  });
 });
 
 describe('scheduled task identity', () => {

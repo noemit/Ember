@@ -974,14 +974,10 @@ export const previewOf = (messages: ChatMessage[]): string => {
   return stripMarkdown(text).replace(/\s+/g, ' ').trim().slice(0, 160);
 };
 
-/** `null` means the request failed; callers keep whatever they already had. */
-export const loadModels = async (instanceId: string): Promise<ModelList | null> => {
-  const response = await window.ember.request(instanceId, 'GET', '/api/provider');
-  if (!response.ok) return null;
-  const root = asRecord(response.data);
-  const rawProviders = Array.isArray(response.data)
-    ? response.data
-    : asArray(root.all ?? root.providers);
+/** Parses either provider shape: OpenCode's `{ all, connected }` or `{ providers }`. */
+const parseModelList = (data: unknown): ModelList => {
+  const root = asRecord(data);
+  const rawProviders = Array.isArray(data) ? data : asArray(root.all ?? root.providers);
 
   const connected: string[] = Array.isArray(root.connected)
     ? root.connected.map(String)
@@ -1028,6 +1024,23 @@ export const loadModels = async (instanceId: string): Promise<ModelList | null> 
   })();
 
   return { models, defaultModelId };
+};
+
+/**
+ * Loads an instance's model catalogue. Current OpenChamber/OpenCode serves it at
+ * `/config/providers` (`{ providers }`), while older builds used `/provider` (`{ all, connected }`);
+ * try both and keep whichever actually yields models. `null` means every request failed.
+ */
+export const loadModels = async (instanceId: string): Promise<ModelList | null> => {
+  let first: ModelList | null = null;
+  for (const path of ['/api/provider', '/api/config/providers']) {
+    const response = await window.ember.request(instanceId, 'GET', path);
+    if (!response.ok) continue;
+    const parsed = parseModelList(response.data);
+    first ??= parsed;
+    if (parsed.models.length > 0) return parsed;
+  }
+  return first;
 };
 
 const optionalNumber = (value: unknown): number | undefined =>
