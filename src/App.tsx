@@ -1450,6 +1450,21 @@ export default function App() {
   };
 
   // Fork the session into a fresh one seeded with a handoff prompt, leaving the source untouched.
+  /** Poll until the session's turn finishes, so a fresh fork can be compacted after it lands. */
+  const waitForSessionIdle = async (
+    instanceId: string,
+    sessionId: string,
+    timeoutMs = 60_000
+  ): Promise<void> => {
+    const key = sessionKey({ instanceId, sessionId });
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const states = await loadSessionStates(instanceId).catch(() => null);
+      if (states && states[key] === 'idle') return;
+    }
+  };
+
   const handleHandoff = async (session: Session) => {
     const key = sessionKey(session);
     if (handoffKeys.has(key)) return;
@@ -1461,9 +1476,15 @@ export default function App() {
         showActionError('Could not start a new session from this one.', () => void handleHandoff(session));
         return;
       }
+      const forked: Session = { id: forkedId, instanceId: session.instanceId, directory: session.directory };
+      // The fork copies the full context; wait for the handoff summary to land, then compact it so
+      // the new session carries the summary rather than the whole prior conversation. The source
+      // session is left untouched either way.
+      await waitForSessionIdle(session.instanceId, forkedId);
+      await compactSession(forked);
       await refreshSessions([session.instanceId]);
       setSelected({ instanceId: session.instanceId, sessionId: forkedId });
-      setActionNotice({ message: 'Started a new session from a handoff summary.' });
+      setActionNotice({ message: 'Started a new session from a compacted summary.' });
     } catch (err) {
       console.error('Handoff failed', err);
       showActionError(

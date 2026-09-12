@@ -69,8 +69,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   busy-session queue and sends now, and Cmd/Ctrl+Enter saves the draft as a note. A context-usage
   ring (`ContextMeter.tsx`) shows the last turn's tokens against the selected model's window and
   compacts the session on click (`POST /api/session/:id/compact`, the instance's summarize). A fork
-  button beside it starts a new session seeded with a handoff summary and leaves the current one
-  untouched (`POST /api/openchamber/sessions/:id/fork`). The
+  button beside it forks the session, waits for the handoff summary to land, then compacts the fork
+  so the new session carries just the summary and the source is left untouched (`POST
+  /api/openchamber/sessions/:id/fork` + `/api/session/:id/compact`). The
   same two display settings are also editable from the top bar's View options dialog
   (`ViewOptionsDialog.tsx`).
 - `src/components/LeftRail.tsx` — session list. Rows are a memoized `SessionRow`; the timestamp is
