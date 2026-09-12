@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { AnimatePresence, LayoutGroup } from 'motion/react';
 import { Archive, ChevronDown, Clock3, Plus, Search, Settings, X } from 'lucide-react';
-import { projectForSession } from '../blob/seed';
+import { normalizeDirectory, projectForSession } from '../blob/seed';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
 import { buildRailEntries, type RailEntry } from '@/lib/projectGroups';
@@ -194,6 +194,22 @@ export default function LeftRail({
   const customizeAppearance = useStableCallback(onCustomizeAppearance);
   const newAgent = useStableCallback(onNewAgent);
 
+  // The header line shown above a row's title: project/folder then instance, so every rail entry
+  // is labelled the same way grouped project cards are.
+  const folderNameOf = (session: Session): string | undefined =>
+    projectForSession(session, projectsByInstance[session.instanceId] ?? [])?.name ??
+    (session.directory
+      ? normalizeDirectory(session.directory).split(/[\\/]/).filter(Boolean).pop()
+      : undefined);
+  const instanceLabelOf = (session: Session): string | undefined =>
+    instanceById[session.instanceId]?.label;
+  const topMetaFor = (session: Session): string | undefined => {
+    const parts = [folderNameOf(session), instanceLabelOf(session)].filter(
+      (part): part is string => Boolean(part)
+    );
+    return parts.length > 0 ? parts.join(' · ') : undefined;
+  };
+
   const renderSession = (session: Session) => {
     const key = sessionKey(session);
     const instance = instanceById[session.instanceId];
@@ -203,6 +219,7 @@ export default function LeftRail({
         session={session}
         instanceLabel={multiInstance ? instance?.label : undefined}
         projectName={projectForSession(session, projectsByInstance[session.instanceId] ?? [])?.name}
+        topMeta={topMetaFor(session)}
         preview={previews[key]}
         selected={key === selectedKey}
         mood={moods[key] ?? 'idle'}
@@ -235,6 +252,7 @@ export default function LeftRail({
           instanceLabel={multiInstance ? instance?.label : undefined}
           projectName={undefined}
           titleOverride={entry.project.name}
+          topMeta={instance?.label}
           preview={previews[key]}
           selected={key === selectedKey}
           mood={moods[key] ?? 'idle'}
@@ -256,8 +274,7 @@ export default function LeftRail({
         key={entry.id}
         project={entry.project}
         instanceId={entry.instanceId}
-        instanceLabel={multiInstance ? instance?.label : undefined}
-        multiInstance={multiInstance}
+        instanceLabel={instance?.label}
         markerColor={instanceDefaults[entry.instanceId]?.markerColor}
         sessions={entry.sessions}
         moods={moods}

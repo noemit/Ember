@@ -56,6 +56,8 @@ export type SessionRowProps = {
   blobStyle: BlobStyle;
   /** Overrides the title text; used by a one-session project row to show the project name. */
   titleOverride?: string;
+  /** Shown as a small line above the title (e.g. "Project · instance"); moves it out of the meta row. */
+  topMeta?: string;
   /** When set, renders a `+` that starts a new session in the row's project. */
   onNewAgent?: () => void;
   onSelect: (session: Session) => void;
@@ -119,6 +121,7 @@ const SessionRow = React.memo(function SessionRow({
   identity,
   blobStyle,
   titleOverride,
+  topMeta,
   onNewAgent,
   onSelect,
   onReload,
@@ -163,6 +166,11 @@ const SessionRow = React.memo(function SessionRow({
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              {topMeta ? (
+                <span className="truncate text-[10px] font-medium tracking-wide text-muted-foreground">
+                  {topMeta}
+                </span>
+              ) : null}
               <div className="flex items-baseline gap-2">
                 <span
                   className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground"
@@ -183,27 +191,31 @@ const SessionRow = React.memo(function SessionRow({
               <span className="truncate text-[11.5px] leading-4">
                 {preview ?? (session.directory ? normalizeDirectory(session.directory).split(/[\\/]/).pop() : '')}
               </span>
-              <span className="flex items-center gap-1 truncate text-[10.5px] text-muted-foreground">
-                {mood === 'input' || mood === 'question' ? (
-                  <Badge variant="outline" className="flex-none border-highlight/40 px-1 py-0 text-[10px] font-medium text-highlight">
-                    Needs input
-                  </Badge>
-                ) : mood === 'error' ? (
-                  <Badge variant="outline" className="flex-none border-destructive/40 px-1 py-0 text-[10px] font-medium text-destructive">
-                    Failed
-                  </Badge>
-                ) : null}
-                {(mood === 'input' || mood === 'question' || mood === 'error') && (projectName || instanceLabel) ? (
-                  <span aria-hidden>·</span>
-                ) : null}
-                {instanceLabel ? (
-                  <>
-                    <span className="truncate">{instanceLabel}</span>
-                    {projectName ? <span aria-hidden>·</span> : null}
-                  </>
-                ) : null}
-                {projectName ? <span className="truncate">{projectName}</span> : null}
-              </span>
+              {mood === 'input' || mood === 'question' || mood === 'error' || (!topMeta && (projectName || instanceLabel)) ? (
+                <span className="flex items-center gap-1 truncate text-[10.5px] text-muted-foreground">
+                  {mood === 'input' || mood === 'question' ? (
+                    <Badge variant="outline" className="flex-none border-highlight/40 px-1 py-0 text-[10px] font-medium text-highlight">
+                      Needs input
+                    </Badge>
+                  ) : mood === 'error' ? (
+                    <Badge variant="outline" className="flex-none border-destructive/40 px-1 py-0 text-[10px] font-medium text-destructive">
+                      Failed
+                    </Badge>
+                  ) : null}
+                  {!topMeta &&
+                  (mood === 'input' || mood === 'question' || mood === 'error') &&
+                  (projectName || instanceLabel) ? (
+                    <span aria-hidden>·</span>
+                  ) : null}
+                  {!topMeta && instanceLabel ? (
+                    <>
+                      <span className="truncate">{instanceLabel}</span>
+                      {projectName ? <span aria-hidden>·</span> : null}
+                    </>
+                  ) : null}
+                  {!topMeta && projectName ? <span className="truncate">{projectName}</span> : null}
+                </span>
+              ) : null}
             </div>
           </motion.button>
         </ContextMenuTrigger>

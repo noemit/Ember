@@ -17,7 +17,6 @@ type Props = {
   project: Project;
   instanceId: string;
   instanceLabel: string | undefined;
-  multiInstance: boolean;
   markerColor: number | undefined;
   sessions: Session[];
   moods: Record<string, BallMood>;
@@ -46,7 +45,6 @@ export default function ProjectCard({
   project,
   instanceId,
   instanceLabel,
-  multiInstance,
   markerColor,
   sessions,
   moods,
@@ -95,7 +93,7 @@ export default function ProjectCard({
         >
           {project.name}
         </span>
-        {multiInstance && instanceLabel ? (
+        {instanceLabel ? (
           <span className="truncate text-[10px] text-muted-foreground">{instanceLabel}</span>
         ) : null}
         <Tooltip>

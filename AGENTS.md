@@ -109,7 +109,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   the project); the blobs aren't individually clickable.
 - `src/components/SessionRow.tsx` — the shared full session row (55px blob, title, preview,
   instance/project line, archive button, context menu) used by the rail and the archive screen.
-  Optional `titleOverride`/`onNewAgent` turn it into the one-session project row. Memoized; the
+  Optional `titleOverride`/`topMeta`/`onNewAgent` turn it into the one-session project row (project
+  name as the title, instance above it); the rail passes a `topMeta` header
+  (`project/folder · instance`) so every entry is labelled like a project card. Memoized; the
   timestamp is a self-ticking `RelativeTime`. Archive/restore is decided per row from
   `session.archived`.
 - `src/components/ArchiveDialog.tsx` — the rail's archive screen (`archivedSessions`): every
