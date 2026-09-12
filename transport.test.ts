@@ -7,6 +7,7 @@ import {
   parseColorAssignments,
   parseComposerDrafts,
   parseSessionNotes,
+  parseStringArray,
   parseStringRecord,
   resolveApiUrl,
 } from './electron/transport';
@@ -58,6 +59,15 @@ describe('appearance settings validation', () => {
     expect(parseStringRecord(unsafe)).toEqual({ valid: 'task:one' });
     expect(parseStringRecord({ one: '1', two: '2' }, 1)).toEqual({ one: '1' });
     expect(parseStringRecord(null)).toEqual({});
+  });
+
+  test('keeps a bounded, de-duplicated workspace key list', () => {
+    const unsafe = JSON.parse('["local::a",42,"local::a","local::b",""]');
+    expect(parseStringArray(unsafe)).toEqual(['local::a', 'local::b']);
+    expect(parseStringArray(['a', 'a', 'b', 'c'], 2)).toEqual(['a', 'b']);
+    expect(parseStringArray(['ok', 'x'.repeat(501)])).toEqual(['ok']);
+    expect(parseStringArray('local::a')).toEqual([]);
+    expect(parseStringArray(null)).toEqual([]);
   });
 
   test('keeps bounded color assignments', () => {

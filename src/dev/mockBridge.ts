@@ -275,6 +275,9 @@ let settings: EmberSettings = {
     'project:studio::p4': 3,
     'project:studio::p5': 4,
   },
+  openSessions: [],
+  activeSession: null,
+  minimizedSessions: [],
   remoteAccessEnabled: false,
   remotePasswordConfigured: false,
 };

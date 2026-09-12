@@ -12,6 +12,7 @@ import {
   parseColorAssignments,
   parseComposerDrafts,
   parseSessionNotes,
+  parseStringArray,
   parseStringRecord,
   isBlobStyle,
   isReasoningDisplay,
@@ -169,6 +170,14 @@ const readEmberSettings = (): EmberSettings => {
     scheduledSessionBindings: parseStringRecord(root.scheduledSessionBindings),
     avatarOverrides: parseAvatarOverrides(root.avatarOverrides),
     projectColorAssignments: parseColorAssignments(root.projectColorAssignments),
+    openSessions: parseStringArray(root.openSessions),
+    activeSession:
+      typeof root.activeSession === 'string' &&
+      root.activeSession.length > 0 &&
+      root.activeSession.length <= 500
+        ? root.activeSession
+        : null,
+    minimizedSessions: parseStringArray(root.minimizedSessions),
     remoteAccessEnabled: root.remoteAccessEnabled === true,
     remotePasswordConfigured: typeof root.remotePasswordHash === 'string' && root.remotePasswordHash.length > 0,
   };
@@ -462,6 +471,16 @@ const updateSettings = (patch: unknown): EmberSettings => {
   if (value.scheduledSessionBindings !== undefined) settings.scheduledSessionBindings = parseStringRecord(value.scheduledSessionBindings);
   if (value.avatarOverrides !== undefined) settings.avatarOverrides = parseAvatarOverrides(value.avatarOverrides);
   if (value.projectColorAssignments !== undefined) settings.projectColorAssignments = parseColorAssignments(value.projectColorAssignments);
+  if (value.openSessions !== undefined) settings.openSessions = parseStringArray(value.openSessions);
+  if (value.activeSession !== undefined) {
+    settings.activeSession =
+      typeof value.activeSession === 'string' &&
+      value.activeSession.length > 0 &&
+      value.activeSession.length <= 500
+        ? value.activeSession
+        : null;
+  }
+  if (value.minimizedSessions !== undefined) settings.minimizedSessions = parseStringArray(value.minimizedSessions);
   if (value.remotePassword !== undefined) {
     if (value.remotePassword === null || value.remotePassword === '') {
       remotePasswordHash = undefined;

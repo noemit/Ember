@@ -315,6 +315,11 @@ export type EmberSettings = {
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, AvatarOverride>;
   projectColorAssignments: Record<string, number>;
+  /** Workspace: ordered open session keys ("instance::session"). */
+  openSessions: string[];
+  activeSession: string | null;
+  /** Manually minimized sessions; sticky across resizes and restarts. */
+  minimizedSessions: string[];
   remoteAccessEnabled: boolean;
   remotePasswordConfigured: boolean;
 };

@@ -39,7 +39,11 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   transcript state is keyed by session so switching renders the cached transcript before the first
   paint while the fresh fetch runs. Session polls merge per id with the newer `updated` winning
   (`mergePolledSessions`), and an optimistic user bubble keeps its id registered until a poll shows
-  the server's copy (`releaseReconciledOptimistic`), so neither can flicker out.
+  the server's copy (`releaseReconciledOptimistic`), so neither can flicker out. The workspace is
+  `openSessions` (ordered keys) plus `activeSession`; `selected` is derived from `activeSession`, and
+  a per-key `transcripts` map backs every open column. The transcript poll and `isLoaded` predicate
+  cover the open, non-minimized keys. Open/minimized keys are persisted in Ember settings and pruned
+  when their instance or session is archived/gone (`src/lib/workspace.ts`, `pruneWorkspace`).
 - `src/hooks/` — concerns pulled out of App: `useFeedback` (error banner + retry, notice toast,
   live-region announcements), `useEmberSettings` (optimistic writes to main with revision guarding),
   `useMessageQueue` (the server-owned queue handlers, see Notes), `usePoll` (run-then-wait loop

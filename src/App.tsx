@@ -58,6 +58,13 @@ import { mergePolledQueues, useMessageQueue } from './hooks/useMessageQueue';
 import { usePoll } from './hooks/usePoll';
 import { newSessionDirectoryPrefill, newSessionModelPrefill } from './lib/newSessionDefaults';
 import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
+import {
+  MAX_OPEN_SESSIONS,
+  parseSessionKey,
+  pruneWorkspace,
+  sameWorkspace,
+  type Workspace,
+} from './lib/workspace';
 import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
 import type {
   AvatarIdentity,
@@ -191,16 +198,17 @@ export default function App() {
   >({});
   const [previews, setPreviews] = React.useState<Record<string, string>>({});
   const [previewVersions, setPreviewVersions] = React.useState<Record<string, number | undefined>>({});
-  const [selected, setSelected] = React.useState<SessionRef | null>(null);
+  const [openSessions, setOpenSessions] = React.useState<string[]>([]);
+  const [activeSession, setActiveSession] = React.useState<string | null>(null);
+  const [minimizedSessions, setMinimizedSessions] = React.useState<Set<string>>(() => new Set());
   const [newSessionInstanceId, setNewSessionInstanceId] = React.useState<string | null>(null);
-  const [transcript, setTranscript] = React.useState<{
-    key: string | null;
-    messages: ChatMessage[];
-    status: MessagesStatus;
-  }>({ key: null, messages: [], status: 'ready' });
+  const [transcripts, setTranscripts] = React.useState<
+    Record<string, { messages: ChatMessage[]; status: MessagesStatus }>
+  >({});
   const [modelsByInstance, setModelsByInstance] = React.useState<Record<string, ModelList>>({});
   const [scheduledTaskNames, setScheduledTaskNames] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(true);
+  const [instancesLoaded, setInstancesLoaded] = React.useState(false);
   const [sendingKeys, setSendingKeys] = React.useState<Set<string>>(() => new Set());
   const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
   const [archivingKeys, setArchivingKeys] = React.useState<Set<string>>(() => new Set());
@@ -262,7 +270,11 @@ export default function App() {
   // Keep a live ref to the selected session so pollers can read its
   // directory (for routing) without re-running the effect on every session list refresh.
   const selectedSessionRef = React.useRef<Session | null>(null);
-  const selectedKeyRef = React.useRef<string | null>(null);
+  const activeKeyRef = React.useRef<string | null>(null);
+  const openSessionsRef = React.useRef<string[]>([]);
+  const openKeysRef = React.useRef<Set<string>>(new Set());
+  const minimizedKeysRef = React.useRef<Set<string>>(new Set());
+  const workspaceHydratedRef = React.useRef(false);
   const sessionsByInstanceRef = React.useRef<Record<string, Session[]>>({});
   const projectsByInstanceRef = React.useRef<Record<string, Project[]>>({});
   const pendingCreatedSessions = React.useRef(new Map<string, { session: Session; expiresAt: number }>());
@@ -312,17 +324,36 @@ export default function App() {
     });
   };
 
+  const setTranscriptFor = (
+    key: string,
+    messagesForSession: ChatMessage[],
+    status: MessagesStatus = 'ready'
+  ) => {
+    setTranscripts((prev) => {
+      const current = prev[key];
+      if (current && current.messages === messagesForSession && current.status === status) return prev;
+      return { ...prev, [key]: { messages: messagesForSession, status } };
+    });
+  };
+
+  // A fetched transcript keeps the previous array when nothing changed, so memoized children
+  // don't re-render just because a poll returned an identical body.
+  const setTranscriptFromFetch = (key: string, next: ChatMessage[]) => {
+    setTranscripts((prev) => {
+      const current = prev[key];
+      const messagesForSession = current && sameMessages(current.messages, next) ? current.messages : next;
+      if (current && current.messages === messagesForSession && current.status === 'ready') return prev;
+      return { ...prev, [key]: { messages: messagesForSession, status: 'ready' } };
+    });
+  };
+
   const updateCachedMessages = (
     key: string,
     updater: (messagesForSession: ChatMessage[]) => ChatMessage[]
   ) => {
     const next = updater(messageCacheRef.current.get(key) ?? []);
     cacheMessages(key, next);
-    if (selectedKeyRef.current === key) {
-      setTranscript((current) =>
-        current.key === key ? { key, messages: next, status: 'ready' } : current
-      );
-    }
+    setTranscriptFor(key, next, 'ready');
   };
 
   const readyIds = React.useMemo(
@@ -392,15 +423,13 @@ export default function App() {
     return kinds;
   }, [permissions, questions]);
 
-  const selectedKey = selected ? sessionKey(selected) : null;
+  const selected = React.useMemo(() => parseSessionKey(activeSession), [activeSession]);
+  const selectedKey = activeSession;
+  const activeTranscript = selectedKey ? transcripts[selectedKey] : undefined;
   const cachedTranscript = selectedKey ? messageCacheRef.current.get(selectedKey) : undefined;
-  const transcriptMatchesSelection = Boolean(selectedKey && transcript.key === selectedKey);
-  const messages = transcriptMatchesSelection ? transcript.messages : cachedTranscript ?? [];
-  const messagesStatus: MessagesStatus = transcriptMatchesSelection
-    ? transcript.status
-    : cachedTranscript
-      ? 'ready'
-      : 'loading';
+  const messages = activeTranscript?.messages ?? cachedTranscript ?? [];
+  const messagesStatus: MessagesStatus =
+    activeTranscript?.status ?? (cachedTranscript ? 'ready' : 'loading');
   // Thinking = an active session whose latest assistant turn is streaming with no tool running. The
   // selected session reads the live transcript; the rest use the warmed preview cache.
   const thinkingKeys = React.useMemo(() => {
@@ -546,7 +575,10 @@ export default function App() {
 
   // Sync the ref every render so the poller always sees the current directory.
   selectedSessionRef.current = selectedSession;
-  selectedKeyRef.current = selectedKey;
+  activeKeyRef.current = selectedKey;
+  openSessionsRef.current = openSessions;
+  openKeysRef.current = new Set(openSessions);
+  minimizedKeysRef.current = minimizedSessions;
   sessionsByInstanceRef.current = sessionsByInstance;
   projectsByInstanceRef.current = projectsByInstance;
   scheduledBindingsRef.current = settings.scheduledSessionBindings;
@@ -599,6 +631,13 @@ export default function App() {
         if (cancelled) return;
         hydrateSettings(stored);
         setInstances(list);
+        setInstancesLoaded(true);
+        // Restore the workspace before the persistence effect can fire, so the first open
+        // session list isn't overwritten with the empty defaults.
+        setOpenSessions(stored.openSessions ?? []);
+        setActiveSession(stored.activeSession ?? null);
+        setMinimizedSessions(new Set(stored.minimizedSessions ?? []));
+        workspaceHydratedRef.current = true;
       } catch (err) {
         if (cancelled) return;
         markSettingsLoaded();
@@ -613,6 +652,77 @@ export default function App() {
       cancelled = true;
     };
   }, [hydrateSettings, markSettingsLoaded, showActionError]);
+
+  // ---- Workspace: open columns, the active one, and sticky minimized sessions. ----
+  // The helpers below are the only writers of workspace state; `activeSession` is the single
+  // source of truth for `selected`, so existing selection-driven code keeps working unchanged.
+
+  const openSession = React.useCallback((ref: SessionRef) => {
+    const key = sessionKey(ref);
+    setOpenSessions((prev) => {
+      const next = [...prev.filter((entry) => entry !== key), key];
+      return next.length > MAX_OPEN_SESSIONS ? next.slice(next.length - MAX_OPEN_SESSIONS) : next;
+    });
+    setMinimizedSessions((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    setActiveSession(key);
+    setNewSessionInstanceId(null);
+  }, []);
+
+  const closeSession = React.useCallback((key: string) => {
+    const remaining = openSessionsRef.current.filter((entry) => entry !== key);
+    setOpenSessions(remaining);
+    setMinimizedSessions((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    setActiveSession((current) => {
+      if (current !== key) return current;
+      return remaining.find((entry) => !minimizedKeysRef.current.has(entry)) ?? remaining[0] ?? null;
+    });
+  }, []);
+
+  // Persist the workspace after the initial restore. The guarded ref keeps the first render
+  // (empty defaults) from clobbering what main just handed back.
+  React.useEffect(() => {
+    if (!workspaceHydratedRef.current) return;
+    handleSettings({
+      openSessions,
+      activeSession,
+      minimizedSessions: [...minimizedSessions],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSettings is recreated per render; only the workspace values should retrigger
+  }, [openSessions, activeSession, minimizedSessions]);
+
+  // Drop persisted keys once the instance/session it names is gone, archived, or a subagent.
+  // A missing session list means "not loaded yet", so those keys survive startup.
+  React.useEffect(() => {
+    if (!workspaceHydratedRef.current) return;
+    const check = (ref: SessionRef): boolean | undefined => {
+      if (instancesLoaded && !instances.some((instance) => instance.id === ref.instanceId)) return false;
+      const list = sessionsByInstance[ref.instanceId];
+      if (!list) return undefined;
+      const session = list.find((entry) => entry.id === ref.sessionId);
+      if (!session) return false;
+      return !session.archived && !session.parentId;
+    };
+    const current: Workspace = {
+      open: openSessions,
+      active: activeSession,
+      minimized: [...minimizedSessions],
+    };
+    const next = pruneWorkspace(current, check);
+    if (sameWorkspace(next, current)) return;
+    setOpenSessions(next.open);
+    setActiveSession(next.active);
+    setMinimizedSessions(new Set(next.minimized));
+  }, [sessionsByInstance, instances, instancesLoaded, openSessions, activeSession, minimizedSessions]);
 
   // Per-instance data that rarely changes: projects, models.
   React.useEffect(() => {
@@ -747,24 +857,21 @@ export default function App() {
         ? messageCacheRef.current.get(key) ?? merged
         : merged;
       cacheMessages(key, result);
-      if (selectedKeyRef.current === key) {
-        setTranscript((current) =>
-          current.key === key && current.messages === result && current.status === 'ready'
-            ? current
-            : { key, messages: result, status: 'ready' }
-        );
-      }
+      setTranscriptFor(key, result, 'ready');
       const preview = previewOf(next);
       if (preview) {
         setPreviews((prev) => (prev[key] === preview ? prev : { ...prev, [key]: preview }));
       }
     } catch (err) {
       console.error('Failed to load messages', err);
-      if (selectedKeyRef.current === key) {
-        setTranscript((current) =>
-          current.key === key && current.status !== 'ready' ? { ...current, status: 'error' } : current
-        );
-      }
+      setTranscripts((prev) => {
+        const current = prev[key];
+        if (current?.status === 'ready') return prev;
+        return {
+          ...prev,
+          [key]: { messages: current?.messages ?? messageCacheRef.current.get(key) ?? [], status: 'error' },
+        };
+      });
     }
   });
 
@@ -812,17 +919,25 @@ export default function App() {
     const bridge = window.ember;
     if (!bridge.onEvent) return;
     const readySet = new Set(readyIds);
-    const isLoaded = (instanceId: string, sessionId: string) =>
-      selectedKeyRef.current === sessionKey({ instanceId, sessionId });
+    // A message hint is worth a transcript fetch only for an open, non-minimized column; other
+    // sessions fall back to refreshing the session list (their preview/`updated` is enough).
+    const isLoaded = (instanceId: string, sessionId: string) => {
+      const key = sessionKey({ instanceId, sessionId });
+      return openKeysRef.current.has(key) && !minimizedKeysRef.current.has(key);
+    };
 
     const catchUp = (instanceId: string) => {
       // The stream just (re)connected; anything that changed while it was down was missed.
       (['sessions', 'states', 'permissions', 'questions', 'queues', 'autoAccept'] as const).forEach((resource) =>
         invalidationQueue.push({ instanceId, resource })
       );
-      if (selectedKeyRef.current && selectedSessionRef.current?.instanceId === instanceId) {
-        invalidationQueue.push({ instanceId, resource: 'messages', sessionId: selectedSessionRef.current.id });
-      }
+      openKeysRef.current.forEach((key) => {
+        if (minimizedKeysRef.current.has(key)) return;
+        const ref = parseSessionKey(key);
+        if (ref?.instanceId === instanceId) {
+          invalidationQueue.push({ instanceId, resource: 'messages', sessionId: ref.sessionId });
+        }
+      });
     };
 
     const unsubscribe = bridge.onEvent((raw) => {
@@ -927,26 +1042,39 @@ export default function App() {
     };
   }, [sessions]);
 
-  // Messages for the open session. Switching shows the cached transcript at once; the poll
-  // below (and message events) keep it fresh while the agent is working.
+  // Visible = open and not manually minimized. Width-based overflow (columns → tabs) arrives in
+  // Phase 3; until then every open session counts as visible and polls its transcript.
+  const visibleKeys = React.useMemo(
+    () => openSessions.filter((key) => !minimizedSessions.has(key)),
+    [openSessions, minimizedSessions]
+  );
+  const visibleKeysRef = React.useRef<string[]>([]);
+  visibleKeysRef.current = visibleKeys;
+
+  // Selecting a column refreshes it immediately; the poll below (and message events) keep it
+  // fresh while the agent is working. Cached messages render before the fetch lands.
   React.useEffect(() => {
-    if (!selected) {
-      setTranscript({ key: null, messages: [], status: 'ready' });
-      return;
-    }
-    const key = sessionKey(selected);
-    const cached = messageCacheRef.current.get(key);
-    setTranscript({ key, messages: cached ?? [], status: cached ? 'ready' : 'loading' });
+    if (!selected) return;
     void refreshMessages(selected);
   }, [selected, refreshMessages]);
 
-  const selectedLive = Boolean(selected && liveInstances[selected.instanceId]);
+  const visibleLive =
+    visibleKeys.length > 0 &&
+    visibleKeys.every((key) => {
+      const ref = parseSessionKey(key);
+      return ref ? liveInstances[ref.instanceId] === true : false;
+    });
   usePoll(
     async () => {
-      if (selected) await refreshMessages(selected);
+      await Promise.all(
+        visibleKeysRef.current.map((key) => {
+          const ref = parseSessionKey(key);
+          return ref ? refreshMessages(ref) : Promise.resolve();
+        })
+      );
     },
-    selectedLive ? MESSAGES_POLL_LIVE_MS : STATE_POLL_MS,
-    selected !== null
+    visibleLive ? MESSAGES_POLL_LIVE_MS : STATE_POLL_MS,
+    visibleKeys.length > 0
   );
 
   const toggleInstance = (instanceId: string) =>
@@ -1002,7 +1130,8 @@ export default function App() {
 
   const beginNewAgent = (instanceId: string) => {
     showActionError(null);
-    setSelected(null);
+    // Keep the open columns; the draft simply takes the active pane (no session key yet).
+    setActiveSession(null);
     setNewSessionInstanceId(instanceId);
   };
 
@@ -1038,8 +1167,7 @@ export default function App() {
       return next;
     });
     const ref = { instanceId: options.instanceId, sessionId: session.id };
-    setSelected(ref);
-    setNewSessionInstanceId(null);
+    openSession(ref);
     if (options.bypass) void setYolo(ref, true, session.directory);
     // The optimistic insert above plus the pendingCreatedSessions grace keep the row visible;
     // the next session poll (which includes the selected session's directory) is authoritative.
@@ -1125,11 +1253,7 @@ export default function App() {
       releaseReconciledOptimistic(next);
       const preview = previewOf(next);
       cacheMessages(key, next);
-      if (selectedKeyRef.current === key) {
-        setTranscript((current) =>
-          current.key === key ? { key, messages: next, status: 'ready' } : current
-        );
-      }
+      setTranscriptFor(key, next, 'ready');
       setPreviews((prev) => ({ ...prev, [key]: preview }));
       setPreviewVersions((prev) => ({ ...prev, [key]: updated }));
       return true;
@@ -1194,18 +1318,12 @@ export default function App() {
         pendingOptimisticIds.current
       );
       cacheMessages(key, merged);
-      if (selectedKeyRef.current === key) {
-        setTranscript((current) =>
-          current.key === key ? { key, messages: merged, status: 'ready' } : current
-        );
-      }
+      setTranscriptFor(key, merged, 'ready');
       const preview = previewOf(messageResult.value);
       setPreviews((current) => ({ ...current, [key]: preview }));
       setPreviewVersions((current) => ({ ...current, [key]: session.updated }));
-    } else if (selectedKeyRef.current === key) {
-      setTranscript((current) =>
-        current.key === key ? { ...current, status: 'error' } : current
-      );
+    } else {
+      setTranscriptFor(key, messageCacheRef.current.get(key) ?? [], 'error');
     }
     if (stateResult.status === 'fulfilled' && stateResult.value) {
       setStatesByInstance((current) => ({ ...current, [session.instanceId]: stateResult.value! }));
@@ -1252,7 +1370,8 @@ export default function App() {
           entry.id === session.id ? { ...entry, archived: archived ? Date.now() : undefined } : entry
         ),
       }));
-      if (selectedKey === sessionKey(session)) setSelected(null);
+      // Archived sessions never stay open; a neighbour takes over if this was the active column.
+      if (archived) closeSession(sessionKey(session));
       setActionNotice(
         archived
           ? {
@@ -1388,17 +1507,7 @@ export default function App() {
         selectedSession.directory
       );
       cacheMessages(key, next);
-      if (selectedKeyRef.current === key) {
-        setTranscript((current) =>
-          current.key === key
-            ? {
-                key,
-                messages: sameMessages(current.messages, next) ? current.messages : next,
-                status: 'ready',
-              }
-            : current
-        );
-      }
+      setTranscriptFromFetch(key, next);
     } catch (err) {
       console.error('Abort refresh failed', err);
       showActionError(
@@ -1422,17 +1531,7 @@ export default function App() {
       }
       const next = await loadMessages(session.instanceId, session.id, session.directory);
       cacheMessages(key, next);
-      if (selectedKeyRef.current === key) {
-        setTranscript((current) =>
-          current.key === key
-            ? {
-                key,
-                messages: sameMessages(current.messages, next) ? current.messages : next,
-                status: 'ready',
-              }
-            : current
-        );
-      }
+      setTranscriptFromFetch(key, next);
       setActionNotice({ message: 'Context compacted.' });
     } catch (err) {
       console.error('Compact failed', err);
@@ -1483,7 +1582,7 @@ export default function App() {
       await waitForSessionIdle(session.instanceId, forkedId);
       const compacted = await compactSession(forked, session.model);
       await refreshSessions([session.instanceId]);
-      setSelected({ instanceId: session.instanceId, sessionId: forkedId });
+      openSession({ instanceId: session.instanceId, sessionId: forkedId });
       setActionNotice({
         message: compacted
           ? 'Started a new session from a compacted summary.'
@@ -1711,7 +1810,7 @@ export default function App() {
               }}
               onSelectSession={(session) => {
                 setNewSessionInstanceId(null);
-                setSelected({ instanceId: session.instanceId, sessionId: session.id });
+                openSession({ instanceId: session.instanceId, sessionId: session.id });
                 setMobileRailOpen(false);
               }}
               onReload={(session) => void handleReloadSession(session)}
@@ -1806,7 +1905,7 @@ export default function App() {
               onOpenChange={setCommandPaletteOpen}
               onSelectSession={(session) => {
                 setNewSessionInstanceId(null);
-                setSelected({ instanceId: session.instanceId, sessionId: session.id });
+                openSession({ instanceId: session.instanceId, sessionId: session.id });
                 setMobileRailOpen(false);
               }}
               onNewAgent={(instanceId) => {

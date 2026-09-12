@@ -15,6 +15,9 @@ export const DEFAULT_SETTINGS: EmberSettings = {
   scheduledSessionBindings: {},
   avatarOverrides: {},
   projectColorAssignments: {},
+  openSessions: [],
+  activeSession: null,
+  minimizedSessions: [],
   remoteAccessEnabled: false,
   remotePasswordConfigured: false,
 };

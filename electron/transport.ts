@@ -97,6 +97,21 @@ export const parseStringRecord = (value: unknown, limit = 2000): Record<string, 
   );
 };
 
+/** Bounded, de-duplicated list of short non-empty strings, e.g. workspace session keys. */
+export const parseStringArray = (value: unknown, limit = 40, maxLength = 500): string[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string' || entry.length === 0 || entry.length > maxLength) continue;
+    if (seen.has(entry)) continue;
+    seen.add(entry);
+    out.push(entry);
+    if (out.length >= limit) break;
+  }
+  return out;
+};
+
 export const parseColorAssignments = (value: unknown, colorCount = AVATAR_COLOR_COUNT): Record<string, number> => {
   if (!value || typeof value !== 'object') return {};
   return Object.fromEntries(
@@ -253,6 +268,11 @@ export type EmberSettings = {
   scheduledSessionBindings: Record<string, string>;
   avatarOverrides: Record<string, StoredAvatarOverride>;
   projectColorAssignments: Record<string, number>;
+  /** Workspace: ordered open session keys ("instance::session"). */
+  openSessions: string[];
+  activeSession: string | null;
+  /** Manually minimized sessions; sticky across resizes and restarts. */
+  minimizedSessions: string[];
   remoteAccessEnabled: boolean;
   remotePasswordConfigured: boolean;
 };
