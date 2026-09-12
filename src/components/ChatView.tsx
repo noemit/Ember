@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Box, ChevronDown, GitFork, ListOrdered, Loader2, MessageCircleQuestion, NotebookPen, Paperclip, Pin, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, Box, ChevronDown, GitFork, Loader2, MessageCircleQuestion, NotebookPen, Paperclip, Pin, Play, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
@@ -1130,7 +1130,7 @@ export default function ChatView({
                   title={`Show ${queueItems.length} minimized queued ${queueItems.length === 1 ? 'message' : 'messages'}`}
                   onClick={() => setQueueOpen(true)}
                 >
-                  <ListOrdered className="size-3.5 text-highlight" />
+                  <Play className="size-3.5 fill-current text-highlight" />
                   <span className="pointer-events-none absolute -top-0.5 -right-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
                     {queueItems.length}
                   </span>

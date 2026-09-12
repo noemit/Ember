@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronUp, ListOrdered, Loader2, Minus, NotebookPen, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Minus, NotebookPen, Pencil, Play } from 'lucide-react';
 import { modelRefKey } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -78,7 +78,7 @@ export default function QueuedMessageList({
 
   const rail = (
     <span className="relative inline-flex">
-      <ListOrdered className="size-3.5 text-highlight" />
+      <Play className="size-3.5 fill-current text-highlight" />
       <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
         {queueItems.length}
       </span>
