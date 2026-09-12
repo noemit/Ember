@@ -78,7 +78,7 @@ export default function QueuedMessageList({
 
   const rail = (
     <span className="relative inline-flex">
-      <Play className="size-3.5 fill-current text-highlight" />
+      <Play className="size-3.5 text-highlight" />
       <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
         {queueItems.length}
       </span>

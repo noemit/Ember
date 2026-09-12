@@ -1137,7 +1137,7 @@ export default function ChatView({
                   title={`Show ${queueItems.length} minimized queued ${queueItems.length === 1 ? 'message' : 'messages'}`}
                   onClick={() => setQueueOpen(true)}
                 >
-                  <Play className="size-3.5 fill-current text-highlight" />
+                  <Play className="size-3.5 text-highlight" />
                   <span className="pointer-events-none absolute -top-0.5 -right-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
                     {queueItems.length}
                   </span>
