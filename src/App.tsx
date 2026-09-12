@@ -289,6 +289,10 @@ export default function App() {
   const workspaceRef = React.useRef<HTMLDivElement | null>(null);
   const sessionsByInstanceRef = React.useRef<Record<string, Session[]>>({});
   const projectsByInstanceRef = React.useRef<Record<string, Project[]>>({});
+  // Directories named by prompt events (question/permission). OpenCode scopes prompts by directory,
+  // and the event's directory is authoritative, so keep asking for it even when it isn't the
+  // session folder we already know.
+  const promptDirectoriesRef = React.useRef<Record<string, string[]>>({});
   const pendingCreatedSessions = React.useRef(new Map<string, { session: Session; expiresAt: number }>());
   // Snapshot the entries first: deleting from a Map while `forEach`-ing it can skip entries.
   const prunePendingCreated = (shouldDrop: (pending: { session: Session; expiresAt: number }) => boolean) => {
@@ -970,10 +974,26 @@ export default function App() {
 
   const directoryHintsFor = (instanceIds: string[]): Record<string, string[]> => {
     const hints: Record<string, string[]> = {};
-    const current = selectedSessionRef.current;
-    if (current?.directory && instanceIds.includes(current.instanceId)) {
-      hints[current.instanceId] = [current.directory];
-    }
+    const add = (instanceId: string | undefined, directory: string | undefined) => {
+      if (!instanceId || !directory || !instanceIds.includes(instanceId)) return;
+      const list = hints[instanceId] ?? (hints[instanceId] = []);
+      if (!list.includes(directory)) list.push(directory);
+    };
+    // Every open session (columns and tabs), not just the active one: OpenCode scopes prompts by
+    // directory, so a question in a background column must still be listed for its card to appear.
+    add(selectedSessionRef.current?.instanceId, selectedSessionRef.current?.directory);
+    openSessionsRef.current.forEach((key) => {
+      const ref = parseSessionKey(key);
+      if (!ref) return;
+      const session = (sessionsByInstanceRef.current[ref.instanceId] ?? []).find(
+        (entry) => entry.id === ref.sessionId
+      );
+      add(ref.instanceId, session?.directory);
+    });
+    // The exact directory a pending prompt event reported, when it differs from the session folder.
+    instanceIds.forEach((instanceId) => {
+      (promptDirectoriesRef.current[instanceId] ?? []).forEach((directory) => add(instanceId, directory));
+    });
     return hints;
   };
 
@@ -1152,6 +1172,15 @@ export default function App() {
         setLiveInstances(liveInstancesRef.current);
         if (connected) catchUp(event.instanceId);
         return;
+      }
+      if (event.directory && (event.type.startsWith('question.') || event.type.startsWith('permission.'))) {
+        const list =
+          promptDirectoriesRef.current[event.instanceId] ??
+          (promptDirectoriesRef.current[event.instanceId] = []);
+        if (!list.includes(event.directory)) {
+          list.push(event.directory);
+          if (list.length > 40) list.splice(0, list.length - 40);
+        }
       }
       invalidationsFor(event, isLoaded).forEach((invalidation) => invalidationQueue.push(invalidation));
     });

@@ -244,9 +244,10 @@ from an event payload.
 - "Recent" models in the composer are derived from the instance's own sessions (`session.model`
   from the list endpoint, newest `time.updated` first) — nothing is stored on the Ember side.
 - Permissions: `GET /api/permission` lists pending requests; Ember merges the global response with
-  directory-scoped responses for the selected session because OpenCode scopes pending requests by
-  project. It also keeps fetching every directory that already holds a pending prompt, so browsing
-  away from a session doesn't drop its request. Reply with `POST /api/permission/:id/reply?directory=…` `{ reply: once|always|reject }`
+  directory-scoped responses because OpenCode scopes pending requests by project. The directory hints
+  cover the selected session, every open column/tab, and any directory named by a prompt event
+  (`directoryHintsFor`), plus every directory that already holds a pending prompt, so a background
+  column's question still resolves and browsing away doesn't drop its request. Reply with `POST /api/permission/:id/reply?directory=…` `{ reply: once|always|reject }`
   (falls back to the legacy `/api/session/:sid/permissions/:id` on 404). Questions (the agent's
   `question` tool) work the same way: `GET /api/question`, `POST /api/question/:id/reply`
   `{ answers: string[][] }` (one array per question; option labels or a single custom string),
