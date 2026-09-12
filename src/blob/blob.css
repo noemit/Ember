@@ -43,7 +43,7 @@
 
 /* The hop scales body and eyes together, which stretched the eyes with it. Counter-scale the eyes
    by 75% of the inverse so they mostly keep their shape while the body still squashes. The eyes
-   must share the hop's duration so the counter-scale stays in step. */
+   must share the hop's duration and per-blob delay so the counter-scale stays in step. */
 .blob-grok[data-mood='busy'] .blob-eyes {
   animation: blob-hop-eyes 1.15s cubic-bezier(0.4, 0, 0.5, 1) infinite;
 }

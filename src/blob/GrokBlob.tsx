@@ -96,7 +96,7 @@ export default function GrokBlob({ seed, identity, size = 30, mood = 'idle', int
             <g className="blob-body" transform={`rotate(${tilt} 50 50)`}>
               <path d={shape.path} fill={color.fill} />
             </g>
-            <g className="blob-eyes">
+            <g className="blob-eyes" style={{ animationDelay: `${wobbleDelay}s` }}>
               {renderEye(-shape.eyeGap, leftPupil)}
               {renderEye(shape.eyeGap, rightPupil)}
             </g>
