@@ -2057,15 +2057,6 @@ export default function App() {
             }}
           />
 
-          <ColumnTabStrip
-            tabs={workspaceTabs}
-            blobStyle={settings.blobStyle}
-            onActivate={activateSession}
-            onMinimize={minimizeSession}
-            onRestore={restoreSession}
-            onClose={closeSession}
-          />
-
           <div className="relative flex min-h-0 flex-1">
             {mobileRailOpen ? (
               <button
@@ -2119,7 +2110,17 @@ export default function App() {
               }}
             />
 
-            <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {/* The strip lives over the columns (right of the rail), aligned with the session header. */}
+              <ColumnTabStrip
+                tabs={workspaceTabs}
+                blobStyle={settings.blobStyle}
+                onActivate={activateSession}
+                onMinimize={minimizeSession}
+                onRestore={restoreSession}
+                onClose={closeSession}
+              />
+              <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
               {newSessionInstanceId || columns.length === 0 ? (
                 <ChatView
                   session={null}
@@ -2184,6 +2185,7 @@ export default function App() {
               ) : (
                 columns.map(renderColumn)
               )}
+              </div>
             </div>
           </div>
 

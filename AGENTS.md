@@ -110,7 +110,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `session.archived`.
 - `src/components/ArchiveDialog.tsx` — the top-bar archive screen (`archivedSessions`): every
   archived session grouped by project (or as a standalone row), with restore.
-- `src/components/ColumnTabStrip.tsx` — the numbered open-session strip under the top bar. Columns
+- `src/components/ColumnTabStrip.tsx` — the numbered open-session strip above the columns (to the
+  right of the rail, aligned with the session header). Columns
   and overflow/minimized sessions share one numbering (1-based `openSessions` order); a tab click
   activates/restores, the chevron minimizes/restores (sticky across restarts), and the × closes.
   Renders nothing when no sessions are open.
