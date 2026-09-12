@@ -22,13 +22,12 @@ type Props = {
   sessions: Session[];
   moods: Record<string, BallMood>;
   selectedKey: string | null;
-  /** Session keys currently open as workspace columns, for the ring. */
-  openKeys: Set<string>;
   avatarIdentities: Record<string, AvatarIdentity>;
   blobStyle: BlobStyle;
   reloadingKeys: Set<string>;
   archivingKeys: Set<string>;
-  onSelectSession: (session: Session) => void;
+  /** Opens every session in this project (most recent as columns, the rest as tabs). */
+  onOpenProject: () => void;
   onNewAgent: (instanceId: string, directory?: string) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
@@ -38,9 +37,10 @@ type Props = {
 const spring = { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 } as const;
 
 /**
- * A project in the rail: its name, a `+` that starts a session in that project's directory, and a
- * strip of its sessions as mood-carrying blobs. Clicking a blob opens that session; right-click
- * opens the usual session menu. The strip shrinks as the project fills and overflows to `+N`.
+ * A project with two or more sessions: its name, a `+` that starts a session in that project's
+ * directory, and a strip of mood-carrying blobs. Clicking the card opens the project (all its
+ * sessions as tabs, the most recent ones as columns); the blobs are display-only, though
+ * right-clicking one still offers the per-session menu. One-session projects use a plain row.
  */
 export default function ProjectCard({
   project,
@@ -51,18 +51,17 @@ export default function ProjectCard({
   sessions,
   moods,
   selectedKey,
-  openKeys,
   avatarIdentities,
   blobStyle,
   reloadingKeys,
   archivingKeys,
-  onSelectSession,
+  onOpenProject,
   onNewAgent,
   onReload,
   onArchive,
   onCustomizeAppearance,
 }: Props) {
-  const layout = blobStripLayout(sessions.length, STRIP_WIDTH);
+  const layout = blobStripLayout(sessions.length, STRIP_WIDTH, 48, 30);
   const visible = sessions.slice(0, layout.visible);
 
   return (
@@ -72,7 +71,17 @@ export default function ProjectCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.16 } }}
       transition={spring}
-      className="rounded-lg border bg-card/40 px-2 py-1.5"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${project.name}`}
+      onClick={onOpenProject}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpenProject();
+        }
+      }}
+      className="cursor-pointer rounded-lg border bg-card/40 px-2 py-1.5 transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-highlight"
     >
       <div className="flex items-center gap-1.5 px-1">
         <span
@@ -93,7 +102,10 @@ export default function ProjectCard({
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => onNewAgent(instanceId, project.path)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onNewAgent(instanceId, project.path);
+              }}
               aria-label={`New session in ${project.name}`}
               className="ml-auto flex size-6 flex-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -109,25 +121,17 @@ export default function ProjectCard({
           const key = sessionKey(session);
           const title = session.title ?? session.id;
           const selected = key === selectedKey;
-          const open = openKeys.has(key);
           return (
             <ContextMenu key={key}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <ContextMenuTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => onSelectSession(session)}
-                      aria-label={title}
-                      aria-current={selected ? 'true' : undefined}
+                    <span
                       className={cn(
-                        'flex-none rounded-full transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-highlight',
-                        selected
-                          ? 'ring-2 ring-highlight ring-offset-1 ring-offset-card'
-                          : open
-                            ? 'ring-1 ring-highlight/50 ring-offset-1 ring-offset-card'
-                            : undefined
+                        'flex-none rounded-full',
+                        selected ? 'ring-2 ring-highlight ring-offset-1 ring-offset-card' : undefined
                       )}
+                      aria-label={title}
                     >
                       <Blob
                         style={blobStyle}
@@ -136,7 +140,7 @@ export default function ProjectCard({
                         size={layout.size}
                         mood={moods[key] ?? 'idle'}
                       />
-                    </button>
+                    </span>
                   </ContextMenuTrigger>
                 </TooltipTrigger>
                 <TooltipContent side="top">{title}</TooltipContent>

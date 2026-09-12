@@ -32,8 +32,6 @@ type Props = {
   moods: Record<string, BallMood>;
   previews: Record<string, string>;
   selectedKey: string | null;
-  /** Session keys currently open as workspace columns, for the project-card rings. */
-  openKeys: Set<string>;
   avatarIdentities: Record<string, AvatarIdentity>;
   blobStyle: BlobStyle;
   loading: boolean;
@@ -47,6 +45,8 @@ type Props = {
   showScheduled: boolean;
   onShowScheduled: (value: boolean) => void;
   onSelectSession: (session: Session) => void;
+  /** Opens a project: its sessions become the open list (recent as columns, rest as tabs). */
+  onOpenProject: (instanceId: string, project: Project) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
   onCustomizeAppearance: (session: Session) => void;
@@ -65,7 +65,6 @@ export default function LeftRail({
   moods,
   previews,
   selectedKey,
-  openKeys,
   avatarIdentities,
   blobStyle,
   loading,
@@ -77,6 +76,7 @@ export default function LeftRail({
   showScheduled,
   onShowScheduled,
   onSelectSession,
+  onOpenProject,
   onReload,
   onArchive,
   onCustomizeAppearance,
@@ -189,6 +189,35 @@ export default function LeftRail({
   const renderEntry = (entry: RailEntry) => {
     if (entry.kind === 'session') return renderSession(entry.session);
     const instance = instanceById[entry.instanceId];
+    const openProject = () => onOpenProject(entry.instanceId, entry.project);
+    // A lone session keeps the familiar full row (big blob, project name as the title); the
+    // grouped card is only worth it once a project has several sessions to show off.
+    if (entry.sessions.length === 1) {
+      const session = entry.sessions[0];
+      const key = sessionKey(session);
+      return (
+        <SessionRow
+          key={entry.id}
+          session={session}
+          instanceLabel={multiInstance ? instance?.label : undefined}
+          projectName={undefined}
+          titleOverride={entry.project.name}
+          preview={previews[key]}
+          selected={key === selectedKey}
+          mood={moods[key] ?? 'idle'}
+          reloading={reloadingKeys.has(key)}
+          archiving={archivingKeys.has(key)}
+          markerColor={instanceDefaults[entry.instanceId]?.markerColor}
+          identity={avatarIdentities[key]}
+          blobStyle={blobStyle}
+          onSelect={openProject}
+          onNewAgent={() => newAgent(entry.instanceId, entry.project.path)}
+          onReload={reloadSession}
+          onArchive={archiveSession}
+          onCustomizeAppearance={customizeAppearance}
+        />
+      );
+    }
     return (
       <ProjectCard
         key={entry.id}
@@ -200,12 +229,11 @@ export default function LeftRail({
         sessions={entry.sessions}
         moods={moods}
         selectedKey={selectedKey}
-        openKeys={openKeys}
         avatarIdentities={avatarIdentities}
         blobStyle={blobStyle}
         reloadingKeys={reloadingKeys}
         archivingKeys={archivingKeys}
-        onSelectSession={selectSession}
+        onOpenProject={openProject}
         onNewAgent={newAgent}
         onReload={reloadSession}
         onArchive={archiveSession}

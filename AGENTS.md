@@ -50,7 +50,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   persisted in Ember settings and pruned when their instance or session is archived/gone
   (`pruneWorkspace`). The rail lists active sessions only; archived ones are collected into
   `archivedSessions` behind the top bar's archive screen, and a project's `+` seeds the new-agent
-  draft with `newSessionDirectory`.
+  draft with `newSessionDirectory`. Ember keeps one project in the workspace at a time: `openProject`
+  loads a project's sessions (most recent as columns, the rest as tabs) and `openSession` replaces the
+  group when the session belongs to a different project, so two projects' columns never mix by
+  default.
 - `src/hooks/` — concerns pulled out of App: `useFeedback` (error banner + retry, notice toast,
   live-region announcements), `useEmberSettings` (optimistic writes to main with revision guarding),
   `useMessageQueue` (the server-owned queue handlers, see Notes; every handler takes an explicit
@@ -89,15 +92,19 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   (`ViewOptionsDialog.tsx`). As a workspace column it also shows minimize/close controls in the
   header (`onMinimize`/`onClose`).
 - `src/components/LeftRail.tsx` — the rail is a single recency-ordered list from
-  `src/lib/projectGroups.ts` (`buildRailEntries`): a session inside a configured project groups into
-  a `ProjectCard` (name, a `+` that starts a new agent in that project's directory, and a strip of
-  mood-carrying blobs that shrink then overflow to `+N`), everything else is a standalone
-  `SessionRow`. Cards and rows interleave by most-recent activity. Only configured projects get
-  cards; a project's `+` prefills the draft via `newSessionDirectory`. The toolbar is just New agent
-  + search + the scheduled toggle. The selected session is pinned into the list even when filters
-  hide it.
-- `src/components/SessionRow.tsx` — the shared full session row (blob, title, preview, instance/
-  project line, archive button, context menu) used by the rail and the archive screen. Memoized; the
+  `src/lib/projectGroups.ts` (`buildRailEntries`). A configured project with one active session
+  renders as a plain `SessionRow` whose title is the project name (a hover `+` starts a new session
+  there); a project with two or more sessions renders as a `ProjectCard`. Standalone (root/chat)
+  sessions are always `SessionRow`s. Cards and rows interleave by most-recent activity. Clicking a
+  project body opens the whole project — see App's `openProject`; the blobs are display-only (their
+  right-click menu still reloads/archives that session). The toolbar is just New agent + search +
+  the scheduled toggle; the selected session is pinned into the list even when filters hide it.
+- `src/components/ProjectCard.tsx` — a multi-session project: name, `+`, and a row of 48px
+  mood-carrying blobs that shrink then overflow to `+N`. The whole card is the click target (opens
+  the project); the blobs aren't individually clickable.
+- `src/components/SessionRow.tsx` — the shared full session row (55px blob, title, preview,
+  instance/project line, archive button, context menu) used by the rail and the archive screen.
+  Optional `titleOverride`/`onNewAgent` turn it into the one-session project row. Memoized; the
   timestamp is a self-ticking `RelativeTime`. Archive/restore is decided per row from
   `session.archived`.
 - `src/components/ArchiveDialog.tsx` — the top-bar archive screen (`archivedSessions`): every

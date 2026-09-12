@@ -397,8 +397,6 @@ export default function App() {
     [readyIds, sessionsByInstance]
   );
 
-  const openKeys = React.useMemo(() => new Set(openSessions), [openSessions]);
-
   const allSessions = React.useMemo(
     () =>
       Object.entries(sessionsByInstance)
@@ -670,17 +668,50 @@ export default function App() {
   // The helpers below are the only writers of workspace state; `activeSession` is the single
   // source of truth for `selected`, so existing selection-driven code keeps working unchanged.
 
-  const openSession = React.useCallback((ref: SessionRef) => {
+  /**
+   * Open a session. Sessions from the same configured project stay together as one group;
+   * opening anything outside the current project starts a fresh workspace (Ember doesn't mix
+   * two projects' columns by default). `known` lets callers supply the session before the
+   * session list has caught up (a just-created or restored session).
+   */
+  const openSession = React.useCallback((ref: SessionRef, known?: Session | null) => {
     const key = sessionKey(ref);
-    setOpenSessions((prev) => {
-      // Opening an already-open session only activates it; keep tab order stable.
-      if (prev.includes(key)) return prev;
-      const next = [...prev, key];
-      return next.length > MAX_OPEN_SESSIONS ? next.slice(next.length - MAX_OPEN_SESSIONS) : next;
-    });
+    const session =
+      known ?? (sessionsByInstanceRef.current[ref.instanceId] ?? []).find((entry) => entry.id === ref.sessionId) ?? null;
+    const project = session
+      ? projectForSession(session, projectsByInstanceRef.current[ref.instanceId] ?? [])
+      : null;
+    const current = openSessionsRef.current;
+    const sameGroup =
+      current.length > 0 &&
+      project !== null &&
+      current.every((entry) => {
+        const currentRef = parseSessionKey(entry);
+        if (!currentRef || currentRef.instanceId !== ref.instanceId) return false;
+        const currentSession = (sessionsByInstanceRef.current[currentRef.instanceId] ?? []).find(
+          (candidate) => candidate.id === currentRef.sessionId
+        );
+        if (!currentSession) return false;
+        const currentProject = projectForSession(
+          currentSession,
+          projectsByInstanceRef.current[currentRef.instanceId] ?? []
+        );
+        return currentProject?.id === project.id;
+      });
+
+    if (sameGroup) {
+      setOpenSessions((prev) => {
+        if (prev.includes(key)) return prev;
+        const next = [...prev, key];
+        return next.length > MAX_OPEN_SESSIONS ? next.slice(next.length - MAX_OPEN_SESSIONS) : next;
+      });
+    } else {
+      setOpenSessions([key]);
+    }
     setMinimizedSessions((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Set(prev);
+      const base = sameGroup ? prev : new Set([...prev].filter((entry) => entry === key));
+      if (!base.has(key)) return base;
+      const next = new Set(base);
       next.delete(key);
       return next;
     });
@@ -688,6 +719,35 @@ export default function App() {
     setNewSessionInstanceId(null);
     setNewSessionDirectory(null);
   }, []);
+
+  /**
+   * Open a project: every active session it owns becomes the open list, most recent first (so
+   * the columns that fit show the newest), the rest as tabs. Empty projects open a draft instead.
+   */
+  const openProject = React.useCallback((instanceId: string, project: Project) => {
+    const owned = (sessionsByInstanceRef.current[instanceId] ?? []).filter((session) => {
+      if (session.archived || session.parentId) return false;
+      const owner = projectForSession(session, projectsByInstanceRef.current[instanceId] ?? []);
+      return owner?.id === project.id;
+    });
+    showActionError(null);
+    if (owned.length === 0) {
+      setActiveSession(null);
+      setNewSessionInstanceId(instanceId);
+      setNewSessionDirectory(project.path ?? null);
+      return;
+    }
+    const keys = owned
+      .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
+      .map(sessionKey)
+      .slice(0, MAX_OPEN_SESSIONS);
+    setOpenSessions(keys);
+    // Keep sticky minimized flags only for sessions still in this group.
+    setMinimizedSessions((prev) => new Set([...prev].filter((entry) => keys.includes(entry))));
+    setActiveSession(keys[0] ?? null);
+    setNewSessionInstanceId(null);
+    setNewSessionDirectory(null);
+  }, [showActionError]);
 
   const activateSession = React.useCallback((key: string) => {
     setActiveSession(key);
@@ -1261,7 +1321,7 @@ export default function App() {
       return next;
     });
     const ref = { instanceId: options.instanceId, sessionId: session.id };
-    openSession(ref);
+    openSession(ref, session);
     if (options.bypass) void setYolo(ref, true, session.directory);
     // The optimistic insert above plus the pendingCreatedSessions grace keep the row visible;
     // the next session poll (which includes the selected session's directory) is authoritative.
@@ -1502,7 +1562,7 @@ export default function App() {
   /** From the archive screen: restore, then open the session as a column. */
   const handleRestoreAndOpen = async (session: Session) => {
     await handleArchive(session, false);
-    openSession({ instanceId: session.instanceId, sessionId: session.id });
+    openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
     setArchiveOpen(false);
   };
 
@@ -1684,7 +1744,7 @@ export default function App() {
       await waitForSessionIdle(session.instanceId, forkedId);
       const compacted = await compactSession(forked, session.model);
       await refreshSessions([session.instanceId]);
-      openSession({ instanceId: session.instanceId, sessionId: forkedId });
+      openSession({ instanceId: session.instanceId, sessionId: forkedId }, forked);
       setActionNotice({
         message: compacted
           ? 'Started a new session from a compacted summary.'
@@ -2023,7 +2083,6 @@ export default function App() {
               moods={moods}
               previews={previews}
               selectedKey={selectedKey}
-              openKeys={openKeys}
               selectedSession={selectedSession}
               avatarIdentities={avatarIdentities}
               blobStyle={settings.blobStyle}
@@ -2038,7 +2097,11 @@ export default function App() {
               showScheduled={showScheduled}
               onShowScheduled={setShowScheduled}
               onSelectSession={(session) => {
-                openSession({ instanceId: session.instanceId, sessionId: session.id });
+                openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
+                setMobileRailOpen(false);
+              }}
+              onOpenProject={(instanceId, project) => {
+                openProject(instanceId, project);
                 setMobileRailOpen(false);
               }}
               onReload={(session) => void handleReloadSession(session)}
@@ -2133,8 +2196,7 @@ export default function App() {
               sessionNotes={settings.sessionNotes}
               onOpenChange={setCommandPaletteOpen}
               onSelectSession={(session) => {
-                setNewSessionInstanceId(null);
-                openSession({ instanceId: session.instanceId, sessionId: session.id });
+                openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
                 setMobileRailOpen(false);
               }}
               onNewAgent={(instanceId) => {

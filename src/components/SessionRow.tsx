@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { motion } from 'motion/react';
-import { Archive, ArchiveRestore, Loader2, Palette, RefreshCw } from 'lucide-react';
+import { Archive, ArchiveRestore, Loader2, Palette, Plus, RefreshCw } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { normalizeDirectory } from '../blob/seed';
 import { cn } from '@/lib/utils';
@@ -54,6 +54,10 @@ export type SessionRowProps = {
   markerColor: number | undefined;
   identity: AvatarIdentity | undefined;
   blobStyle: BlobStyle;
+  /** Overrides the title text; used by a one-session project row to show the project name. */
+  titleOverride?: string;
+  /** When set, renders a `+` that starts a new session in the row's project. */
+  onNewAgent?: () => void;
   onSelect: (session: Session) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
@@ -114,12 +118,15 @@ const SessionRow = React.memo(function SessionRow({
   markerColor,
   identity,
   blobStyle,
+  titleOverride,
+  onNewAgent,
   onSelect,
   onReload,
   onArchive,
   onCustomizeAppearance,
 }: SessionRowProps) {
   const key = sessionKey(session);
+  const title = titleOverride ?? session.title ?? session.id;
   // Per row, not per view: the selected session is pinned into the active list even when
   // it's archived, and its button must offer "Restore" rather than archiving it again.
   const archived = Boolean(session.archived);
@@ -166,7 +173,7 @@ const SessionRow = React.memo(function SessionRow({
                     textUnderlineOffset: '3px',
                   }}
                 >
-                  {session.title ?? session.id}
+                  {title}
                 </span>
                 <RelativeTime
                   timestamp={session.updated}
@@ -222,7 +229,8 @@ const SessionRow = React.memo(function SessionRow({
               onArchive(session, !archived);
             }}
             className={cn(
-              'absolute top-1.5 right-2 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100',
+              'absolute top-1.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100',
+              onNewAgent ? 'right-9' : 'right-2',
               archiving ? 'opacity-100' : 'opacity-0'
             )}
           >
@@ -231,6 +239,26 @@ const SessionRow = React.memo(function SessionRow({
         </TooltipTrigger>
         <TooltipContent side="left">{archiving ? archiveBusyLabel : archiveLabel}</TooltipContent>
       </Tooltip>
+
+      {onNewAgent ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`New session in ${titleOverride ?? 'project'}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onNewAgent();
+              }}
+              className="absolute top-1.5 right-2 text-muted-foreground"
+            >
+              <Plus />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">New session in {titleOverride ?? 'project'}</TooltipContent>
+        </Tooltip>
+      ) : null}
     </motion.div>
   );
 });
