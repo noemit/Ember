@@ -293,6 +293,9 @@ export default function ChatView({
   const [text, setText] = React.useState('');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
   const [variant, setVariant] = React.useState('');
+  // Latest composer text, for async edit/park handlers that must detect concurrent typing.
+  const textRef = React.useRef('');
+  textRef.current = text;
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [pickerActivated, setPickerActivated] = React.useState(false);
   const [attachments, setAttachments] = React.useState<FileAttachment[]>([]);
@@ -645,19 +648,26 @@ export default function ChatView({
     return true;
   };
 
-  // Pull a queued message out of the server queue and into the composer to edit and re-send.
-  const editQueuedItem = async (itemId: string): Promise<boolean> => {
-    if (!composerKey) return false;
+  // Pull a queued message out of the server queue and into the composer to edit and re-send. The
+  // text appears immediately; the queue removal finishes in the background.
+  const editQueuedItem = (itemId: string): Promise<boolean> => {
+    if (!composerKey) return Promise.resolve(false);
     const item = queueItems.find((entry) => entry.id === itemId);
     const queuedText = item ? item.text.trim() || item.content.trim() : '';
-    if (!queuedText) return false;
-    const removed = await onRemoveQueued(itemId);
-    if (!removed) return false;
-    const next = text.trim() ? `${text.trimEnd()}\n\n${queuedText}` : queuedText;
+    if (!queuedText) return Promise.resolve(false);
+    const previous = text;
+    const next = previous.trim() ? `${previous.trimEnd()}\n\n${queuedText}` : queuedText;
     setText(next);
     updateComposerDraft(composerKey, { text: next, modelId, variant, attachments, replyContext });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
-    return true;
+    return onRemoveQueued(itemId).then((removed) => {
+      if (!removed && previousComposerKeyRef.current === composerKey && textRef.current === next) {
+        // Still queued and the user hasn't touched it: restore the composer so it can't send twice.
+        setText(previous);
+        updateComposerDraft(composerKey, { text: previous, modelId, variant, attachments, replyContext });
+      }
+      return removed;
+    });
   };
 
   const replyToMessage = (message: ChatMessage) => {
