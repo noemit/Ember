@@ -1089,7 +1089,7 @@ export default function ChatView({
                     ? 'YOLO mode: permission prompts for this session are accepted automatically, even while Ember is closed'
                     : 'YOLO mode: accept permission prompts for this session automatically'
                 }
-                className="h-7 px-2 text-xs data-[state=on]:border-warning/60 data-[state=on]:bg-warning/10 data-[state=on]:text-warning"
+                className="h-7 flex-none px-2 text-xs data-[state=on]:border-warning/60 data-[state=on]:bg-warning/10 data-[state=on]:text-warning"
               >
                 <ShieldCheck className="size-3.5" />
                 <span className="hidden sm:inline">YOLO</span>
@@ -1108,7 +1108,7 @@ export default function ChatView({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="size-7"
+                className="size-7 flex-none"
                 aria-label="Attach a file"
                 onClick={() => fileRef.current?.click()}
               >
@@ -1119,7 +1119,7 @@ export default function ChatView({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="relative size-7 overflow-visible"
+                  className="relative size-7 flex-none overflow-visible"
                   aria-label={`Restore notes (${sessionNotes.length})`}
                   title={`Show ${sessionNotes.length} minimized ${sessionNotes.length === 1 ? 'note' : 'notes'}`}
                   onClick={() => setNotesOpen(true)}
@@ -1135,7 +1135,7 @@ export default function ChatView({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="relative size-7 overflow-visible"
+                  className="relative size-7 flex-none overflow-visible"
                   aria-label={`Restore queued messages (${queueItems.length})`}
                   title={`Show ${queueItems.length} minimized queued ${queueItems.length === 1 ? 'message' : 'messages'}`}
                   onClick={() => setQueueOpen(true)}
@@ -1211,6 +1211,7 @@ export default function ChatView({
                 {busy && session ? (
                   <motion.div
                     key="stop"
+                    className="flex-none"
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
@@ -1233,7 +1234,7 @@ export default function ChatView({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  className="size-7 rounded-full text-muted-foreground"
+                  className="size-7 flex-none rounded-full text-muted-foreground"
                   disabled={!text.trim()}
                   onClick={saveNote}
                   aria-label="Save as note"
@@ -1246,7 +1247,7 @@ export default function ChatView({
 
               <Button
                 size="icon-sm"
-                className="size-7 rounded-full"
+                className="size-7 flex-none rounded-full"
                 disabled={!canSend}
                 onClick={() => submit()}
                 aria-label={shouldQueue ? 'Queue message' : 'Send'}
