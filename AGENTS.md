@@ -44,6 +44,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   a per-key `transcripts` map backs every open column. A `ResizeObserver` measures the column area
   and `visibleColumns` (in `src/lib/workspace.ts`) decides how many open sessions render side by side
   (`MIN_COLUMN_WIDTH` 420); the active session is swapped into view when it would otherwise overflow.
+  `Cmd/Ctrl+1–9` activates that slot in `openSessions` (restoring it if minimized, and leaving the
+  new-agent draft).
   The transcript poll and `isLoaded` predicate cover the visible columns. Open/minimized keys are
   persisted in Ember settings and pruned when their instance or session is archived/gone
   (`pruneWorkspace`). The rail lists active sessions only; archived ones are collected into

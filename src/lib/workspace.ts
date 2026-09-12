@@ -85,3 +85,19 @@ export const sameWorkspace = (a: Workspace, b: Workspace): boolean =>
   a.open.every((key, index) => key === b.open[index]) &&
   a.minimized.length === b.minimized.length &&
   a.minimized.every((key, index) => key === b.minimized[index]);
+
+/**
+ * The 0-based open-session slot a Cmd/Ctrl+1–9 shortcut targets, or null when the event isn't one.
+ * Shift/Alt are excluded so the binding doesn't collide with other shortcuts.
+ */
+export const numberShortcutSlot = (event: {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  key: string;
+}): number | null => {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return null;
+  if (event.key.length !== 1 || event.key < '1' || event.key > '9') return null;
+  return Number(event.key) - 1;
+};

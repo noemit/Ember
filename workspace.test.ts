@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   formatSessionKey,
   MAX_OPEN_SESSIONS,
+  numberShortcutSlot,
   parseSessionKey,
   pruneWorkspace,
   visibleColumns,
@@ -89,5 +90,31 @@ describe('workspace pruning', () => {
     expect(pruned.open).toHaveLength(MAX_OPEN_SESSIONS);
     expect(pruned.open[0]).toBe('local::s0');
     expect(pruned.open.at(-1)).toBe(`local::s${MAX_OPEN_SESSIONS - 1}`);
+  });
+});
+
+describe('number shortcuts', () => {
+  const event = (overrides: Partial<Parameters<typeof numberShortcutSlot>[0]>) => ({
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    key: '',
+    ...overrides,
+  });
+
+  test('maps Cmd/Ctrl+1-9 to a 0-based slot', () => {
+    expect(numberShortcutSlot(event({ metaKey: true, key: '1' }))).toBe(0);
+    expect(numberShortcutSlot(event({ ctrlKey: true, key: '5' }))).toBe(4);
+    expect(numberShortcutSlot(event({ metaKey: true, key: '9' }))).toBe(8);
+  });
+
+  test('ignores other modifiers, non-digits and unmodified digits', () => {
+    expect(numberShortcutSlot(event({ key: '3' }))).toBeNull();
+    expect(numberShortcutSlot(event({ metaKey: true, shiftKey: true, key: '3' }))).toBeNull();
+    expect(numberShortcutSlot(event({ metaKey: true, altKey: true, key: '3' }))).toBeNull();
+    expect(numberShortcutSlot(event({ metaKey: true, key: '0' }))).toBeNull();
+    expect(numberShortcutSlot(event({ metaKey: true, key: 'a' }))).toBeNull();
+    expect(numberShortcutSlot(event({ metaKey: true, key: 'Enter' }))).toBeNull();
   });
 });

@@ -62,6 +62,7 @@ import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation
 import {
   MAX_OPEN_SESSIONS,
   MIN_COLUMN_WIDTH,
+  numberShortcutSlot,
   parseSessionKey,
   pruneWorkspace,
   sameWorkspace,
@@ -690,6 +691,9 @@ export default function App() {
 
   const activateSession = React.useCallback((key: string) => {
     setActiveSession(key);
+    // Leaving the new-agent draft for an existing session discards the draft pane.
+    setNewSessionInstanceId(null);
+    setNewSessionDirectory(null);
     setMinimizedSessions((prev) => {
       if (!prev.has(key)) return prev;
       const next = new Set(prev);
@@ -764,6 +768,21 @@ export default function App() {
   const columnsRef = React.useRef<string[]>([]);
   columnsRef.current = columns;
   const columnKeySet = React.useMemo(() => new Set(columns), [columns]);
+
+  // Cmd/Ctrl+1–9 jumps to that slot in the open list (columns and tabs share the numbering).
+  // `activateSession` also clears the sticky minimized flag, so a tab restores on jump.
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const slot = numberShortcutSlot(event);
+      if (slot === null) return;
+      const key = openSessionsRef.current[slot];
+      if (!key) return;
+      event.preventDefault();
+      activateSession(key);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activateSession]);
 
 
   // Persist the workspace after the initial restore. The guarded ref keeps the first render
