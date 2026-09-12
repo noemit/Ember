@@ -43,14 +43,17 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `openSessions` (ordered keys) plus `activeSession`; `selected` is derived from `activeSession`, and
   a per-key `transcripts` map backs every open column. The transcript poll and `isLoaded` predicate
   cover the open, non-minimized keys. Open/minimized keys are persisted in Ember settings and pruned
-  when their instance or session is archived/gone (`src/lib/workspace.ts`, `pruneWorkspace`).
+  when their instance or session is archived/gone (`src/lib/workspace.ts`, `pruneWorkspace`). The
+  rail lists active sessions only; archived ones are collected into `archivedSessions` behind the top
+  bar's archive screen, and a project's `+` seeds the new-agent draft with `newSessionDirectory`.
 - `src/hooks/` — concerns pulled out of App: `useFeedback` (error banner + retry, notice toast,
   live-region announcements), `useEmberSettings` (optimistic writes to main with revision guarding),
   `useMessageQueue` (the server-owned queue handlers, see Notes), `usePoll` (run-then-wait loop
   with a variable interval).
 - `src/lib/` — `useStableCallback` (pin a prop's identity for `React.memo` children),
   `messageSignature` (digest-based change detection for polls), `invalidation` (event → resource
-  mapping and the coalescing `InvalidationQueue`), `clipboard`.
+  mapping and the coalescing `InvalidationQueue`), `projectGroups` (`buildRailEntries` grouping +
+  `blobStripLayout`), `workspace`, `clipboard`.
 - `electron/eventStream.ts` — SSE client for the two per-instance streams (see Data freshness).
   It parses frames, keeps only `{ instanceId, type, sessionId?, directory? }`, and reconnects with
   jittered backoff; main fans hints out to windows (`ember:event`) and to `/remote/events`.
@@ -78,9 +81,20 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   untouched (`POST /api/openchamber/sessions/:id/fork` + `/api/session/:id/summarize`). The
   same two display settings are also editable from the top bar's View options dialog
   (`ViewOptionsDialog.tsx`).
-- `src/components/LeftRail.tsx` — session list. Rows are a memoized `SessionRow`; the timestamp is
-  a self-ticking `RelativeTime`. Archive/restore is decided per row from `session.archived`, not the
-  view toggle, because the selected session is pinned into the list even when filters hide it.
+- `src/components/LeftRail.tsx` — the rail is a single recency-ordered list from
+  `src/lib/projectGroups.ts` (`buildRailEntries`): a session inside a configured project groups into
+  a `ProjectCard` (name, a `+` that starts a new agent in that project's directory, and a strip of
+  mood-carrying blobs that shrink then overflow to `+N`), everything else is a standalone
+  `SessionRow`. Cards and rows interleave by most-recent activity. Only configured projects get
+  cards; a project's `+` prefills the draft via `newSessionDirectory`. The toolbar is just New agent
+  + search + the scheduled toggle. The selected session is pinned into the list even when filters
+  hide it.
+- `src/components/SessionRow.tsx` — the shared full session row (blob, title, preview, instance/
+  project line, archive button, context menu) used by the rail and the archive screen. Memoized; the
+  timestamp is a self-ticking `RelativeTime`. Archive/restore is decided per row from
+  `session.archived`.
+- `src/components/ArchiveDialog.tsx` — the top-bar archive screen (`archivedSessions`): every
+  archived session grouped by project (or as a standalone row), with restore.
 - `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.

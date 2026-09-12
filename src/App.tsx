@@ -90,6 +90,7 @@ const SettingsPanel = React.lazy(() => import('./components/SettingsPanel'));
 const ViewOptionsDialog = React.lazy(() => import('./components/ViewOptionsDialog'));
 const AvatarPicker = React.lazy(() => import('./components/AvatarPicker'));
 const CommandPalette = React.lazy(() => import('./components/CommandPalette'));
+const ArchiveDialog = React.lazy(() => import('./components/ArchiveDialog'));
 
 const DialogFallback = ({ label }: { label: string }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="status">
@@ -202,6 +203,7 @@ export default function App() {
   const [activeSession, setActiveSession] = React.useState<string | null>(null);
   const [minimizedSessions, setMinimizedSessions] = React.useState<Set<string>>(() => new Set());
   const [newSessionInstanceId, setNewSessionInstanceId] = React.useState<string | null>(null);
+  const [newSessionDirectory, setNewSessionDirectory] = React.useState<string | null>(null);
   const [transcripts, setTranscripts] = React.useState<
     Record<string, { messages: ChatMessage[]; status: MessagesStatus }>
   >({});
@@ -224,7 +226,7 @@ export default function App() {
   const [settingsActivated, setSettingsActivated] = React.useState(false);
   const [avatarPickerSession, setAvatarPickerSession] = React.useState<Session | null>(null);
   const [settingsView, setSettingsView] = React.useState<'general' | 'instances'>('general');
-  const [showArchived, setShowArchived] = React.useState(false);
+  const [archiveOpen, setArchiveOpen] = React.useState(false);
   const [showScheduled, setShowScheduled] = React.useState(false);
   const [mobileRailOpen, setMobileRailOpen] = React.useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
@@ -363,9 +365,9 @@ export default function App() {
   // Stable key so effects re-run only when the set of connected instances changes.
   const readyKey = readyIds.join('\u0000');
 
-  // The rail shows either active or archived sessions, never both. The recency window only
-  // trims the active list; the archive is where old things live. Date.now() is read inside
-  // the memo, so the cut-off refreshes with every session poll rather than needing a timer.
+  // The rail lists active sessions only; archived sessions live behind the top-bar archive
+  // screen. The recency window still trims the active list. Date.now() is read inside the memo,
+  // so the cut-off refreshes with every session poll rather than needing a timer.
   const { sessionWindowHours } = settings;
   const sessions = React.useMemo(() => {
     const cutoff = sessionWindowHours > 0 ? Date.now() - sessionWindowHours * 3_600_000 : 0;
@@ -374,12 +376,20 @@ export default function App() {
       .flatMap(([, list]) => list)
       .filter((session) => {
         if (showScheduled) return Boolean(settings.scheduledSessionBindings[sessionKey(session)]);
-        return (
-          Boolean(session.archived) === showArchived &&
-          (showArchived || !cutoff || (session.updated ?? 0) >= cutoff)
-        );
+        return !session.archived && (!cutoff || (session.updated ?? 0) >= cutoff);
       });
-  }, [sessionsByInstance, readyIds, hidden, showArchived, showScheduled, sessionWindowHours, settings.scheduledSessionBindings]);
+  }, [sessionsByInstance, readyIds, hidden, showScheduled, sessionWindowHours, settings.scheduledSessionBindings]);
+
+  const archivedSessions = React.useMemo(
+    () =>
+      Object.entries(sessionsByInstance)
+        .filter(([instanceId]) => readyIds.includes(instanceId))
+        .flatMap(([, list]) => list)
+        .filter((session) => Boolean(session.archived)),
+    [readyIds, sessionsByInstance]
+  );
+
+  const openKeys = React.useMemo(() => new Set(openSessions), [openSessions]);
 
   const allSessions = React.useMemo(
     () =>
@@ -671,6 +681,7 @@ export default function App() {
     });
     setActiveSession(key);
     setNewSessionInstanceId(null);
+    setNewSessionDirectory(null);
   }, []);
 
   const closeSession = React.useCallback((key: string) => {
@@ -1128,11 +1139,18 @@ export default function App() {
     }
   };
 
-  const beginNewAgent = (instanceId: string) => {
+  const beginNewAgent = (instanceId: string, directory?: string) => {
     showActionError(null);
-    // Keep the open columns; the draft simply takes the active pane (no session key yet).
+    // Keep the open columns; the draft simply takes the active pane (no session key yet). A
+    // project's `+` passes its directory so the draft starts there instead of the instance default.
     setActiveSession(null);
     setNewSessionInstanceId(instanceId);
+    setNewSessionDirectory(directory ?? null);
+  };
+
+  const cancelNewAgent = () => {
+    setNewSessionInstanceId(null);
+    setNewSessionDirectory(null);
   };
 
   /** Create the session from the draft, then send the first message into it. */
@@ -1397,6 +1415,13 @@ export default function App() {
         return next;
       });
     }
+  };
+
+  /** From the archive screen: restore, then open the session as a column. */
+  const handleRestoreAndOpen = async (session: Session) => {
+    await handleArchive(session, false);
+    openSession({ instanceId: session.instanceId, sessionId: session.id });
+    setArchiveOpen(false);
   };
 
   // Drop the card as soon as the server accepts the reply; the next poll is authoritative.
@@ -1683,11 +1708,13 @@ export default function App() {
     const sessions = sessionsByInstance[newSessionInstanceId] ?? [];
     const defaults = newSessionInstanceDefaults ?? {};
     return {
-      directory: newSessionDirectoryPrefill(sessions, projectsByInstance[newSessionInstanceId] ?? [], defaults),
+      directory:
+        newSessionDirectory ??
+        newSessionDirectoryPrefill(sessions, projectsByInstance[newSessionInstanceId] ?? [], defaults),
       model: newSessionModelPrefill(sessions, defaults),
       bypass: defaults.bypass === true,
     };
-  }, [newSessionInstanceId, newSessionInstanceDefaults, sessionsByInstance, projectsByInstance]);
+  }, [newSessionInstanceId, newSessionDirectory, newSessionInstanceDefaults, sessionsByInstance, projectsByInstance]);
 
   const modelInstanceId = selected?.instanceId ?? newSessionInstanceId;
   const selectedModels = modelInstanceId ? modelsByInstance[modelInstanceId] : undefined;
@@ -1755,15 +1782,17 @@ export default function App() {
             hidden={hidden}
             live={liveInstances}
             refreshing={refreshing}
-              onToggle={toggleInstance}
-              onToggleNavigation={() => setMobileRailOpen((open) => !open)}
-              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-              onRefresh={() => void refreshInstances()}
-              onOpenViewOptions={() => {
-                setViewOptionsActivated(true);
-                setViewOptionsOpen(true);
-              }}
-              onOpenSettings={() => {
+            archivedCount={archivedSessions.length}
+            onToggle={toggleInstance}
+            onToggleNavigation={() => setMobileRailOpen((open) => !open)}
+            onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+            onOpenArchive={() => setArchiveOpen(true)}
+            onRefresh={() => void refreshInstances()}
+            onOpenViewOptions={() => {
+              setViewOptionsActivated(true);
+              setViewOptionsOpen(true);
+            }}
+            onOpenSettings={() => {
               setSettingsView('instances');
               setSettingsActivated(true);
               setSettingsOpen(true);
@@ -1787,6 +1816,7 @@ export default function App() {
               moods={moods}
               previews={previews}
               selectedKey={selectedKey}
+              openKeys={openKeys}
               selectedSession={selectedSession}
               avatarIdentities={avatarIdentities}
               blobStyle={settings.blobStyle}
@@ -1798,26 +1828,17 @@ export default function App() {
                 SESSION_WINDOWS.find((option) => option.hours === sessionWindowHours && option.hours > 0)
                   ?.label ?? null
               }
-              showArchived={showArchived}
               showScheduled={showScheduled}
-              onShowArchived={(value) => {
-                setShowArchived(value);
-                if (value) setShowScheduled(false);
-              }}
-              onShowScheduled={(value) => {
-                setShowScheduled(value);
-                if (value) setShowArchived(false);
-              }}
+              onShowScheduled={setShowScheduled}
               onSelectSession={(session) => {
-                setNewSessionInstanceId(null);
                 openSession({ instanceId: session.instanceId, sessionId: session.id });
                 setMobileRailOpen(false);
               }}
               onReload={(session) => void handleReloadSession(session)}
               onArchive={(session, archived) => void handleArchive(session, archived)}
               onCustomizeAppearance={setAvatarPickerSession}
-              onNewAgent={(instanceId) => {
-                beginNewAgent(instanceId);
+              onNewAgent={(instanceId, directory) => {
+                beginNewAgent(instanceId, directory);
                 setMobileRailOpen(false);
               }}
               onOpenSettings={() => {
@@ -1867,9 +1888,12 @@ export default function App() {
               onBypassChange={(enabled) => {
                 if (selected) void setYolo(selected, enabled, selectedSession?.directory);
               }}
-              onNewSessionInstanceChange={setNewSessionInstanceId}
+              onNewSessionInstanceChange={(instanceId) => {
+                setNewSessionInstanceId(instanceId);
+                setNewSessionDirectory(null);
+              }}
               onCreateAndSend={handleCreateAndSend}
-              onCancelNewSession={() => setNewSessionInstanceId(null)}
+              onCancelNewSession={cancelNewAgent}
               onSend={handleSend}
               onQueue={queue.queueMessage}
               onSendQueued={queue.sendQueuedMessage}
@@ -1914,6 +1938,29 @@ export default function App() {
               }}
             />
           </React.Suspense>
+
+          {archiveOpen ? (
+            <React.Suspense fallback={<DialogFallback label="Loading archive…" />}>
+              <ArchiveDialog
+                open
+                onOpenChange={setArchiveOpen}
+                sessions={archivedSessions}
+                projectsByInstance={projectsByInstance}
+                instances={instances}
+                moods={moods}
+                previews={previews}
+                avatarIdentities={avatarIdentities}
+                blobStyle={settings.blobStyle}
+                instanceDefaults={settings.instanceDefaults}
+                reloadingKeys={reloadingKeys}
+                archivingKeys={archivingKeys}
+                onRestoreSession={(session) => void handleRestoreAndOpen(session)}
+                onReload={(session) => void handleReloadSession(session)}
+                onArchive={(session, archived) => void handleArchive(session, archived)}
+                onCustomizeAppearance={setAvatarPickerSession}
+              />
+            </React.Suspense>
+          ) : null}
 
           {settingsActivated ? (
             <React.Suspense fallback={<DialogFallback label="Loading settings…" />}>

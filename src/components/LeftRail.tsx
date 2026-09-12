@@ -1,50 +1,27 @@
 import * as React from 'react';
-import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
-import {
-  Archive,
-  ArchiveRestore,
-  ArrowDownUp,
-  ChevronDown,
-  Clock3,
-  ListFilter,
-  Loader2,
-  Palette,
-  Plus,
-  RefreshCw,
-  Search,
-  Settings,
-  X,
-} from 'lucide-react';
-import Blob from '../blob/Blob';
-import { normalizeDirectory, projectForSession } from '../blob/seed';
+import { AnimatePresence, LayoutGroup } from 'motion/react';
+import { ChevronDown, Clock3, Plus, Search, Settings, X } from 'lucide-react';
+import { projectForSession } from '../blob/seed';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
+import { buildRailEntries, type RailEntry } from '@/lib/projectGroups';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { modelRefKey, sessionKey } from '../types';
+import ProjectCard from './ProjectCard';
+import SessionRow from './SessionRow';
+import { sessionKey } from '../types';
 import type { AvatarIdentity, BallMood, BlobStyle, Instance, InstanceDefaults, Project, Session } from '../types';
 
 type Props = {
@@ -55,6 +32,8 @@ type Props = {
   moods: Record<string, BallMood>;
   previews: Record<string, string>;
   selectedKey: string | null;
+  /** Session keys currently open as workspace columns, for the project-card rings. */
+  openKeys: Set<string>;
   avatarIdentities: Record<string, AvatarIdentity>;
   blobStyle: BlobStyle;
   loading: boolean;
@@ -65,221 +44,18 @@ type Props = {
   selectedSession: Session | null;
   /** Human label for the recency window ("Last 2 days"), or null when everything is shown. */
   windowLabel: string | null;
-  showArchived: boolean;
   showScheduled: boolean;
-  onShowArchived: (value: boolean) => void;
   onShowScheduled: (value: boolean) => void;
   onSelectSession: (session: Session) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
   onCustomizeAppearance: (session: Session) => void;
-  onNewAgent: (instanceId: string) => void;
+  onNewAgent: (instanceId: string, directory?: string) => void;
   onOpenSettings: () => void;
 };
 
-type Sorter = 'recent' | 'name';
-
-type FacetKind = 'instance' | 'model' | 'folder';
-
-/** One selectable filter value with how many sessions in the current view match it. */
-type Facet = { kind: FacetKind; value: string; label: string; count: number };
-
-const ALL_FILTER = 'all';
-const facetId = (facet: Pick<Facet, 'kind' | 'value'>): string => `${facet.kind}\u0000${facet.value}`;
-
-const FACET_TITLES: Record<FacetKind, string> = { instance: 'Instance', model: 'Model', folder: 'Folder' };
-
-const relativeTime = (timestamp: number | undefined, now: number): string => {
-  if (!timestamp) return '';
-  const seconds = Math.max(0, Math.round((now - timestamp) / 1000));
-  if (seconds < 45) return 'now';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-};
-
-const spring = { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 } as const;
-
-/** Owns its own clock so the 30s tick re-renders one span, not every rail row. */
-const RelativeTime = ({ timestamp, className }: { timestamp: number | undefined; className?: string }) => {
-  const [now, setNow] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
-  return <span className={className}>{relativeTime(timestamp, now)}</span>;
-};
-
-type SessionRowProps = {
-  session: Session;
-  instanceLabel: string | undefined;
-  projectName: string | undefined;
-  preview: string | undefined;
-  selected: boolean;
-  mood: BallMood;
-  reloading: boolean;
-  archiving: boolean;
-  markerColor: number | undefined;
-  identity: AvatarIdentity | undefined;
-  blobStyle: BlobStyle;
-  onSelect: (session: Session) => void;
-  onReload: (session: Session) => void;
-  onArchive: (session: Session, archived: boolean) => void;
-  onCustomizeAppearance: (session: Session) => void;
-};
-
-/** One rail row. Memoized: the rail re-renders on every poll, most rows don't change. */
-const SessionRow = React.memo(function SessionRow({
-  session,
-  instanceLabel,
-  projectName,
-  preview,
-  selected,
-  mood,
-  reloading,
-  archiving,
-  markerColor,
-  identity,
-  blobStyle,
-  onSelect,
-  onReload,
-  onArchive,
-  onCustomizeAppearance,
-}: SessionRowProps) {
-  const key = sessionKey(session);
-  // Per row, not per view: the selected session is pinned into the active list even when
-  // it's archived, and its button must offer "Restore" rather than archiving it again.
-  const archived = Boolean(session.archived);
-  const archiveLabel = archived ? 'Restore session' : 'Archive session';
-  const archiveBusyLabel = archived ? 'Restoring…' : 'Archiving…';
-  const ArchiveIcon = archived ? ArchiveRestore : Archive;
-
-  return (
-    <motion.div
-      layout="position"
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.16 } }}
-      transition={spring}
-      className="group relative"
-    >
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <motion.button
-            type="button"
-            whileTap={{ scale: 0.985 }}
-            data-selected={selected}
-            aria-current={selected ? 'true' : undefined}
-            onClick={() => onSelect(session)}
-            className={cn(
-              'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150',
-              selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-            )}
-          >
-            <div className="mt-[7px]">
-              {/* Project/task/session identity is resolved once in App so every surface stays aligned,
-                  including across instances that reuse session ids. */}
-              <Blob style={blobStyle} seed={key} identity={identity} size={55} mood={mood} />
-            </div>
-
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <div className="flex items-baseline gap-2">
-                <span
-                  className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground"
-                  style={markerColor === undefined ? undefined : {
-                    textDecoration: 'underline',
-                    textDecorationColor: `var(--instance-marker-${markerColor})`,
-                    textDecorationThickness: '2px',
-                    textUnderlineOffset: '3px',
-                  }}
-                >
-                  {session.title ?? session.id}
-                </span>
-                <RelativeTime
-                  timestamp={session.updated}
-                  className="flex-none text-[10.5px] tabular-nums text-muted-foreground transition-opacity group-focus-within:opacity-0 group-hover:opacity-0"
-                />
-              </div>
-              <span className="truncate text-[11.5px] leading-4">
-                {preview ?? (session.directory ? normalizeDirectory(session.directory).split(/[\\/]/).pop() : '')}
-              </span>
-              <span className="flex items-center gap-1 truncate text-[10.5px] text-muted-foreground">
-                {mood === 'input' || mood === 'question' ? (
-                  <Badge variant="outline" className="flex-none border-highlight/40 px-1 py-0 text-[10px] font-medium text-highlight">
-                    Needs input
-                  </Badge>
-                ) : mood === 'error' ? (
-                  <Badge variant="outline" className="flex-none border-destructive/40 px-1 py-0 text-[10px] font-medium text-destructive">
-                    Failed
-                  </Badge>
-                ) : null}
-                {(mood === 'input' || mood === 'question' || mood === 'error') && (projectName || instanceLabel) ? (
-                  <span aria-hidden>·</span>
-                ) : null}
-                {instanceLabel ? (
-                  <>
-                    <span className="truncate">{instanceLabel}</span>
-                    {projectName ? <span aria-hidden>·</span> : null}
-                  </>
-                ) : null}
-                {projectName ? <span className="truncate">{projectName}</span> : null}
-              </span>
-            </div>
-          </motion.button>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem disabled={reloading} onSelect={() => onReload(session)}>
-            <RefreshCw className={cn(reloading && 'animate-spin')} />
-            {reloading ? 'Reloading…' : 'Reload session'}
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => onCustomizeAppearance(session)}>
-            <Palette />
-            Customize appearance…
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem disabled={archiving} onSelect={() => onArchive(session, !archived)}>
-            {archiving ? <Loader2 className="animate-spin" /> : <ArchiveIcon />}
-            {archiving ? archiveBusyLabel : archiveLabel}
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            disabled={archiving}
-            aria-label={archiving ? archiveBusyLabel : archiveLabel}
-            onClick={(event) => {
-              event.stopPropagation();
-              onArchive(session, !archived);
-            }}
-            className={cn(
-              'absolute top-1.5 right-2 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100',
-              archiving ? 'opacity-100' : 'opacity-0'
-            )}
-          >
-            {archiving ? <Loader2 className="animate-spin" /> : <ArchiveIcon />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">{archiving ? archiveBusyLabel : archiveLabel}</TooltipContent>
-      </Tooltip>
-    </motion.div>
-  );
-});
-
 const matchesQuery = (haystack: Array<string | undefined>, query: string): boolean =>
   haystack.some((value) => value?.toLowerCase().includes(query));
-
-/** Folder shown for a session: its project when it sits inside one, else the directory's last segment. */
-const folderOf = (session: Session, projects: Project[]): string | undefined =>
-  projectForSession(session, projects)?.name ??
-  (session.directory ? normalizeDirectory(session.directory).split(/[\\/]/).pop() || undefined : undefined);
 
 export default function LeftRail({
   instances,
@@ -289,6 +65,7 @@ export default function LeftRail({
   moods,
   previews,
   selectedKey,
+  openKeys,
   avatarIdentities,
   blobStyle,
   loading,
@@ -297,9 +74,7 @@ export default function LeftRail({
   archivingKeys,
   selectedSession,
   windowLabel,
-  showArchived,
   showScheduled,
-  onShowArchived,
   onShowScheduled,
   onSelectSession,
   onReload,
@@ -308,8 +83,6 @@ export default function LeftRail({
   onNewAgent,
   onOpenSettings,
 }: Props) {
-  const [sorter, setSorter] = React.useState<Sorter>('recent');
-  const [filter, setFilter] = React.useState(ALL_FILTER);
   const [query, setQuery] = React.useState('');
 
   const instanceById = React.useMemo(
@@ -318,90 +91,27 @@ export default function LeftRail({
   );
   const ready = React.useMemo(() => instances.filter((instance) => instance.attachable), [instances]);
   const multiInstance = ready.length > 1;
+  const needle = query.trim().toLowerCase();
 
-  const sorted = React.useMemo(() => {
-    const copy = [...sessions];
-    copy.sort((a, b) =>
-      sorter === 'name'
-        ? (a.title ?? a.id).localeCompare(b.title ?? b.id)
-        : (b.updated ?? 0) - (a.updated ?? 0)
-    );
-    return copy;
-  }, [sessions, sorter]);
-
-  // Facet values for each session, computed once so both counting and filtering agree.
-  const facetsBySession = React.useMemo(() => {
-    const map = new Map<string, Record<FacetKind, Facet | null>>();
-    sessions.forEach((session) => {
-      const instance = instanceById[session.instanceId];
-      const folder = folderOf(session, projectsByInstance[session.instanceId] ?? []);
-      map.set(sessionKey(session), {
-        instance: instance
-          ? { kind: 'instance', value: instance.id, label: instance.label, count: 0 }
-          : null,
-        model: session.model
-          ? { kind: 'model', value: modelRefKey(session.model), label: session.model.modelID, count: 0 }
-          : null,
-        folder: folder ? { kind: 'folder', value: folder, label: folder, count: 0 } : null,
-      });
-    });
-    return map;
-  }, [sessions, instanceById, projectsByInstance]);
-
-  // Counts reflect the current view (archived toggle, hidden instances) but not the search box,
-  // so the numbers stay put while typing.
-  const facetGroups = React.useMemo(() => {
-    const groups: Record<FacetKind, Map<string, Facet>> = {
-      // Every connected instance is listed, even with zero sessions in view, so the
-      // group is always there when there's more than one instance to choose from.
-      instance: new Map(
-        ready.map((instance) => [
-          instance.id,
-          { kind: 'instance', value: instance.id, label: instance.label, count: 0 } satisfies Facet,
-        ])
-      ),
-      model: new Map(),
-      folder: new Map(),
-    };
-    facetsBySession.forEach((facets) => {
-      (Object.keys(groups) as FacetKind[]).forEach((kind) => {
-        const facet = facets[kind];
-        if (!facet) return;
-        const existing = groups[kind].get(facet.value);
-        if (existing) existing.count += 1;
-        else groups[kind].set(facet.value, { ...facet, count: 1 });
-      });
-    });
-    return (Object.keys(groups) as FacetKind[])
-      .map((kind) => ({
-        kind,
-        facets: [...groups[kind].values()].sort(
-          (a, b) => b.count - a.count || a.label.localeCompare(b.label)
-        ),
-      }))
-      // A single value isn't a choice worth offering; filtering by it equals "all".
-      .filter((group) => group.facets.length > 1);
-  }, [facetsBySession, ready]);
-
-  const activeFacet = React.useMemo(
+  // The selected session is pinned into the rail even when a filter would hide it.
+  const itemSessions = React.useMemo(
     () =>
-      facetGroups.flatMap((group) => group.facets).find((facet) => facetId(facet) === filter) ?? null,
-    [facetGroups, filter]
+      selectedSession && !sessions.some((session) => sessionKey(session) === sessionKey(selectedSession))
+        ? [...sessions, selectedSession]
+        : sessions,
+    [sessions, selectedSession]
   );
 
-  const needle = query.trim().toLowerCase();
-  const visible = React.useMemo(() => {
-    const filtered =
-      filter === ALL_FILTER
-        ? sorted
-        : sorted.filter((session) => {
-            const facets = facetsBySession.get(sessionKey(session));
-            return (Object.values(facets ?? {}) as Array<Facet | null>).some(
-              (facet) => facet && facetId(facet) === filter
-            );
-          });
-    if (!needle) return filtered;
-    return filtered.filter((session) =>
+  const entries = React.useMemo(
+    () =>
+      showScheduled
+        ? []
+        : buildRailEntries(itemSessions, projectsByInstance, ready.map((instance) => instance.id)),
+    [itemSessions, projectsByInstance, ready, showScheduled]
+  );
+
+  const matchesSession = React.useCallback(
+    (session: Session) =>
       matchesQuery(
         [
           session.title,
@@ -409,26 +119,47 @@ export default function LeftRail({
           previews[sessionKey(session)],
           session.directory,
           instanceById[session.instanceId]?.label,
-          facetsBySession.get(sessionKey(session))?.folder?.label,
+          projectForSession(session, projectsByInstance[session.instanceId] ?? [])?.name,
         ],
         needle
-      )
-    );
-  }, [sorted, filter, facetsBySession, needle, previews, instanceById]);
+      ),
+    [previews, instanceById, projectsByInstance, needle]
+  );
 
-  // The active chat should always be reachable, even when archive/instance filters hide it.
-  const selectedIsVisible =
-    selectedSession && visible.some((session) => sessionKey(session) === sessionKey(selectedSession));
+  const railEntries = React.useMemo(() => {
+    if (!needle) return entries;
+    return entries.flatMap((entry): RailEntry[] => {
+      if (entry.kind === 'session') return matchesSession(entry.session) ? [entry] : [];
+      // A project-name hit shows the whole project; otherwise only its matching sessions.
+      const projectMatches = entry.project.name.toLowerCase().includes(needle);
+      const matched = entry.sessions.filter(matchesSession);
+      const matchedSessions = projectMatches ? entry.sessions : matched;
+      if (matchedSessions.length === 0) return [];
+      return [{ ...entry, sessions: matchedSessions }];
+    });
+  }, [entries, matchesSession, needle]);
+
+  const scheduledSessions = React.useMemo(
+    () => (needle ? itemSessions.filter(matchesSession) : itemSessions),
+    [itemSessions, matchesSession, needle]
+  );
+
+  const hasItems = showScheduled ? scheduledSessions.length > 0 : railEntries.length > 0;
 
   // Default target for "New agent": whichever instance was active most recently.
-  const defaultInstanceId = sorted.find((session) => instanceById[session.instanceId]?.attachable)
-    ?.instanceId ?? ready[0]?.id ?? null;
+  const defaultInstanceId =
+    [...sessions].sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).find(
+      (session) => instanceById[session.instanceId]?.attachable
+    )?.instanceId ??
+    ready[0]?.id ??
+    null;
 
-  // App passes inline lambdas; pin their identity so SessionRow's memo actually holds.
+  // App passes inline lambdas; pin their identity so the memoized rows actually hold.
   const selectSession = useStableCallback(onSelectSession);
   const reloadSession = useStableCallback(onReload);
   const archiveSession = useStableCallback(onArchive);
   const customizeAppearance = useStableCallback(onCustomizeAppearance);
+  const newAgent = useStableCallback(onNewAgent);
 
   const renderSession = (session: Session) => {
     const key = sessionKey(session);
@@ -448,6 +179,34 @@ export default function LeftRail({
         identity={avatarIdentities[key]}
         blobStyle={blobStyle}
         onSelect={selectSession}
+        onReload={reloadSession}
+        onArchive={archiveSession}
+        onCustomizeAppearance={customizeAppearance}
+      />
+    );
+  };
+
+  const renderEntry = (entry: RailEntry) => {
+    if (entry.kind === 'session') return renderSession(entry.session);
+    const instance = instanceById[entry.instanceId];
+    return (
+      <ProjectCard
+        key={entry.id}
+        project={entry.project}
+        instanceId={entry.instanceId}
+        instanceLabel={multiInstance ? instance?.label : undefined}
+        multiInstance={multiInstance}
+        markerColor={instanceDefaults[entry.instanceId]?.markerColor}
+        sessions={entry.sessions}
+        moods={moods}
+        selectedKey={selectedKey}
+        openKeys={openKeys}
+        avatarIdentities={avatarIdentities}
+        blobStyle={blobStyle}
+        reloadingKeys={reloadingKeys}
+        archivingKeys={archivingKeys}
+        onSelectSession={selectSession}
+        onNewAgent={newAgent}
         onReload={reloadSession}
         onArchive={archiveSession}
         onCustomizeAppearance={customizeAppearance}
@@ -507,7 +266,7 @@ export default function LeftRail({
             <Input
               type="search"
               value={query}
-              placeholder={showScheduled ? 'Search scheduled…' : showArchived ? 'Search archived…' : 'Search sessions…'}
+              placeholder={showScheduled ? 'Search scheduled…' : 'Search sessions…'}
               aria-label="Search sessions"
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
@@ -536,22 +295,6 @@ export default function LeftRail({
               <Toggle
                 size="sm"
                 variant="outline"
-                pressed={showArchived}
-                onPressedChange={onShowArchived}
-                aria-label="Show archived sessions"
-                className="w-8 px-0 justify-center"
-              >
-                {showArchived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
-              </Toggle>
-            </TooltipTrigger>
-            <TooltipContent>{showArchived ? 'Back to active sessions' : 'Show archived sessions'}</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Toggle
-                size="sm"
-                variant="outline"
                 pressed={showScheduled}
                 onPressedChange={onShowScheduled}
                 aria-label="Show scheduled sessions"
@@ -562,78 +305,17 @@ export default function LeftRail({
             </TooltipTrigger>
             <TooltipContent>{showScheduled ? 'Back to active sessions' : 'Show scheduled sessions'}</TooltipContent>
           </Tooltip>
-
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button size="icon-sm" variant="outline" aria-label="Sort sessions">
-                    <ArrowDownUp className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>Sort: {sorter === 'name' ? 'Name' : 'Recent activity'}</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end" className="min-w-[160px]">
-              <DropdownMenuRadioGroup value={sorter} onValueChange={(value) => setSorter(value as Sorter)}>
-                <DropdownMenuRadioItem value="recent">Recent activity</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="icon-sm"
-                    variant={activeFacet ? 'secondary' : 'outline'}
-                    disabled={facetGroups.length === 0}
-                    aria-label="Filter sessions"
-                  >
-                    <ListFilter className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{activeFacet ? `Filter: ${activeFacet.label}` : 'Filter sessions'}</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end" className="max-h-[420px] min-w-[220px] overflow-y-auto">
-              <DropdownMenuRadioGroup value={filter} onValueChange={setFilter}>
-                <DropdownMenuRadioItem value={ALL_FILTER}>
-                  All sessions
-                  <span className="ml-auto pl-3 tabular-nums text-muted-foreground">{sessions.length}</span>
-                </DropdownMenuRadioItem>
-                {facetGroups.map((group) => (
-                  <React.Fragment key={group.kind}>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-[11px] text-muted-foreground">
-                      {FACET_TITLES[group.kind]}
-                    </DropdownMenuLabel>
-                    {group.facets.map((facet) => (
-                      <DropdownMenuRadioItem key={facet.value} value={facetId(facet)}>
-                        <span className="truncate">{facet.label}</span>
-                        <span className="ml-auto pl-3 tabular-nums text-muted-foreground">{facet.count}</span>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </React.Fragment>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
         <LayoutGroup>
           <AnimatePresence initial={false} mode="popLayout">
-            {!selectedIsVisible && selectedSession
-              ? [selectedSession, ...visible].map(renderSession)
-              : visible.map(renderSession)}
+            {showScheduled ? scheduledSessions.map(renderSession) : railEntries.map(renderEntry)}
           </AnimatePresence>
         </LayoutGroup>
 
-        {visible.length === 0 && (!selectedSession || selectedIsVisible) ? (
+        {!hasItems ? (
           <div className="px-3 py-8">
             {loading ? (
               <div className="flex flex-col gap-3">
@@ -647,25 +329,21 @@ export default function LeftRail({
                   {ready.length === 0
                     ? 'No connected instances. Open one in OpenChamber, then refresh.'
                     : needle
-                      ? `No ${showScheduled ? 'scheduled ' : showArchived ? 'archived ' : ''}sessions match “${query.trim()}”.`
-                      : filter !== ALL_FILTER
-                        ? 'No sessions match this filter.'
-                        : showScheduled
-                          ? 'No scheduled sessions have been observed yet.'
-                          : showArchived
-                            ? 'No archived sessions.'
-                            : windowLabel
-                              ? `No sessions active in the ${windowLabel.toLowerCase()}. Widen the window in Settings.`
-                              : 'No sessions yet.'}
+                      ? `No ${showScheduled ? 'scheduled ' : ''}sessions match “${query.trim()}”.`
+                      : showScheduled
+                        ? 'No scheduled sessions have been observed yet.'
+                        : windowLabel
+                          ? `No sessions active in the ${windowLabel.toLowerCase()}. Widen the window in Settings.`
+                          : 'No sessions yet.'}
                 </AlertDescription>
               </Alert>
             )}
-            {(showArchived || showScheduled) && !needle && filter === ALL_FILTER && ready.length > 0 ? (
+            {showScheduled && !needle && ready.length > 0 ? (
               <Button
                 size="xs"
                 variant="outline"
                 className="mx-auto mt-3 block"
-                onClick={() => showScheduled ? onShowScheduled(false) : onShowArchived(false)}
+                onClick={() => onShowScheduled(false)}
               >
                 Show active sessions
               </Button>
