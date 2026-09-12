@@ -550,6 +550,19 @@ export default function App() {
     () => (selectedKey ? avatarIdentities[selectedKey] ?? seedIdentity(selectedKey) : seedIdentity('')),
     [selectedKey, avatarIdentities]
   );
+  // The blob a new-agent draft will get: resolve it from the folder being used, so the draft shows
+  // the destination project's colour (and its override) rather than a generic placeholder.
+  const resolveDraftIdentity = React.useCallback(
+    (instanceId: string, directory: string): AvatarIdentity =>
+      resolveAvatarIdentity(
+        { id: `draft:${instanceId}`, instanceId, directory },
+        projectsByInstance[instanceId] ?? [],
+        settings.scheduledSessionBindings,
+        settings.avatarOverrides,
+        allocatedProjectColors
+      ),
+    [projectsByInstance, settings.scheduledSessionBindings, settings.avatarOverrides, allocatedProjectColors]
+  );
   const avatarPickerIdentity = avatarPickerSession
     ? avatarIdentities[sessionKey(avatarPickerSession)] ??
       resolveAvatarIdentity(
@@ -2010,6 +2023,7 @@ export default function App() {
           projectsByInstance={projectsByInstance}
           seed={key}
           identity={avatarIdentities[key] ?? seedIdentity(key)}
+          resolveDraftIdentity={resolveDraftIdentity}
           state={states[key] ?? 'idle'}
           mood={moods[key] ?? 'idle'}
           blobStyle={settings.blobStyle}
@@ -2169,6 +2183,7 @@ export default function App() {
                   projectsByInstance={projectsByInstance}
                   seed={selectedKey ?? (newSessionInstanceId ? `new:${newSessionInstanceId}` : '')}
                   identity={selectedIdentity}
+                  resolveDraftIdentity={resolveDraftIdentity}
                   state="idle"
                   mood={selectedMood}
                   blobStyle={settings.blobStyle}

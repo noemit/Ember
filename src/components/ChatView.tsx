@@ -81,6 +81,8 @@ type Props = {
   projectsByInstance: Record<string, Project[]>;
   seed: string;
   identity: AvatarIdentity;
+  /** Resolves the blob a new-agent draft will get from its target folder (project colour + override). */
+  resolveDraftIdentity: (instanceId: string, directory: string) => AvatarIdentity;
   state: BallState;
   mood: BallMood;
   blobStyle: BlobStyle;
@@ -237,6 +239,7 @@ export default function ChatView({
   projectsByInstance,
   seed,
   identity,
+  resolveDraftIdentity,
   state,
   mood,
   blobStyle,
@@ -322,6 +325,11 @@ export default function ChatView({
       : null;
   const [draftDirectory, setDraftDirectory] = React.useState('');
   const [draftBypass, setDraftBypass] = React.useState(false);
+  // The draft's blob follows the folder picker, so it previews the destination project's blob.
+  const draftIdentity = React.useMemo(
+    () => (draftInstance ? resolveDraftIdentity(draftInstance.id, draftDirectory) : undefined),
+    [draftInstance, draftDirectory, resolveDraftIdentity]
+  );
   const draftTouchedRef = React.useRef<{ directory: boolean; bypass: boolean }>({ directory: false, bypass: false });
 
   // Re-seed the draft options whenever the target instance changes, and follow the prefill
@@ -817,7 +825,7 @@ export default function ChatView({
           >
             {draftInstance ? (
               <>
-                <Blob style={blobStyle} seed={`new:${draftInstance.id}`} size={48} interactive />
+                <Blob style={blobStyle} seed={`new:${draftInstance.id}`} identity={draftIdentity} size={48} interactive />
                 <div className="flex flex-col items-center gap-1 text-center">
                   <span className="text-[13px] font-medium text-foreground">New agent on {draftInstance.label}</span>
                   <span className="max-w-[420px] truncate text-xs">
