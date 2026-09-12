@@ -51,7 +51,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   (`pruneWorkspace`). The rail lists active sessions only; archived ones are collected into
   `archivedSessions` behind the rail's archive screen, and a project's `+` seeds the new-agent
   draft with `newSessionDirectory`. Ember keeps one project in the workspace at a time: `openProject`
-  loads a project's sessions (most recent as columns, the rest as tabs) and `openSession` replaces the
+  opens exactly the sessions its card showed (most recent as columns, the rest as tabs, so
+  out-of-window/archived sessions in the same folder don't leak in) and `openSession` replaces the
   group when the session belongs to a different project, so two projects' columns never mix by
   default.
 - `src/hooks/` — concerns pulled out of App: `useFeedback` (error banner + retry, notice toast,

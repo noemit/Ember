@@ -50,8 +50,8 @@ type Props = {
   archivedCount: number;
   onOpenArchive: () => void;
   onSelectSession: (session: Session) => void;
-  /** Opens a project: its sessions become the open list (recent as columns, rest as tabs). */
-  onOpenProject: (instanceId: string, project: Project) => void;
+  /** Opens a project's sessions (those shown on its card) as the open list. */
+  onOpenProject: (instanceId: string, project: Project, sessions: Session[]) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
   onCustomizeAppearance: (session: Session) => void;
@@ -222,7 +222,7 @@ export default function LeftRail({
   const renderEntry = (entry: RailEntry) => {
     if (entry.kind === 'session') return renderSession(entry.session);
     const instance = instanceById[entry.instanceId];
-    const openProject = () => onOpenProject(entry.instanceId, entry.project);
+    const openProject = () => onOpenProject(entry.instanceId, entry.project, entry.sessions);
     // A lone session keeps the familiar full row (big blob, project name as the title); the
     // grouped card is only worth it once a project has several sessions to show off.
     if (entry.sessions.length === 1) {

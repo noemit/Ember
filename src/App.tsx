@@ -732,23 +732,20 @@ export default function App() {
   }, []);
 
   /**
-   * Open a project: every active session it owns becomes the open list, most recent first (so
-   * the columns that fit show the newest), the rest as tabs. Empty projects open a draft instead.
+   * Open a project. `projectSessions` is exactly what the project's card showed, so opening it
+   * never pulls in out-of-window or archived sessions that share the directory. Most recent first
+   * (the columns that fit show the newest), the rest as tabs. An empty set opens a draft instead.
    */
-  const openProject = React.useCallback((instanceId: string, project: Project) => {
-    const owned = (sessionsByInstanceRef.current[instanceId] ?? []).filter((session) => {
-      if (session.archived || session.parentId) return false;
-      const owner = projectForSession(session, projectsByInstanceRef.current[instanceId] ?? []);
-      return owner?.id === project.id;
-    });
+  const openProject = React.useCallback((instanceId: string, project: Project, projectSessions: Session[]) => {
     showActionError(null);
+    const owned = projectSessions.filter((session) => !session.archived && !session.parentId);
     if (owned.length === 0) {
       setActiveSession(null);
       setNewSessionInstanceId(instanceId);
       setNewSessionDirectory(project.path ?? null);
       return;
     }
-    const keys = owned
+    const keys = [...owned]
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
       .map(sessionKey)
       .slice(0, MAX_OPEN_SESSIONS);
@@ -2131,8 +2128,8 @@ export default function App() {
                 openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
                 setMobileRailOpen(false);
               }}
-              onOpenProject={(instanceId, project) => {
-                openProject(instanceId, project);
+              onOpenProject={(instanceId, project, projectSessions) => {
+                openProject(instanceId, project, projectSessions);
                 setMobileRailOpen(false);
               }}
               onReload={(session) => void handleReloadSession(session)}
