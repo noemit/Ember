@@ -593,7 +593,7 @@ const bridge: EmberBridge = {
       }
       return delay(ok(true));
     }
-    const compactMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/compact$/);
+    const compactMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/summarize$/);
     if (compactMatch && method === 'POST') {
       const session = list.find((s) => s.id === decodeURIComponent(compactMatch[1]));
       if (session && session.messages.length > 2) {

@@ -11,6 +11,7 @@ import type {
   MessageQueueTakeMutation,
   ModelDetails,
   ModelOption,
+  ModelRef,
   PermissionReply,
   PermissionRequest,
   Project,
@@ -219,19 +220,25 @@ export const setSessionArchived = async (
 };
 
 /**
- * Compact a session's context. OpenChamber's `/compact` maps to OpenCode's `session.summarize`:
- * older turns are summarized and a recent tail kept, per the instance's `compaction` config
- * (`auto`, `prune`, `tail_turns`, `preserve_recent_tokens`, `reserved`). Returns whether the
- * instance accepted it; the transcript updates when the next poll sees the compaction.
+ * Compact a session's context. OpenChamber's `/compact` maps to OpenCode's `session.summarize`
+ * (`POST /api/session/:id/summarize`): older turns are summarized and a recent tail kept, per the
+ * instance's `compaction` config (`auto`, `prune`, `tail_turns`, `preserve_recent_tokens`,
+ * `reserved`). The endpoint requires the provider/model to run the summary with, so callers pass
+ * the session's current model (defaulting to the last one the session ran with). Returns whether
+ * the instance accepted it; the transcript updates when the next poll sees the compaction.
  */
 export const compactSession = async (
-  session: Session
+  session: Session,
+  model?: ModelRef
 ): Promise<boolean> => {
+  const providerID = model?.providerID ?? session.model?.providerID;
+  const modelID = model?.modelID ?? session.model?.modelID;
+  if (!providerID || !modelID) return false;
   const response = await window.ember.request(
     session.instanceId,
     'POST',
-    `/api/session/${encodeURIComponent(session.id)}/compact${directoryQuery(session.directory)}`,
-    {}
+    `/api/session/${encodeURIComponent(session.id)}/summarize${directoryQuery(session.directory)}`,
+    { providerID, modelID }
   );
   return response.ok;
 };

@@ -1481,10 +1481,14 @@ export default function App() {
       // the new session carries the summary rather than the whole prior conversation. The source
       // session is left untouched either way.
       await waitForSessionIdle(session.instanceId, forkedId);
-      await compactSession(forked);
+      const compacted = await compactSession(forked, session.model);
       await refreshSessions([session.instanceId]);
       setSelected({ instanceId: session.instanceId, sessionId: forkedId });
-      setActionNotice({ message: 'Started a new session from a compacted summary.' });
+      setActionNotice({
+        message: compacted
+          ? 'Started a new session from a compacted summary.'
+          : 'Started a new session; the handoff summary could not be compacted.',
+      });
     } catch (err) {
       console.error('Handoff failed', err);
       showActionError(

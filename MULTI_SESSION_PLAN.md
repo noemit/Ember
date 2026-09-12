@@ -84,7 +84,8 @@ All renderer state lives in `src/App.tsx` (~1930 lines). Key pieces and current 
 
 - Ember's request proxy only allows paths matching `/^\/api(?:[/?]|$)/` (`resolveApiUrl`,
   `electron/transport.ts`). Bare OpenCode paths (`/session/:id/fork`) are **not** reachable.
-- `POST /api/session/:id/compact` (directory query) compacts/summarizes in place; `204`.
+- `POST /api/session/:id/summarize` (directory query, body `{ providerID, modelID }`) compacts in
+  place; `session.compact` does not exist on the running OpenCode, so it falls through to the SPA.
 - `POST /api/openchamber/sessions/:id/fork` body `{ directory, prompt, agent? }` forks the session
   **and dispatches `prompt`** (prompt is required); returns `{ sessionId, … }`; source untouched.
   Handoff (`handleHandoff` in App) forks with `HANDOFF_PROMPT` (`src/api.ts`), waits for idle, then

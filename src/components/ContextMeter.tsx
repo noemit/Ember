@@ -22,7 +22,7 @@ const formatTokens = (count: number): string => {
 
 /**
  * The composer's context-usage ring. Hovering explains the count; clicking asks the instance to
- * compact the session (`POST /api/session/:id/compact`), which summarizes older turns and keeps a
+ * compact the session (`POST /api/session/:id/summarize`), which summarizes older turns and keeps a
  * recent tail per the instance's `compaction` config.
  */
 export default function ContextMeter({ used, limit, compacting, onCompact }: Props) {
