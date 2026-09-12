@@ -47,7 +47,7 @@ type Props = {
 };
 
 const BLOB_STYLES: Array<{ id: BlobStyle; name: string; hint: string }> = [
-  { id: 'grok', name: 'Buddy', hint: 'Flat, soft shapes' },
+  { id: 'buddy', name: 'Buddy', hint: 'Flat, soft shapes' },
   { id: 'glyph', name: 'Glyph', hint: 'Hand-drawn icons' },
 ];
 

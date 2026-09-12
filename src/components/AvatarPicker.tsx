@@ -3,7 +3,7 @@ import Blob from '../blob/Blob';
 import { blobColor } from '../blob/color';
 import { GLYPH_COLORS } from '../blob/contrast';
 import { GLYPHS } from '../blob/glyphs';
-import { GROK_SHAPES } from '../blob/grok';
+import { BUDDY_SHAPES } from '../blob/buddy';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -52,8 +52,8 @@ export default function AvatarPicker({
   const [draft, setDraft] = React.useState<AvatarOverride>({});
   const shapes = style === 'glyph'
     ? GLYPHS.map((glyph) => glyph.name)
-    : style === 'grok'
-      ? GROK_SHAPES.map((shape) => shape.name)
+    : style === 'buddy'
+      ? BUDDY_SHAPES.map((shape) => shape.name)
       : [];
 
   const firstScopeKey = scopes[0]?.key ?? '';

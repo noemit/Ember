@@ -4,7 +4,7 @@ import type { EmberSettings, EmberSettingsPatch } from '../types';
 
 export const DEFAULT_SETTINGS: EmberSettings = {
   theme: DEFAULT_THEME_ID,
-  blobStyle: 'grok',
+  blobStyle: 'buddy',
   sessionWindowHours: 48,
   hideToolCalls: false,
   reasoningDisplay: 'collapsed',

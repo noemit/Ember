@@ -1,5 +1,5 @@
 import { GLYPH_COLORS } from './contrast';
-import { GROK_COLORS } from './grok';
+import { BUDDY_COLORS } from './buddy';
 import { hashString, mulberry32, seedIdentity } from './seed';
 import type { AvatarIdentity, BlobStyle } from '../types';
 
@@ -18,14 +18,14 @@ export const blobColor = (style: BlobStyle, seedOrIdentity: string | AvatarIdent
       return `var(--glyph-${Math.abs(index) % GLYPH_COLORS.length})`;
     }
     default: {
-      const rng = mulberry32(hashString(`grok:${identity.colorSeed}`));
+      const rng = mulberry32(hashString(`buddy:${identity.colorSeed}`));
       const groupedColor = Boolean(identity.projectKey || identity.colorIndex !== undefined);
       const index = identity.colorIndex ?? Math.floor(
-        rng() * (groupedColor ? GLYPH_COLORS.length : GROK_COLORS.length)
+        rng() * (groupedColor ? GLYPH_COLORS.length : BUDDY_COLORS.length)
       );
       return groupedColor
         ? `var(--glyph-${Math.abs(index) % GLYPH_COLORS.length})`
-        : GROK_COLORS[Math.abs(index) % GROK_COLORS.length].fill;
+        : BUDDY_COLORS[Math.abs(index) % BUDDY_COLORS.length].fill;
     }
   }
 };

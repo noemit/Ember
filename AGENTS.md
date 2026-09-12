@@ -80,17 +80,17 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.
-- `src/blob/` — session avatars. `Blob.tsx` switches between `GrokBlob` ("Buddy", flat) and
+- `src/blob/` — session avatars. `Blob.tsx` switches between `BuddyBlob` (flat, soft shapes) and
   `GlyphBlob` (hand-drawn icons, no eyes); Gem and Critter were removed, and stored settings that
   still name them fall back to the default. Renderers memoize on the `identity` object, so App
-  hands back the previous reference when nothing changed. Grok pupils track the cursor only while
-  it's within `NEAR_RADIUS` (`usePupilTracking.ts`), and active Grok blobs do squash-and-stretch
+  hands back the previous reference when nothing changed. Buddy pupils track the cursor only while
+  it's within `NEAR_RADIUS` (`usePupilTracking.ts`), and active Buddy blobs do squash-and-stretch
   hops with a per-blob occasional somersault (`blob-hop`/`blob-flip` in `blob.css`); the eyes
   counter-scale 75% of the hop so they mostly keep their shape (`blob-hop-eyes`). Visuals key off
   a `BallMood` (`blob/mood.ts`): `busy` = hop+flip, `thinking` = breathe + a soft arc, `input` =
   wobble + padlock badge, `question` = tilt + "?" badge, `error` = wobble + warning triangle. App
   derives the mood from the ball state plus the prompt kind (permission vs question) and whether the
-  last assistant turn is reasoning (`isThinkingMessages`). `grok.ts` holds
+  last assistant turn is reasoning (`isThinkingMessages`). `buddy.ts` holds
   the 16 hand-drawn silhouettes (the original 8 plus teddy, sprout, puff, cat, ghost, cloud, egg and
   mushroom) plus 11 generated ones (radial harmonics + top/bottom squash, reviewed
   in `buddy-arena/`; `bun run buddy-arena`). `blob/seed.ts`

@@ -218,9 +218,9 @@ export const parseAvatarOverrides = (value: unknown): Record<string, StoredAvata
  * own copy in src/types.ts on purpose: main parses persisted JSON into these trusted shapes,
  * and the two tsconfigs have separate roots, so they can't import each other.
  */
-export type BlobStyle = 'grok' | 'glyph';
+export type BlobStyle = 'buddy' | 'glyph';
 
-export const BLOB_STYLES: BlobStyle[] = ['grok', 'glyph'];
+export const BLOB_STYLES: BlobStyle[] = ['buddy', 'glyph'];
 export const isBlobStyle = (value: unknown): value is BlobStyle =>
   typeof value === 'string' && (BLOB_STYLES as string[]).includes(value);
 

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import GrokBlob from './GrokBlob';
+import BuddyBlob from './BuddyBlob';
 import { moodFrom, stateFromMood } from './mood';
 import { seedIdentity } from './seed';
 import type { AvatarIdentity, BallMood, BallState, BlobStyle } from '../types';
@@ -28,7 +28,7 @@ export default function Blob({ style, ...rest }: Props) {
   const mood = rest.mood ?? moodFrom(rest.state ?? 'idle', undefined, false);
   const state = rest.state ?? stateFromMood(mood);
   const props = { ...rest, identity, mood, state };
-  if (style === 'grok') return <GrokBlob {...props} />;
+  if (style === 'buddy') return <BuddyBlob {...props} />;
   const size = rest.size ?? 30;
   return (
     <React.Suspense

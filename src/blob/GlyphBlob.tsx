@@ -11,7 +11,7 @@ type Props = {
   identity?: AvatarIdentity;
   size?: number;
   state?: BallState;
-  /** Grok-only; glyphs map the mood back to `state` before rendering. */
+  /** Buddy-only; glyphs map the mood back to `state` before rendering. */
   mood?: BallMood;
   interactive?: boolean;
 };

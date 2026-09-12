@@ -12,7 +12,7 @@ import {
   perceptualDistance,
 } from './src/blob/contrast';
 import { allocateProjectColors, avatarColorKeys, hashString, mulberry32, resolveAvatarIdentity } from './src/blob/seed';
-import { GROK_COLORS } from './src/blob/grok';
+import { BUDDY_COLORS } from './src/blob/buddy';
 import { THEMES } from './src/themes';
 import type { Project, Session } from './src/types';
 
@@ -122,9 +122,9 @@ describe('blob colours', () => {
 
   test('preserves legacy colors when no grouped identity is supplied', () => {
     for (const seed of ['alpha', 'beta', 'gamma']) {
-      const grokRng = mulberry32(hashString(`grok:${seed}`));
-      expect(blobColor('grok', seed)).toBe(
-        GROK_COLORS[Math.floor(grokRng() * GROK_COLORS.length)].fill
+      const buddyRng = mulberry32(hashString(`buddy:${seed}`));
+      expect(blobColor('buddy', seed)).toBe(
+        BUDDY_COLORS[Math.floor(buddyRng() * BUDDY_COLORS.length)].fill
       );
       const glyphRng = mulberry32(hashString(`glyph:${seed}`));
       glyphRng();
@@ -142,9 +142,9 @@ describe('blob colours', () => {
     expect(firstIdentity.colorSeed).toBe(secondIdentity.colorSeed);
     expect(firstIdentity.shapeSeed).not.toBe(secondIdentity.shapeSeed);
     expect(blobColor('glyph', firstIdentity)).toBe(blobColor('glyph', secondIdentity));
-    expect(blobColor('grok', firstIdentity)).toBe(blobColor('grok', secondIdentity));
-    expect(blobColor('grok', firstIdentity)).toBe(blobColor('glyph', firstIdentity));
-    const grouped = blobColor('grok', firstIdentity).match(/^var\(--glyph-(\d+)\)$/);
+    expect(blobColor('buddy', firstIdentity)).toBe(blobColor('buddy', secondIdentity));
+    expect(blobColor('buddy', firstIdentity)).toBe(blobColor('glyph', firstIdentity));
+    const grouped = blobColor('buddy', firstIdentity).match(/^var\(--glyph-(\d+)\)$/);
     expect(grouped).not.toBeNull();
     expect(Number(grouped?.[1])).toBeGreaterThanOrEqual(0);
     expect(Number(grouped?.[1])).toBeLessThan(AVATAR_COLOR_COUNT);

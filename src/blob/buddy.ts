@@ -1,14 +1,14 @@
 import { mulberry32 } from './seed';
 
-/** Flat, matte palette in the spirit of the Grok bot avatars. */
-export type GrokColor = {
+/** Flat, matte palette in the spirit of the Buddy avatars. */
+export type BuddyColor = {
   name: string;
   fill: string;
   /** Slightly darker tone used for the pupil so it reads on the flat body. */
   ink: string;
 };
 
-export const GROK_COLORS: GrokColor[] = [
+export const BUDDY_COLORS: BuddyColor[] = [
   { name: 'violet', fill: '#8b5cf6', ink: '#241a4a' },
   { name: 'magenta', fill: '#ff3fa4', ink: '#4a1030' },
   { name: 'scarlet', fill: '#ff4d4d', ink: '#4a1212' },
@@ -35,7 +35,7 @@ export const GROK_COLORS: GrokColor[] = [
   { name: 'spring', fill: '#34d399', ink: '#053a2a' },
 ];
 
-export type GrokShape = {
+export type BuddyShape = {
   name: string;
   /** Closed path inside a 100x100 viewBox. */
   path: string;
@@ -48,7 +48,7 @@ export type GrokShape = {
 };
 
 /** Squishy jelly silhouettes: wide domes, soft flattened bottoms, the odd bump or drip. */
-const BASE_GROK_SHAPES: GrokShape[] = [
+const BASE_BUDDY_SHAPES: BuddyShape[] = [
   {
     name: 'jelly',
     path: 'M50 16 C 70 14 90 30 91 54 C 92 72 82 86 62 88 C 54 89 46 89 38 88 C 18 86 8 72 9 54 C 10 30 30 18 50 16 Z',
@@ -184,7 +184,7 @@ const BASE_GROK_SHAPES: GrokShape[] = [
  * harmonics plus independent top/bottom squash gives smooth, closed, star-convex blobs — safe to
  * render without self-intersection. Deterministic per seed, so the picker's names stay stable.
  */
-type GrokHarmonic = { k: number; amp: number; phase: number };
+type BuddyHarmonic = { k: number; amp: number; phase: number };
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -210,8 +210,8 @@ const buildGeneratedShape = (
   radius: number,
   topScale: number,
   bottomScale: number,
-  harmonics: GrokHarmonic[]
-): Omit<GrokShape, 'name'> => {
+  harmonics: BuddyHarmonic[]
+): Omit<BuddyShape, 'name'> => {
   const cx = 50;
   const cy = 52;
   const samples = 48;
@@ -241,13 +241,13 @@ const buildGeneratedShape = (
   };
 };
 
-const generatedShape = (seed: number): Omit<GrokShape, 'name'> => {
+const generatedShape = (seed: number): Omit<BuddyShape, 'name'> => {
   const rng = mulberry32(seed * 2654435761 + 1013904223);
   const radius = 36 + rng() * 9;
   const topScale = 0.9 + rng() * 0.2;
   const bottomScale = 0.68 + rng() * 0.28;
   const harmonicCount = 1 + Math.floor(rng() * 3);
-  const harmonics: GrokHarmonic[] = [];
+  const harmonics: BuddyHarmonic[] = [];
   for (let index = 0; index < harmonicCount; index += 1) {
     // Bias toward 3–7 lobes so candidates read as distinct silhouettes, not just ovals.
     const k = index === 0 && rng() < 0.35 ? 2 : 3 + Math.floor(rng() * 5);
@@ -256,11 +256,11 @@ const generatedShape = (seed: number): Omit<GrokShape, 'name'> => {
   return buildGeneratedShape(radius, topScale, bottomScale, harmonics);
 };
 
-const GENERATED_GROK_SHAPES: GrokShape[] = [
+const GENERATED_BUDDY_SHAPES: BuddyShape[] = [
   2, 4, 5, 6, 9, 12, 15, 20, 21, 22, 24,
 ].map((seed) => ({
   name: `c${String(seed).padStart(2, '0')}`,
   ...generatedShape(seed),
 }));
 
-export const GROK_SHAPES: GrokShape[] = [...BASE_GROK_SHAPES, ...GENERATED_GROK_SHAPES];
+export const BUDDY_SHAPES: BuddyShape[] = [...BASE_BUDDY_SHAPES, ...GENERATED_BUDDY_SHAPES];

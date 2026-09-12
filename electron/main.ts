@@ -54,7 +54,7 @@ type Instance = {
 };
 
 const DEFAULT_THEME_ID = 'stone';
-const DEFAULT_BLOB_STYLE: BlobStyle = 'grok';
+const DEFAULT_BLOB_STYLE: BlobStyle = 'buddy';
 const DEFAULT_SESSION_WINDOW_HOURS = 48;
 
 const isWindowHours = (value: unknown): value is number =>

@@ -236,7 +236,7 @@ const queueSnapshot = (instanceId: string) => ({
 
 let settings: EmberSettings = {
   theme: 'stone',
-  blobStyle: 'grok',
+  blobStyle: 'buddy',
   sessionWindowHours: 48,
   hideToolCalls: false,
   reasoningDisplay: 'collapsed',

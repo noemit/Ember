@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { hashString, mulberry32, seedIdentity } from './seed';
 import { GLYPH_COLORS } from './contrast';
-import { GROK_COLORS, GROK_SHAPES } from './grok';
+import { BUDDY_COLORS, BUDDY_SHAPES } from './buddy';
 import { usePupilTracking } from './usePupilTracking';
 import type { AvatarIdentity, BallMood, BallState } from '../types';
 import './blob.css';
@@ -23,31 +23,31 @@ const accentFor = (mood: BallMood): string => {
   return 'var(--highlight)';
 };
 
-export default function GrokBlob({ seed, identity, size = 30, mood = 'idle', interactive = true }: Props) {
+export default function BuddyBlob({ seed, identity, size = 30, mood = 'idle', interactive = true }: Props) {
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const leftPupil = React.useRef<SVGGElement>(null);
   const rightPupil = React.useRef<SVGGElement>(null);
 
   const { color, shape, tilt, wobbleDelay, flipDelay, flipDuration } = React.useMemo(() => {
     const resolved = identity ?? seedIdentity(seed);
-    const colorRng = mulberry32(hashString(`grok:${resolved.colorSeed}`));
-    const shapeRng = mulberry32(hashString(`grok:${resolved.shapeSeed}`));
-    const motionRng = mulberry32(hashString(`grok:${resolved.motionSeed}`));
+    const colorRng = mulberry32(hashString(`buddy:${resolved.colorSeed}`));
+    const shapeRng = mulberry32(hashString(`buddy:${resolved.shapeSeed}`));
+    const motionRng = mulberry32(hashString(`buddy:${resolved.motionSeed}`));
     shapeRng();
     motionRng();
     motionRng();
     const groupedColor = Boolean(resolved.projectKey || resolved.colorIndex !== undefined);
     const colorIndex = resolved.colorIndex ?? Math.floor(
-      colorRng() * (groupedColor ? GLYPH_COLORS.length : GROK_COLORS.length)
+      colorRng() * (groupedColor ? GLYPH_COLORS.length : BUDDY_COLORS.length)
     );
-    const baseColor = GROK_COLORS[Math.abs(colorIndex) % GROK_COLORS.length];
+    const baseColor = BUDDY_COLORS[Math.abs(colorIndex) % BUDDY_COLORS.length];
     return {
       color: groupedColor
         ? { ...baseColor, fill: `var(--glyph-${Math.abs(colorIndex) % GLYPH_COLORS.length})` }
         : baseColor,
       shape:
-        GROK_SHAPES.find((entry) => entry.name === resolved.shapeName) ??
-        GROK_SHAPES[Math.floor(shapeRng() * GROK_SHAPES.length)],
+        BUDDY_SHAPES.find((entry) => entry.name === resolved.shapeName) ??
+        BUDDY_SHAPES[Math.floor(shapeRng() * BUDDY_SHAPES.length)],
       tilt: Math.round((motionRng() - 0.5) * 16),
       wobbleDelay: -(motionRng() * 4).toFixed(2),
       // Busy blobs flip once every ~9–16s; the negative delay spreads them out so a busy list
@@ -81,7 +81,7 @@ export default function GrokBlob({ seed, identity, size = 30, mood = 'idle', int
 
   return (
     <div
-      className="blob blob-grok"
+      className="blob blob-buddy"
       data-mood={mood}
       aria-hidden="true"
       ref={wrapperRef}

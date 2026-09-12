@@ -14,9 +14,9 @@
   transform-origin: center;
 }
 
-/* Grok's hop/flip wrappers rotate around the viewBox centre so body and eyes stay locked. */
-.blob-grok .blob-hop,
-.blob-grok .blob-flip {
+/* Buddy's hop/flip wrappers rotate around the viewBox centre so body and eyes stay locked. */
+.blob-buddy .blob-hop,
+.blob-buddy .blob-flip {
   transform-box: view-box;
   transform-origin: 50% 50%;
 }
@@ -27,8 +27,8 @@
 
 /* Idle and thinking share a slow, barely-there breathe. */
 .blob-glyph[data-state='idle'] .blob-body,
-.blob-grok[data-mood='idle'] .blob-hop,
-.blob-grok[data-mood='thinking'] .blob-hop {
+.blob-buddy[data-mood='idle'] .blob-hop,
+.blob-buddy[data-mood='thinking'] .blob-hop {
   animation: blob-breathe 4.2s ease-in-out infinite;
 }
 
@@ -37,36 +37,36 @@
 }
 
 /* Busy: big squash-and-stretch hops, with an occasional somersault layered on top. */
-.blob-grok[data-mood='busy'] .blob-hop {
+.blob-buddy[data-mood='busy'] .blob-hop {
   animation: blob-hop 1.15s cubic-bezier(0.4, 0, 0.5, 1) infinite;
 }
 
 /* The hop scales body and eyes together, which stretched the eyes with it. Counter-scale the eyes
    by 75% of the inverse so they mostly keep their shape while the body still squashes. The eyes
    must share the hop's duration and per-blob delay so the counter-scale stays in step. */
-.blob-grok[data-mood='busy'] .blob-eyes {
+.blob-buddy[data-mood='busy'] .blob-eyes {
   animation: blob-hop-eyes 1.15s cubic-bezier(0.4, 0, 0.5, 1) infinite;
 }
 
-.blob-grok[data-mood='busy'] .blob-flip {
+.blob-buddy[data-mood='busy'] .blob-flip {
   animation: blob-flip 12s cubic-bezier(0.62, 0, 0.38, 1) infinite;
 }
 
 /* Input / question / error move the body itself, no hop. */
-.blob-grok[data-mood='input'] {
+.blob-buddy[data-mood='input'] {
   animation: blob-wiggle 1.4s ease-in-out infinite;
 }
 
-.blob-grok[data-mood='question'] {
+.blob-buddy[data-mood='question'] {
   animation: blob-tilt 2.6s ease-in-out infinite;
 }
 
-.blob-grok[data-mood='error'] {
+.blob-buddy[data-mood='error'] {
   animation: blob-wobble 1.6s ease-in-out infinite;
 }
 
 /* Thinking: a soft single arc, loading-style. */
-.blob-grok .blob-arc {
+.blob-buddy .blob-arc {
   transform-box: view-box;
   transform-origin: 50% 50%;
   animation: blob-spin 4s linear infinite;

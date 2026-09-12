@@ -1,4 +1,4 @@
-import { GROK_COLORS, GROK_SHAPES, type GrokShape } from '../src/blob/grok';
+import { BUDDY_COLORS, BUDDY_SHAPES, type BuddyShape } from '../src/blob/buddy';
 
 type EyeStyle = 'normal' | 'wide' | 'x' | 'dizzy' | 'sad' | 'up' | 'roam';
 type OverlayStyle =
@@ -77,8 +77,8 @@ export const STATE_DESIGNS: StateDesign[] = [
   { id: 'e-crack', state: 'error', name: 'Cracked', description: 'X eyes with a crack across the body.', eyes: 'x', overlay: 'crack', motion: 'shake', accent: 'danger' },
 ];
 
-const SHAPE: GrokShape = GROK_SHAPES.find((shape) => shape.name === 'jelly') ?? GROK_SHAPES[0];
-const COLOR = GROK_COLORS.find((color) => color.name === 'violet') ?? GROK_COLORS[0];
+const SHAPE: BuddyShape = BUDDY_SHAPES.find((shape) => shape.name === 'jelly') ?? BUDDY_SHAPES[0];
+const COLOR = BUDDY_COLORS.find((color) => color.name === 'violet') ?? BUDDY_COLORS[0];
 
 const renderEye = (design: StateDesign, x: number): string => {
   const inner = (() => {

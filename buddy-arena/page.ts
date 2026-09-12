@@ -1,9 +1,9 @@
-import { GROK_COLORS, GROK_SHAPES, type GrokShape } from '../src/blob/grok';
+import { BUDDY_COLORS, BUDDY_SHAPES, type BuddyShape } from '../src/blob/buddy';
 
 const TILTS = [-4, 3, -2, 5, -3, 2, -5, 4];
 
-const renderBlob = (shape: GrokShape, colorIndex: number, tilt: number, state: 'idle' | 'active'): string => {
-  const color = GROK_COLORS[colorIndex % GROK_COLORS.length];
+const renderBlob = (shape: BuddyShape, colorIndex: number, tilt: number, state: 'idle' | 'active'): string => {
+  const color = BUDDY_COLORS[colorIndex % BUDDY_COLORS.length];
   const eye = (x: number) => `
         <g transform="translate(${x} ${shape.eyeY}) scale(${shape.eyeScale})">
           <ellipse rx="12" ry="13.5" fill="#ffffff" />
@@ -24,7 +24,7 @@ const renderBlob = (shape: GrokShape, colorIndex: number, tilt: number, state: '
   </div>`;
 };
 
-const card = (shape: GrokShape, colorIndex: number, tilt: number): string => `
+const card = (shape: BuddyShape, colorIndex: number, tilt: number): string => `
   <button class="card" type="button" data-name="${shape.name}">
     <div class="pair">
       <div class="state">
@@ -39,15 +39,15 @@ const card = (shape: GrokShape, colorIndex: number, tilt: number): string => `
     <span class="label">${shape.name}</span>
   </button>`;
 
-const handDrawn = GROK_SHAPES.filter((shape) => !/^c\d\d$/.test(shape.name));
-const generated = GROK_SHAPES.filter((shape) => /^c\d\d$/.test(shape.name));
+const handDrawn = BUDDY_SHAPES.filter((shape) => !/^c\d\d$/.test(shape.name));
+const generated = BUDDY_SHAPES.filter((shape) => /^c\d\d$/.test(shape.name));
 const currentCards = handDrawn.map((shape, index) => card(shape, index, TILTS[index % TILTS.length])).join('');
 const candidateCards = generated
   .map((shape, index) => card(shape, index + handDrawn.length, TILTS[(index + 3) % TILTS.length]))
   .join('');
 
 /** Teddy-bear head ideas with progressively more separated ears (deeper notch, chunkier lobes). */
-const TEDDY_IDEAS: GrokShape[] = [
+const TEDDY_IDEAS: BuddyShape[] = [
   {
     name: 'teddy-d',
     path: 'M50 36 C54 20 64 14 71 18 C78 22 79 33 75 40 C87 47 92 59 88 68 C82 82 67 90 50 90 C33 90 18 82 12 68 C8 59 13 47 25 40 C21 33 22 22 29 18 C36 14 46 20 50 36 Z',
@@ -157,7 +157,7 @@ export const PAGE = `<!doctype html>
 <body>
 <header>
   <h1>Buddy shape keep/drop</h1>
-  <p>All ${GROK_SHAPES.length} silhouettes at 55px, idle and active. Click a shape to <strong>drop</strong> it — everything not dropped is kept. Copy the kept names when you're done. <a href="/states">state review →</a></p>
+  <p>All ${BUDDY_SHAPES.length} silhouettes at 55px, idle and active. Click a shape to <strong>drop</strong> it — everything not dropped is kept. Copy the kept names when you're done. <a href="/states">state review →</a></p>
   <div class="controls">
     <label>Size <input id="size" type="range" min="30" max="120" value="55" /> <span class="size-value" id="sizeValue">55px</span></label>
     <button class="toggle" id="dark" aria-pressed="false">Dark</button>

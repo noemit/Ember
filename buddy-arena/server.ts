@@ -1,9 +1,9 @@
 /**
- * Buddy review arenas for the Grok ("Buddy") blob.
+ * Buddy review arenas for the Buddy blob.
  *
  *   bun run buddy-arena/server.ts   →  http://localhost:3004
  *
- *   /        shape review (shipped GROK_SHAPES + generated candidates)
+ *   /        shape review (shipped BUDDY_SHAPES + generated candidates)
  *   /states  alternative input / question / error / thinking visuals
  *   /hop     busy-hop eye-stretch comparison
  *   /thinking  chat header thinking-toggle icon review
@@ -11,7 +11,7 @@
  *
  * Nothing here is imported by the app.
  */
-import { GROK_SHAPES } from '../src/blob/grok';
+import { BUDDY_SHAPES } from '../src/blob/buddy';
 import { HOP_PAGE } from './hop';
 import { PAGE } from './page';
 import { PALETTE_PAGE } from './palette';
@@ -42,5 +42,5 @@ const server = Bun.serve({
 });
 
 console.log(`Buddy review → http://localhost:${server.port}`);
-console.log(`  shapes: ${GROK_SHAPES.length} shipped`);
+console.log(`  shapes: ${BUDDY_SHAPES.length} shipped`);
 console.log(`  states: ${STATE_DESIGNS.length} designs across busy/thinking/input/question/error`);

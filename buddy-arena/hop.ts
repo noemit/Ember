@@ -10,10 +10,10 @@
  *
  *   bun run buddy-arena/server.ts  →  http://localhost:3004/hop
  */
-import { GROK_COLORS, GROK_SHAPES } from '../src/blob/grok';
+import { BUDDY_COLORS, BUDDY_SHAPES } from '../src/blob/buddy';
 
-const SHAPE = GROK_SHAPES.find((shape) => shape.name === 'jelly') ?? GROK_SHAPES[0];
-const COLOR = GROK_COLORS.find((color) => color.name === 'violet') ?? GROK_COLORS[0];
+const SHAPE = BUDDY_SHAPES.find((shape) => shape.name === 'jelly') ?? BUDDY_SHAPES[0];
+const COLOR = BUDDY_COLORS.find((color) => color.name === 'violet') ?? BUDDY_COLORS[0];
 
 /** One hop keyframe: translateY plus the squash/stretch scale. */
 type Frame = { stop: string; ty: string; sx: number; sy: number };

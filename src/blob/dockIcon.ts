@@ -12,7 +12,7 @@ type BlobComponent = React.ComponentType<{
 
 const loadBlobComponent = async (style: BlobStyle): Promise<BlobComponent> => {
   if (style === 'glyph') return (await import('./GlyphBlob')).default;
-  return (await import('./GrokBlob')).default;
+  return (await import('./BuddyBlob')).default;
 };
 
 const CANVAS = 512;
@@ -82,10 +82,10 @@ export const renderDockIcon = async (
   const offset = (CANVAS - blobSize) / 2;
   ctx.drawImage(image, offset, offset, blobSize, blobSize);
 
-  // Blobs show state through motion, which a still image loses. Grok draws its own badge for
+  // Blobs show state through motion, which a still image loses. Buddy draws its own badge for
   // input/question/error and glyphs paint an error dot, so only the rest need a corner marker.
   const hasOwnBadge =
-    style === 'grok'
+    style === 'buddy'
       ? mood === 'input' || mood === 'question' || mood === 'error'
       : mood === 'error';
   if (!hasOwnBadge && mood !== 'idle') {

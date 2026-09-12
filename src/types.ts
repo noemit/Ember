@@ -83,7 +83,7 @@ export type BallMood = 'idle' | 'busy' | 'thinking' | 'input' | 'question' | 'er
 /** Where the open session's transcript is: first fetch in flight, failed (poll keeps retrying), or loaded. */
 export type MessagesStatus = 'loading' | 'error' | 'ready';
 
-export type BlobStyle = 'grok' | 'glyph';
+export type BlobStyle = 'buddy' | 'glyph';
 
 /** How assistant thinking blocks render: fully open, collapsed rows, or not at all. */
 export type ReasoningDisplay = 'expanded' | 'collapsed' | 'hidden';
