@@ -3,6 +3,7 @@ import { MotionConfig } from 'motion/react';
 import InstanceBar from './components/InstanceBar';
 import LeftRail from './components/LeftRail';
 import ChatView from './components/ChatView';
+import ColumnTabStrip, { type WorkspaceTab } from './components/ColumnTabStrip';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { applyTheme } from './themes';
 import {
@@ -54,15 +55,17 @@ import { copyText } from '@/lib/clipboard';
 import { sameMessages } from '@/lib/messageSignature';
 import { useEmberSettings } from './hooks/useEmberSettings';
 import { useFeedback } from './hooks/useFeedback';
-import { mergePolledQueues, useMessageQueue } from './hooks/useMessageQueue';
+import { mergePolledQueues, useMessageQueue, type QueueTarget } from './hooks/useMessageQueue';
 import { usePoll } from './hooks/usePoll';
 import { newSessionDirectoryPrefill, newSessionModelPrefill } from './lib/newSessionDefaults';
 import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
 import {
   MAX_OPEN_SESSIONS,
+  MIN_COLUMN_WIDTH,
   parseSessionKey,
   pruneWorkspace,
   sameWorkspace,
+  visibleColumns,
   type Workspace,
 } from './lib/workspace';
 import { modelRefKey, SESSION_WINDOWS, sessionKey } from './types';
@@ -116,6 +119,8 @@ const PREVIEW_CONCURRENCY = 4;
 const MESSAGE_CACHE_LIMIT = 32;
 const RECENT_MODEL_COUNT = 5;
 const CREATED_SESSION_GRACE_MS = 2 * 60_000;
+// Stable empty set for the draft/empty pane, so Transcript's memo isn't defeated each render.
+const NO_PINS = new Set<string>();
 
 /** Models the instance ran most recently, newest first, taken from its sessions' last-used model. */
 const recentModelKeys = (sessions: Session[]): string[] => {
@@ -211,6 +216,8 @@ export default function App() {
   const [scheduledTaskNames, setScheduledTaskNames] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(true);
   const [instancesLoaded, setInstancesLoaded] = React.useState(false);
+  // Width of the column area, measured with a ResizeObserver; how many columns fit depends on it.
+  const [workspaceWidth, setWorkspaceWidth] = React.useState(0);
   const [sendingKeys, setSendingKeys] = React.useState<Set<string>>(() => new Set());
   const [reloadingKeys, setReloadingKeys] = React.useState<Set<string>>(() => new Set());
   const [archivingKeys, setArchivingKeys] = React.useState<Set<string>>(() => new Set());
@@ -274,9 +281,9 @@ export default function App() {
   const selectedSessionRef = React.useRef<Session | null>(null);
   const activeKeyRef = React.useRef<string | null>(null);
   const openSessionsRef = React.useRef<string[]>([]);
-  const openKeysRef = React.useRef<Set<string>>(new Set());
   const minimizedKeysRef = React.useRef<Set<string>>(new Set());
   const workspaceHydratedRef = React.useRef(false);
+  const workspaceRef = React.useRef<HTMLDivElement | null>(null);
   const sessionsByInstanceRef = React.useRef<Record<string, Session[]>>({});
   const projectsByInstanceRef = React.useRef<Record<string, Project[]>>({});
   const pendingCreatedSessions = React.useRef(new Map<string, { session: Session; expiresAt: number }>());
@@ -438,8 +445,6 @@ export default function App() {
   const activeTranscript = selectedKey ? transcripts[selectedKey] : undefined;
   const cachedTranscript = selectedKey ? messageCacheRef.current.get(selectedKey) : undefined;
   const messages = activeTranscript?.messages ?? cachedTranscript ?? [];
-  const messagesStatus: MessagesStatus =
-    activeTranscript?.status ?? (cachedTranscript ? 'ready' : 'loading');
   // Thinking = an active session whose latest assistant turn is streaming with no tool running. The
   // selected session reads the live transcript; the rest use the warmed preview cache.
   const thinkingKeys = React.useMemo(() => {
@@ -466,7 +471,6 @@ export default function App() {
   React.useEffect(() => {
     clearActionErrorRetry();
   }, [selectedKey, clearActionErrorRetry]);
-  const sending = selectedKey ? sendingKeys.has(selectedKey) : false;
   // YOLO mode. When the instance supports server-side auto-accept, the server's per-session
   // policy is the truth (it's what OpenChamber shows as "Permission auto-accept"). Otherwise
   // fall back to a local override and Ember replies to prompts itself while the session is open.
@@ -573,21 +577,19 @@ export default function App() {
         { key: sessionAvatarKey(avatarPickerSession), kind: 'session' as const, label: 'This session' },
       ]
     : [];
-  const pinnedMessageIds = React.useMemo(() => {
-    if (!selected) return new Set<string>();
-    const prefix = `${sessionKey(selected)}::`;
+  const pinnedMessageIdsFor = (ref: SessionRef): Set<string> => {
+    const prefix = `${sessionKey(ref)}::`;
     return new Set(
       settings.pinnedMessages
         .filter((key) => key.startsWith(prefix))
         .map((key) => key.slice(prefix.length))
     );
-  }, [selected, settings.pinnedMessages]);
+  };
 
   // Sync the ref every render so the poller always sees the current directory.
   selectedSessionRef.current = selectedSession;
   activeKeyRef.current = selectedKey;
   openSessionsRef.current = openSessions;
-  openKeysRef.current = new Set(openSessions);
   minimizedKeysRef.current = minimizedSessions;
   sessionsByInstanceRef.current = sessionsByInstance;
   projectsByInstanceRef.current = projectsByInstance;
@@ -670,7 +672,9 @@ export default function App() {
   const openSession = React.useCallback((ref: SessionRef) => {
     const key = sessionKey(ref);
     setOpenSessions((prev) => {
-      const next = [...prev.filter((entry) => entry !== key), key];
+      // Opening an already-open session only activates it; keep tab order stable.
+      if (prev.includes(key)) return prev;
+      const next = [...prev, key];
       return next.length > MAX_OPEN_SESSIONS ? next.slice(next.length - MAX_OPEN_SESSIONS) : next;
     });
     setMinimizedSessions((prev) => {
@@ -682,6 +686,39 @@ export default function App() {
     setActiveSession(key);
     setNewSessionInstanceId(null);
     setNewSessionDirectory(null);
+  }, []);
+
+  const activateSession = React.useCallback((key: string) => {
+    setActiveSession(key);
+    setMinimizedSessions((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+
+  const minimizeSession = React.useCallback((key: string) => {
+    setMinimizedSessions((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+    setActiveSession((current) => {
+      if (current !== key) return current;
+      // Hand the active slot to the next still-visible session (if any).
+      return (
+        openSessionsRef.current.find(
+          (entry) => entry !== key && !minimizedKeysRef.current.has(entry)
+        ) ?? null
+      );
+    });
+  }, []);
+
+  const restoreSession = React.useCallback((key: string) => {
+    setMinimizedSessions((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    setActiveSession(key);
   }, []);
 
   const closeSession = React.useCallback((key: string) => {
@@ -698,6 +735,36 @@ export default function App() {
       return remaining.find((entry) => !minimizedKeysRef.current.has(entry)) ?? remaining[0] ?? null;
     });
   }, []);
+
+  // Measure the column area so the number of side-by-side columns matches the available width.
+  React.useEffect(() => {
+    const element = workspaceRef.current;
+    if (!element) return;
+    const update = () => setWorkspaceWidth(element.getBoundingClientRect().width);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  // Open sessions that fit as columns, active first when it would otherwise overflow. The rest
+  // stay open as numbered tabs in the strip.
+  const columns = React.useMemo(() => {
+    const base = visibleColumns(openSessions, minimizedSessions, workspaceWidth, MIN_COLUMN_WIDTH);
+    if (
+      activeSession &&
+      openSessions.includes(activeSession) &&
+      !minimizedSessions.has(activeSession) &&
+      !base.includes(activeSession)
+    ) {
+      return [activeSession, ...base.slice(0, Math.max(1, base.length) - 1)];
+    }
+    return base;
+  }, [openSessions, minimizedSessions, workspaceWidth, activeSession]);
+  const columnsRef = React.useRef<string[]>([]);
+  columnsRef.current = columns;
+  const columnKeySet = React.useMemo(() => new Set(columns), [columns]);
+
 
   // Persist the workspace after the initial restore. The guarded ref keeps the first render
   // (empty defaults) from clobbering what main just handed back.
@@ -930,20 +997,17 @@ export default function App() {
     const bridge = window.ember;
     if (!bridge.onEvent) return;
     const readySet = new Set(readyIds);
-    // A message hint is worth a transcript fetch only for an open, non-minimized column; other
-    // sessions fall back to refreshing the session list (their preview/`updated` is enough).
-    const isLoaded = (instanceId: string, sessionId: string) => {
-      const key = sessionKey({ instanceId, sessionId });
-      return openKeysRef.current.has(key) && !minimizedKeysRef.current.has(key);
-    };
+    // A message hint is worth a transcript fetch only for a session shown as a column; other
+    // sessions (tabs, minimized) fall back to refreshing the session list.
+    const isLoaded = (instanceId: string, sessionId: string) =>
+      columnsRef.current.includes(sessionKey({ instanceId, sessionId }));
 
     const catchUp = (instanceId: string) => {
       // The stream just (re)connected; anything that changed while it was down was missed.
       (['sessions', 'states', 'permissions', 'questions', 'queues', 'autoAccept'] as const).forEach((resource) =>
         invalidationQueue.push({ instanceId, resource })
       );
-      openKeysRef.current.forEach((key) => {
-        if (minimizedKeysRef.current.has(key)) return;
+      columnsRef.current.forEach((key) => {
         const ref = parseSessionKey(key);
         if (ref?.instanceId === instanceId) {
           invalidationQueue.push({ instanceId, resource: 'messages', sessionId: ref.sessionId });
@@ -1053,15 +1117,6 @@ export default function App() {
     };
   }, [sessions]);
 
-  // Visible = open and not manually minimized. Width-based overflow (columns → tabs) arrives in
-  // Phase 3; until then every open session counts as visible and polls its transcript.
-  const visibleKeys = React.useMemo(
-    () => openSessions.filter((key) => !minimizedSessions.has(key)),
-    [openSessions, minimizedSessions]
-  );
-  const visibleKeysRef = React.useRef<string[]>([]);
-  visibleKeysRef.current = visibleKeys;
-
   // Selecting a column refreshes it immediately; the poll below (and message events) keep it
   // fresh while the agent is working. Cached messages render before the fetch lands.
   React.useEffect(() => {
@@ -1069,23 +1124,25 @@ export default function App() {
     void refreshMessages(selected);
   }, [selected, refreshMessages]);
 
-  const visibleLive =
-    visibleKeys.length > 0 &&
-    visibleKeys.every((key) => {
+  // Only the columns actually on screen poll their transcripts; overflow/minimized tabs rely on
+  // the preview cache and the session list's `updated`.
+  const columnsLive =
+    columns.length > 0 &&
+    columns.every((key) => {
       const ref = parseSessionKey(key);
       return ref ? liveInstances[ref.instanceId] === true : false;
     });
   usePoll(
     async () => {
       await Promise.all(
-        visibleKeysRef.current.map((key) => {
+        columnsRef.current.map((key) => {
           const ref = parseSessionKey(key);
           return ref ? refreshMessages(ref) : Promise.resolve();
         })
       );
     },
-    visibleLive ? MESSAGES_POLL_LIVE_MS : STATE_POLL_MS,
-    visibleKeys.length > 0
+    columnsLive ? MESSAGES_POLL_LIVE_MS : STATE_POLL_MS,
+    columns.length > 0
   );
 
   const toggleInstance = (instanceId: string) =>
@@ -1300,13 +1357,19 @@ export default function App() {
   };
 
   const queue = useMessageQueue({
-    selected,
-    selectedSession,
-    selectedQueue,
     modelsByInstance,
     setQueuesByInstance,
     showActionError,
-    sendPrompt: handleSend,
+  });
+
+  /** Queue handlers are built per column; this binds one to its session. */
+  const queueTargetFor = (ref: SessionRef, session: Session | null): QueueTarget => ({
+    ref,
+    session,
+    queue:
+      (queuesByInstance[ref.instanceId] ?? []).find((entry) => entry.sessionId === ref.sessionId) ??
+      null,
+    send: (input) => sendTo(ref, session?.directory, input),
   });
 
   const handleReloadSession = async (session: Session) => {
@@ -1516,28 +1579,23 @@ export default function App() {
     }
   };
 
-  const handleAbort = async () => {
-    if (!selectedSession) return;
+  const handleAbort = async (session: Session) => {
     showActionError(null);
-    const key = sessionKey(selectedSession);
+    const key = sessionKey(session);
     try {
-      const aborted = await abortSession(selectedSession);
+      const aborted = await abortSession(session);
       if (!aborted) {
-        showActionError('Could not stop this agent.', () => void handleAbort());
+        showActionError('Could not stop this agent.', () => void handleAbort(session));
         return;
       }
-      const next = await loadMessages(
-        selectedSession.instanceId,
-        selectedSession.id,
-        selectedSession.directory
-      );
+      const next = await loadMessages(session.instanceId, session.id, session.directory);
       cacheMessages(key, next);
       setTranscriptFromFetch(key, next);
     } catch (err) {
       console.error('Abort refresh failed', err);
       showActionError(
         err instanceof Error ? err.message : 'Could not stop this agent.',
-        () => void handleAbort()
+        () => void handleAbort(session)
       );
     }
   };
@@ -1651,9 +1709,8 @@ export default function App() {
   usePoll(() => refreshScheduled(deadIdsRef.current), SCHEDULE_POLL_MS, projectsKnown && deadIds.length > 0);
   usePoll(() => refreshScheduled(liveIdsRef.current), SCHEDULE_POLL_LIVE_MS, projectsKnown && liveIds.length > 0);
 
-  const handleTogglePin = (message: ChatMessage) => {
-    if (!selected) return;
-    const key = messagePinKey(selected, message.id);
+  const handleTogglePin = (ref: SessionRef, message: ChatMessage) => {
+    const key = messagePinKey(ref, message.id);
     handleSettings({
       pinnedMessages: settings.pinnedMessages.includes(key)
         ? settings.pinnedMessages.filter((entry) => entry !== key)
@@ -1770,6 +1827,128 @@ export default function App() {
     lastStatusAnnouncementRef.current = { key: selectedKey, state: selectedState, signature };
   }, [selectedKey, selectedSession, selectedState, selectedPermissions, selectedQuestions, selectedQueue, announceStatus]);
 
+  const sessionByKey = React.useMemo(() => {
+    const map = new Map<string, Session>();
+    Object.values(sessionsByInstance)
+      .flat()
+      .forEach((session) => map.set(sessionKey(session), session));
+    return map;
+  }, [sessionsByInstance]);
+
+  const multiInstance = readyIds.length > 1;
+
+  const workspaceTabs: WorkspaceTab[] = React.useMemo(
+    () =>
+      openSessions.flatMap((key, index) => {
+        const session = sessionByKey.get(key);
+        if (!session) return [];
+        const ref = parseSessionKey(key);
+        return [
+          {
+            key,
+            title: session.title ?? session.id,
+            instanceLabel: multiInstance
+              ? instances.find((instance) => instance.id === ref?.instanceId)?.label
+              : undefined,
+            identity: avatarIdentities[key],
+            mood: moods[key] ?? 'idle',
+            number: index + 1,
+            active: key === activeSession,
+            visible: columnKeySet.has(key),
+            minimized: minimizedSessions.has(key),
+            archiving: archivingKeys.has(key),
+          } satisfies WorkspaceTab,
+        ];
+      }),
+    [openSessions, sessionByKey, multiInstance, instances, avatarIdentities, moods, activeSession, columnKeySet, minimizedSessions, archivingKeys]
+  );
+
+  /** One side-by-side column for an open session, with its own transcript, queue and handlers. */
+  const renderColumn = (key: string) => {
+    const ref = parseSessionKey(key);
+    const session = sessionByKey.get(key);
+    if (!ref || !session) return null;
+    const instance = instances.find((entry) => entry.id === ref.instanceId) ?? null;
+    const transcript = transcripts[key];
+    const cached = messageCacheRef.current.get(key);
+    const columnPermissions = permissions.filter(
+      (request) => request.instanceId === ref.instanceId && request.sessionId === ref.sessionId
+    );
+    const columnQuestions = questions.filter(
+      (request) => request.instanceId === ref.instanceId && request.sessionId === ref.sessionId
+    );
+    const models = modelsByInstance[ref.instanceId];
+    const policy = autoAcceptByInstance[ref.instanceId];
+    const serverAutoAccept = Boolean(policy?.supported);
+    const columnBypass = serverAutoAccept
+      ? policy?.sessions[ref.sessionId] ?? false
+      : bypassOverrides[key] ?? settings.instanceDefaults[ref.instanceId]?.bypass ?? false;
+    const target = queueTargetFor(ref, session);
+    return (
+      <div key={key} className="flex min-h-0 min-w-0 flex-1 basis-0 border-r last:border-r-0">
+        <ChatView
+          session={session}
+          instance={instance}
+          instanceMarkerColor={settings.instanceDefaults[ref.instanceId]?.markerColor}
+          newSessionInstanceId={null}
+          newSessionPrefill={null}
+          instances={instances}
+          projectsByInstance={projectsByInstance}
+          seed={key}
+          identity={avatarIdentities[key] ?? seedIdentity(key)}
+          state={states[key] ?? 'idle'}
+          mood={moods[key] ?? 'idle'}
+          blobStyle={settings.blobStyle}
+          messages={transcript?.messages ?? cached ?? []}
+          messagesStatus={transcript?.status ?? (cached ? 'ready' : 'loading')}
+          permissions={columnPermissions}
+          questions={columnQuestions}
+          models={models?.models ?? []}
+          defaultModelId={models?.defaultModelId ?? null}
+          recentModels={recentModelKeys(sessionsByInstance[ref.instanceId] ?? [])}
+          sending={sendingKeys.has(key)}
+          queue={target.queue}
+          reloading={reloadingKeys.has(key)}
+          bypass={columnBypass}
+          hideToolCalls={settings.hideToolCalls}
+          reasoningDisplay={settings.reasoningDisplay}
+          pinnedMessageIds={pinnedMessageIdsFor(ref)}
+          sessionNotes={settings.sessionNotes[key] ?? []}
+          savedComposerDrafts={settings.composerDrafts}
+          composerDraftsHydrated={settingsLoaded}
+          onComposerDraftsChange={handleComposerDraftsChange}
+          onTogglePin={(message) => handleTogglePin(ref, message)}
+          onSaveNote={handleSaveNote}
+          onDeleteNote={handleDeleteNote}
+          onHideToolCallsChange={(hide) => handleSettings({ hideToolCalls: hide })}
+          onReasoningDisplayChange={(mode) => handleSettings({ reasoningDisplay: mode })}
+          onBypassChange={(enabled) => void setYolo(ref, enabled, session.directory)}
+          onNewSessionInstanceChange={() => {}}
+          onCreateAndSend={handleCreateAndSend}
+          onCancelNewSession={cancelNewAgent}
+          onSend={(input) => sendTo(ref, session.directory, input)}
+          onQueue={(input) => queue.queueMessage(input, target)}
+          onSendQueued={(itemId) => queue.sendQueuedMessage(itemId, target)}
+          onQueuedModelChange={(itemId, model) => queue.changeQueuedModel(itemId, model, target)}
+          onMoveQueued={(itemId, direction) => queue.moveQueued(itemId, direction, target)}
+          onRemoveQueued={(itemId) => queue.removeQueued(itemId, target)}
+          onRetryQueued={(itemId) => queue.retryQueued(itemId, target)}
+          onDiscardQueued={(itemId) => queue.discardQueued(itemId, target)}
+          onReload={() => void handleReloadSession(session)}
+          onAbort={() => void handleAbort(session)}
+          onPermission={handlePermission}
+          onQuestion={handleQuestion}
+          compacting={compactingKeys.has(key)}
+          onCompact={() => void handleCompact(session)}
+          handoffing={handoffKeys.has(key)}
+          onHandoff={() => void handleHandoff(session)}
+          onMinimize={() => minimizeSession(key)}
+          onClose={() => closeSession(key)}
+        />
+      </div>
+    );
+  };
+
   return (
     <MotionConfig reducedMotion="user">
       <TooltipProvider delayDuration={300}>
@@ -1797,6 +1976,15 @@ export default function App() {
               setSettingsActivated(true);
               setSettingsOpen(true);
             }}
+          />
+
+          <ColumnTabStrip
+            tabs={workspaceTabs}
+            blobStyle={settings.blobStyle}
+            onActivate={activateSession}
+            onMinimize={minimizeSession}
+            onRestore={restoreSession}
+            onClose={closeSession}
           />
 
           <div className="relative flex min-h-0 flex-1">
@@ -1849,74 +2037,72 @@ export default function App() {
               }}
             />
 
-            <ChatView
-              session={selectedSession}
-              instance={selectedInstance}
-              instanceMarkerColor={selected?.instanceId ? settings.instanceDefaults[selected.instanceId]?.markerColor : undefined}
-              newSessionInstanceId={newSessionInstanceId}
-              newSessionPrefill={newSessionPrefill}
-              instances={instances}
-              projectsByInstance={projectsByInstance}
-              seed={selectedKey ?? ''}
-              identity={selectedIdentity}
-              state={selectedKey ? states[selectedKey] ?? 'idle' : 'idle'}
-              mood={selectedMood}
-              blobStyle={settings.blobStyle}
-              messages={messages}
-              messagesStatus={messagesStatus}
-              permissions={selectedPermissions}
-              questions={selectedQuestions}
-              models={selectedModels?.models ?? []}
-              defaultModelId={selectedModels?.defaultModelId ?? null}
-              recentModels={recentModels}
-              sending={sending}
-              queue={selectedQueue}
-              reloading={selectedKey ? reloadingKeys.has(selectedKey) : false}
-              bypass={bypass}
-              hideToolCalls={settings.hideToolCalls}
-              reasoningDisplay={settings.reasoningDisplay}
-              pinnedMessageIds={pinnedMessageIds}
-              sessionNotes={selectedKey ? settings.sessionNotes[selectedKey] ?? [] : []}
-              savedComposerDrafts={settings.composerDrafts}
-              composerDraftsHydrated={settingsLoaded}
-              onComposerDraftsChange={handleComposerDraftsChange}
-              onTogglePin={handleTogglePin}
-              onSaveNote={handleSaveNote}
-              onDeleteNote={handleDeleteNote}
-              onHideToolCallsChange={(hide) => handleSettings({ hideToolCalls: hide })}
-              onReasoningDisplayChange={(mode) => handleSettings({ reasoningDisplay: mode })}
-              onBypassChange={(enabled) => {
-                if (selected) void setYolo(selected, enabled, selectedSession?.directory);
-              }}
-              onNewSessionInstanceChange={(instanceId) => {
-                setNewSessionInstanceId(instanceId);
-                setNewSessionDirectory(null);
-              }}
-              onCreateAndSend={handleCreateAndSend}
-              onCancelNewSession={cancelNewAgent}
-              onSend={handleSend}
-              onQueue={queue.queueMessage}
-              onSendQueued={queue.sendQueuedMessage}
-              onQueuedModelChange={queue.changeQueuedModel}
-              onMoveQueued={queue.moveQueued}
-              onRemoveQueued={queue.removeQueued}
-              onRetryQueued={queue.retryQueued}
-              onDiscardQueued={queue.discardQueued}
-              onReload={() => {
-                if (selectedSession) void handleReloadSession(selectedSession);
-              }}
-              onAbort={() => void handleAbort()}
-              onPermission={handlePermission}
-              onQuestion={handleQuestion}
-              compacting={selectedSession ? compactingKeys.has(sessionKey(selectedSession)) : false}
-              onCompact={() => {
-                if (selectedSession) void handleCompact(selectedSession);
-              }}
-              handoffing={selectedSession ? handoffKeys.has(sessionKey(selectedSession)) : false}
-              onHandoff={() => {
-                if (selectedSession) void handleHandoff(selectedSession);
-              }}
-            />
+            <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+              {newSessionInstanceId || columns.length === 0 ? (
+                <ChatView
+                  session={null}
+                  instance={selectedInstance}
+                  instanceMarkerColor={undefined}
+                  newSessionInstanceId={newSessionInstanceId}
+                  newSessionPrefill={newSessionPrefill}
+                  instances={instances}
+                  projectsByInstance={projectsByInstance}
+                  seed={selectedKey ?? (newSessionInstanceId ? `new:${newSessionInstanceId}` : '')}
+                  identity={selectedIdentity}
+                  state="idle"
+                  mood={selectedMood}
+                  blobStyle={settings.blobStyle}
+                  messages={[]}
+                  messagesStatus="ready"
+                  permissions={[]}
+                  questions={[]}
+                  models={selectedModels?.models ?? []}
+                  defaultModelId={selectedModels?.defaultModelId ?? null}
+                  recentModels={recentModels}
+                  sending={false}
+                  queue={null}
+                  reloading={false}
+                  bypass={false}
+                  hideToolCalls={settings.hideToolCalls}
+                  reasoningDisplay={settings.reasoningDisplay}
+                  pinnedMessageIds={NO_PINS}
+                  sessionNotes={[]}
+                  savedComposerDrafts={settings.composerDrafts}
+                  composerDraftsHydrated={settingsLoaded}
+                  onComposerDraftsChange={handleComposerDraftsChange}
+                  onTogglePin={() => {}}
+                  onSaveNote={handleSaveNote}
+                  onDeleteNote={handleDeleteNote}
+                  onHideToolCallsChange={(hide) => handleSettings({ hideToolCalls: hide })}
+                  onReasoningDisplayChange={(mode) => handleSettings({ reasoningDisplay: mode })}
+                  onBypassChange={() => {}}
+                  onNewSessionInstanceChange={(instanceId) => {
+                    setNewSessionInstanceId(instanceId);
+                    setNewSessionDirectory(null);
+                  }}
+                  onCreateAndSend={handleCreateAndSend}
+                  onCancelNewSession={cancelNewAgent}
+                  onSend={handleSend}
+                  onQueue={async () => false}
+                  onSendQueued={async () => false}
+                  onQueuedModelChange={async () => false}
+                  onMoveQueued={async () => false}
+                  onRemoveQueued={async () => false}
+                  onRetryQueued={async () => false}
+                  onDiscardQueued={() => false}
+                  onReload={() => {}}
+                  onAbort={() => {}}
+                  onPermission={handlePermission}
+                  onQuestion={handleQuestion}
+                  compacting={false}
+                  onCompact={() => {}}
+                  handoffing={false}
+                  onHandoff={() => {}}
+                />
+              ) : (
+                columns.map(renderColumn)
+              )}
+            </div>
           </div>
 
           <React.Suspense fallback={null}>

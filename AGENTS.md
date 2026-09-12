@@ -41,15 +41,19 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   (`mergePolledSessions`), and an optimistic user bubble keeps its id registered until a poll shows
   the server's copy (`releaseReconciledOptimistic`), so neither can flicker out. The workspace is
   `openSessions` (ordered keys) plus `activeSession`; `selected` is derived from `activeSession`, and
-  a per-key `transcripts` map backs every open column. The transcript poll and `isLoaded` predicate
-  cover the open, non-minimized keys. Open/minimized keys are persisted in Ember settings and pruned
-  when their instance or session is archived/gone (`src/lib/workspace.ts`, `pruneWorkspace`). The
-  rail lists active sessions only; archived ones are collected into `archivedSessions` behind the top
-  bar's archive screen, and a project's `+` seeds the new-agent draft with `newSessionDirectory`.
+  a per-key `transcripts` map backs every open column. A `ResizeObserver` measures the column area
+  and `visibleColumns` (in `src/lib/workspace.ts`) decides how many open sessions render side by side
+  (`MIN_COLUMN_WIDTH` 420); the active session is swapped into view when it would otherwise overflow.
+  The transcript poll and `isLoaded` predicate cover the visible columns. Open/minimized keys are
+  persisted in Ember settings and pruned when their instance or session is archived/gone
+  (`pruneWorkspace`). The rail lists active sessions only; archived ones are collected into
+  `archivedSessions` behind the top bar's archive screen, and a project's `+` seeds the new-agent
+  draft with `newSessionDirectory`.
 - `src/hooks/` — concerns pulled out of App: `useFeedback` (error banner + retry, notice toast,
   live-region announcements), `useEmberSettings` (optimistic writes to main with revision guarding),
-  `useMessageQueue` (the server-owned queue handlers, see Notes), `usePoll` (run-then-wait loop
-  with a variable interval).
+  `useMessageQueue` (the server-owned queue handlers, see Notes; every handler takes an explicit
+  `QueueTarget` so one hook instance serves all columns), `usePoll` (run-then-wait loop with a
+  variable interval).
 - `src/lib/` — `useStableCallback` (pin a prop's identity for `React.memo` children),
   `messageSignature` (digest-based change detection for polls), `invalidation` (event → resource
   mapping and the coalescing `InvalidationQueue`), `projectGroups` (`buildRailEntries` grouping +
@@ -80,7 +84,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   then compacts the fork so the new session carries just the summary and the source is left
   untouched (`POST /api/openchamber/sessions/:id/fork` + `/api/session/:id/summarize`). The
   same two display settings are also editable from the top bar's View options dialog
-  (`ViewOptionsDialog.tsx`).
+  (`ViewOptionsDialog.tsx`). As a workspace column it also shows minimize/close controls in the
+  header (`onMinimize`/`onClose`).
 - `src/components/LeftRail.tsx` — the rail is a single recency-ordered list from
   `src/lib/projectGroups.ts` (`buildRailEntries`): a session inside a configured project groups into
   a `ProjectCard` (name, a `+` that starts a new agent in that project's directory, and a strip of
@@ -95,6 +100,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `session.archived`.
 - `src/components/ArchiveDialog.tsx` — the top-bar archive screen (`archivedSessions`): every
   archived session grouped by project (or as a standalone row), with restore.
+- `src/components/ColumnTabStrip.tsx` — the numbered open-session strip under the top bar. Columns
+  and overflow/minimized sessions share one numbering (1-based `openSessions` order); a tab click
+  activates/restores, the chevron minimizes/restores (sticky across restarts), and the × closes.
+  Renders nothing when no sessions are open.
 - `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.

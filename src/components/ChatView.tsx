@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Box, ChevronDown, GitFork, Loader2, MessageCircleQuestion, NotebookPen, Paperclip, Pin, Play, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, Box, ChevronDown, GitFork, Loader2, MessageCircleQuestion, Minimize2, NotebookPen, Paperclip, Pin, Play, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
@@ -131,6 +131,10 @@ type Props = {
   /** True while this session is being forked into a handoff session. */
   handoffing: boolean;
   onHandoff: () => void;
+  /** Column chrome: collapse this column into the tab strip. */
+  onMinimize?: () => void;
+  /** Column chrome: close this session's column. */
+  onClose?: () => void;
 };
 
 
@@ -277,6 +281,8 @@ export default function ChatView({
   onCompact,
   handoffing,
   onHandoff,
+  onMinimize,
+  onClose,
 }: Props) {
   const [text, setText] = React.useState('');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
@@ -736,6 +742,40 @@ export default function ChatView({
               >
                 <ToolCallsIcon hidden={hideToolCalls} casing="var(--muted)" className="size-3.5" />
               </Toggle>
+              {onMinimize || onClose ? (
+                <div className="flex items-center gap-0.5">
+                  {onMinimize ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={onMinimize}
+                          aria-label="Minimize session"
+                        >
+                          <Minimize2 className="size-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Minimize to a tab</TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                  {onClose ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={onClose}
+                          aria-label="Close session"
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Close session</TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                </div>
+              ) : null}
             </header>
 
             <React.Suspense fallback={<TranscriptFallback />}>

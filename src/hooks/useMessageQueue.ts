@@ -56,30 +56,33 @@ export const mergePolledQueues = (
   return merged;
 };
 
+/**
+ * The session a queue mutation applies to. Handlers take this explicitly so one hook instance can
+ * serve every open column, rather than only the active session.
+ */
+export type QueueTarget = {
+  ref: SessionRef;
+  session: Session | null;
+  queue: MessageQueueSession | null;
+  /** Sends a prompt on this target's session; "Send now" hands an item to it. */
+  send: (input: PromptInput) => Promise<boolean>;
+};
+
 type Options = {
-  selected: SessionRef | null;
-  selectedSession: Session | null;
-  selectedQueue: MessageQueueSession | null;
   modelsByInstance: Record<string, ModelList>;
   setQueuesByInstance: React.Dispatch<React.SetStateAction<Record<string, MessageQueueSession[]>>>;
   showActionError: (message: string | null, retry?: () => void) => void;
-  /** Sends a prompt on the selected session; the queue hands items to this when "Send now" is used. */
-  sendPrompt: (input: PromptInput) => Promise<boolean>;
 };
 
 /**
- * OpenChamber's server-owned follow-up queue for the selected session: add, send now, change
- * model, cancel, reorder. Every mutation is applied optimistically and the server's returned
- * queue snapshot replaces it; failures roll the local copy back and offer a retry.
+ * OpenChamber's server-owned follow-up queue: add, send now, change model, cancel, reorder. Every
+ * mutation is applied optimistically and the server's returned queue snapshot replaces it; failures
+ * roll the local copy back and offer a retry. Each handler takes the session it targets.
  */
 export const useMessageQueue = ({
-  selected,
-  selectedSession,
-  selectedQueue,
   modelsByInstance,
   setQueuesByInstance,
   showActionError,
-  sendPrompt,
 }: Options) => {
   const applyQueueMutation = React.useCallback(
     (instanceId: string, mutation: { session: MessageQueueSession } | null) => {
@@ -98,15 +101,13 @@ export const useMessageQueue = ({
     [setQueuesByInstance]
   );
 
-  /** Swap the selected session's queue for `queue` (used for optimistic edits and rollback). */
-  const replaceSelectedQueue = (queue: MessageQueueSession, keepWhenEmpty = true) => {
-    if (!selected) return;
+  /** Swap a session's queue for `queue` (used for optimistic edits and rollback). */
+  const replaceQueue = (target: QueueTarget, queue: MessageQueueSession, keepWhenEmpty = true) => {
+    const { instanceId, sessionId } = target.ref;
     setQueuesByInstance((prev) => {
-      const without = (prev[selected.instanceId] ?? []).filter(
-        (entry) => entry.sessionId !== selected.sessionId
-      );
+      const without = (prev[instanceId] ?? []).filter((entry) => entry.sessionId !== sessionId);
       const keep = keepWhenEmpty || queue.items.length || queue.sendingId;
-      return { ...prev, [selected.instanceId]: keep ? [queue, ...without] : without };
+      return { ...prev, [instanceId]: keep ? [queue, ...without] : without };
     });
   };
 
@@ -162,9 +163,11 @@ export const useMessageQueue = ({
   // original input is kept here so Retry can replay it after a failure.
   const pendingInputsRef = React.useRef(new Map<string, QueueMessageInput>());
 
-  const updateSelectedQueue = (updater: (queue: MessageQueueSession | null) => MessageQueueSession | null) => {
-    if (!selected) return;
-    const { instanceId, sessionId } = selected;
+  const updateQueue = (
+    target: QueueTarget,
+    updater: (queue: MessageQueueSession | null) => MessageQueueSession | null
+  ) => {
+    const { instanceId, sessionId } = target.ref;
     setQueuesByInstance((prev) => {
       const list = prev[instanceId] ?? [];
       const current = list.find((entry) => entry.sessionId === sessionId) ?? null;
@@ -174,12 +177,11 @@ export const useMessageQueue = ({
     });
   };
 
-  const insertLocalItem = (item: QueuedMessage) => {
-    if (!selected) return;
-    updateSelectedQueue((queue) => {
+  const insertLocalItem = (target: QueueTarget, item: QueuedMessage) => {
+    updateQueue(target, (queue) => {
       const base = queue ?? {
-        sessionId: selected.sessionId,
-        directory: selectedSession?.directory ?? '',
+        sessionId: target.ref.sessionId,
+        directory: target.session?.directory ?? '',
         items: [],
         sendingId: null,
       };
@@ -187,16 +189,16 @@ export const useMessageQueue = ({
     });
   };
 
-  const patchLocalItem = (itemId: string, patch: Partial<QueuedMessage>) => {
-    updateSelectedQueue((queue) =>
+  const patchLocalItem = (target: QueueTarget, itemId: string, patch: Partial<QueuedMessage>) => {
+    updateQueue(target, (queue) =>
       queue
         ? { ...queue, items: queue.items.map((item) => (item.id === itemId ? { ...item, ...patch } : item)) }
         : queue
     );
   };
 
-  const removeLocalItem = (itemId: string) => {
-    updateSelectedQueue((queue) => {
+  const removeLocalItem = (target: QueueTarget, itemId: string) => {
+    updateQueue(target, (queue) => {
       if (!queue) return queue;
       const items = queue.items.filter((item) => item.id !== itemId);
       return items.length > 0 || queue.sendingId ? { ...queue, items } : null;
@@ -204,31 +206,31 @@ export const useMessageQueue = ({
   };
 
   const enqueueLocal = async (
+    target: QueueTarget,
     localId: string,
-    instanceId: string,
-    sessionId: string,
     directory: string,
     input: QueueMessageInput
   ): Promise<boolean> => {
+    const { instanceId, sessionId } = target.ref;
     try {
       const queued = await enqueueMessage(instanceId, sessionId, directory, input);
       if (!queued.ok || !queued.data) {
         if (queued.status === 404) {
           pendingInputsRef.current.delete(localId);
-          removeLocalItem(localId);
+          removeLocalItem(target, localId);
           showActionError('This OpenChamber instance does not support message queueing yet.');
         } else {
-          patchLocalItem(localId, { pending: false, error: 'Could not queue this message.' });
+          patchLocalItem(target, localId, { pending: false, error: 'Could not queue this message.' });
         }
         return false;
       }
       pendingInputsRef.current.delete(localId);
-      removeLocalItem(localId);
+      removeLocalItem(target, localId);
       applyQueueMutation(instanceId, queued.data);
       return true;
     } catch (err) {
       console.error('Queue failed', err);
-      patchLocalItem(localId, {
+      patchLocalItem(target, localId, {
         pending: false,
         error: err instanceof Error ? err.message : 'Could not queue this message.',
       });
@@ -236,11 +238,10 @@ export const useMessageQueue = ({
     }
   };
 
-  const queueMessage = async (input: PromptInput): Promise<boolean> => {
-    if (!selected) return false;
+  const queueMessage = async (input: PromptInput, target: QueueTarget): Promise<boolean> => {
     showActionError(null);
-    const { instanceId, sessionId } = selected;
-    const directory = selectedSession?.directory;
+    const { instanceId } = target.ref;
+    const directory = target.session?.directory;
     if (!directory) {
       showActionError('Could not queue this message because the session folder is unknown.');
       return false;
@@ -257,7 +258,7 @@ export const useMessageQueue = ({
     const localId = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const queuedInput: QueueMessageInput = { ...input, model };
     pendingInputsRef.current.set(localId, queuedInput);
-    insertLocalItem({
+    insertLocalItem(target, {
       id: localId,
       createdAt: Date.now(),
       text: input.text,
@@ -277,31 +278,29 @@ export const useMessageQueue = ({
       agentMention: input.agentMention,
       pending: true,
     });
-    return enqueueLocal(localId, instanceId, sessionId, directory, queuedInput);
+    return enqueueLocal(target, localId, directory, queuedInput);
   };
 
-  const retryQueued = async (itemId: string): Promise<boolean> => {
-    if (!selected) return false;
+  const retryQueued = async (itemId: string, target: QueueTarget): Promise<boolean> => {
     const input = pendingInputsRef.current.get(itemId);
-    const directory = selectedSession?.directory;
+    const directory = target.session?.directory;
     if (!input || !directory) return false;
     showActionError(null);
-    patchLocalItem(itemId, { pending: true, error: undefined });
-    return enqueueLocal(itemId, selected.instanceId, selected.sessionId, directory, input);
+    patchLocalItem(target, itemId, { pending: true, error: undefined });
+    return enqueueLocal(target, itemId, directory, input);
   };
 
-  const discardQueued = (itemId: string): boolean => {
+  const discardQueued = (itemId: string, target: QueueTarget): boolean => {
     if (!pendingInputsRef.current.has(itemId)) return false;
     pendingInputsRef.current.delete(itemId);
-    removeLocalItem(itemId);
+    removeLocalItem(target, itemId);
     return true;
   };
 
-  const sendQueuedMessage = async (itemId: string): Promise<boolean> => {
-    if (!selected) return false;
+  const sendQueuedMessage = async (itemId: string, target: QueueTarget): Promise<boolean> => {
     showActionError(null);
-    const { instanceId, sessionId } = selected;
-    const directory = selectedSession?.directory;
+    const { instanceId, sessionId } = target.ref;
+    const directory = target.session?.directory;
     if (!directory) {
       showActionError('Could not send this queued message because the session folder is unknown.');
       return false;
@@ -313,13 +312,13 @@ export const useMessageQueue = ({
       if (!taken.ok || !taken.data) {
         showActionError(
           takeErrorMessage(taken.status),
-          taken.status === 409 || taken.status === 404 ? undefined : () => void sendQueuedMessage(itemId)
+          taken.status === 409 || taken.status === 404 ? undefined : () => void sendQueuedMessage(itemId, target)
         );
         return false;
       }
       applyQueueMutation(instanceId, taken.data);
       input = queuedMessageInput(instanceId, taken.data.item);
-      if (await sendPrompt(input)) return true;
+      if (await target.send(input)) return true;
 
       // Taken but not sent: put it back so nothing is lost.
       const requeued = await enqueueMessage(instanceId, sessionId, directory, input);
@@ -330,7 +329,7 @@ export const useMessageQueue = ({
         requeued.ok
           ? 'Could not send the queued message now; it was returned to the queue.'
           : 'Could not send the queued message now or return it to the queue.',
-        retryId ? () => void sendQueuedMessage(retryId) : () => void sendPrompt(retryInput)
+        retryId ? () => void sendQueuedMessage(retryId, target) : () => void target.send(retryInput)
       );
       return false;
     } catch (err) {
@@ -338,7 +337,7 @@ export const useMessageQueue = ({
       const retryInput = input;
       showActionError(
         err instanceof Error ? err.message : 'Could not send the queued message now.',
-        retryInput ? () => void sendPrompt(retryInput) : () => void sendQueuedMessage(itemId)
+        retryInput ? () => void target.send(retryInput) : () => void sendQueuedMessage(itemId, target)
       );
       return false;
     }
@@ -347,15 +346,17 @@ export const useMessageQueue = ({
   const changeQueuedModel = async (
     itemId: string,
     nextModel: ModelOption,
+    target: QueueTarget,
     nextVariant?: string
   ): Promise<boolean> => {
-    if (!selected || !selectedQueue) return false;
+    const queue = target.queue;
+    if (!queue) return false;
     showActionError(null);
-    const { instanceId, sessionId } = selected;
-    const directory = selectedSession?.directory;
-    const originalIndex = selectedQueue.items.findIndex((item) => item.id === itemId);
+    const { instanceId, sessionId } = target.ref;
+    const directory = target.session?.directory;
+    const originalIndex = queue.items.findIndex((item) => item.id === itemId);
     if (!directory || originalIndex < 0) return false;
-    const queuedItem = selectedQueue.items[originalIndex];
+    const queuedItem = queue.items[originalIndex];
     const validNextVariant = nextVariant && nextModel.details.variants.includes(nextVariant)
       ? nextVariant
       : undefined;
@@ -364,7 +365,7 @@ export const useMessageQueue = ({
       queuedItem.sendConfig.modelID === nextModel.modelID &&
       queuedItem.sendConfig.variant === validNextVariant
     ) return true;
-    if (selectedQueue.sendingId) {
+    if (queue.sendingId) {
       showActionError('Wait until the current queued message finishes sending before changing models.');
       return false;
     }
@@ -432,81 +433,82 @@ export const useMessageQueue = ({
       }
       showActionError(
         err instanceof Error ? err.message : 'Could not change the queued message model.',
-        takenItem ? undefined : () => void changeQueuedModel(itemId, nextModel, nextVariant)
+        takenItem ? undefined : () => void changeQueuedModel(itemId, nextModel, target, nextVariant)
       );
       return false;
     }
   };
 
-  const removeQueued = async (itemId: string): Promise<boolean> => {
-    if (!selected) return false;
+  const removeQueued = async (itemId: string, target: QueueTarget): Promise<boolean> => {
     showActionError(null);
-    const previousQueue = selectedQueue;
+    const previousQueue = target.queue;
     if (previousQueue) {
-      replaceSelectedQueue(
+      replaceQueue(
+        target,
         { ...previousQueue, items: previousQueue.items.filter((item) => item.id !== itemId) },
         false
       );
     }
-    const rollback = () => previousQueue && replaceSelectedQueue(previousQueue);
+    const rollback = () => previousQueue && replaceQueue(target, previousQueue);
 
     try {
-      const removed = await removeQueuedMessage(selected.instanceId, selected.sessionId, itemId);
+      const removed = await removeQueuedMessage(target.ref.instanceId, target.ref.sessionId, itemId);
       if (!removed.ok || !removed.data) {
         rollback();
         showActionError(
           removed.status === 409
             ? 'That queued message is already being sent.'
             : 'Could not cancel the queued message.',
-          removed.status === 409 ? undefined : () => void removeQueued(itemId)
+          removed.status === 409 ? undefined : () => void removeQueued(itemId, target)
         );
         return false;
       }
-      applyQueueMutation(selected.instanceId, removed.data);
+      applyQueueMutation(target.ref.instanceId, removed.data);
       return true;
     } catch (err) {
       console.error('Cancel queued message failed', err);
       rollback();
       showActionError(
         err instanceof Error ? err.message : 'Could not cancel the queued message.',
-        () => void removeQueued(itemId)
+        () => void removeQueued(itemId, target)
       );
       return false;
     }
   };
 
-  const moveQueued = async (itemId: string, direction: -1 | 1): Promise<boolean> => {
-    if (!selected || !selectedQueue || selectedQueue.sendingId) return false;
+  const moveQueued = async (itemId: string, direction: -1 | 1, target: QueueTarget): Promise<boolean> => {
+    const queue = target.queue;
+    if (!queue || queue.sendingId) return false;
     showActionError(null);
-    const index = selectedQueue.items.findIndex((item) => item.id === itemId);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= selectedQueue.items.length) return false;
+    const index = queue.items.findIndex((item) => item.id === itemId);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= queue.items.length) return false;
 
-    const previousQueue = selectedQueue;
-    const items = [...selectedQueue.items];
-    [items[index], items[target]] = [items[target], items[index]];
-    replaceSelectedQueue({ ...selectedQueue, items });
-    const rollback = () => replaceSelectedQueue(previousQueue);
+    const previousQueue = queue;
+    const items = [...queue.items];
+    [items[index], items[targetIndex]] = [items[targetIndex], items[index]];
+    replaceQueue(target, { ...queue, items });
+    const rollback = () => replaceQueue(target, previousQueue);
 
     try {
       const reordered = await reorderQueuedMessages(
-        selected.instanceId,
-        selected.sessionId,
+        target.ref.instanceId,
+        target.ref.sessionId,
         items.map((item) => item.id)
       );
       if (!reordered.ok || !reordered.data) {
         rollback();
-        showActionError('Could not reorder the queued messages.', () => void moveQueued(itemId, direction));
+        showActionError('Could not reorder the queued messages.', () => void moveQueued(itemId, direction, target));
         return false;
       }
-      applyQueueMutation(selected.instanceId, reordered.data);
+      applyQueueMutation(target.ref.instanceId, reordered.data);
       return true;
     } catch (err) {
       console.error('Reorder queued messages failed', err);
       rollback();
       showActionError(
         err instanceof Error ? err.message : 'Could not reorder the queued messages.',
-        () => void moveQueued(itemId, direction)
+        () => void moveQueued(itemId, direction, target)
       );
       return false;
     }
