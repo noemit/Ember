@@ -103,7 +103,7 @@ export const perceptualDistance = (a: string, b: string): number =>
 /** OKLCH hue of a hex colour in degrees [0, 360); GLYPH_COLORS is sorted by this (rainbow order). */
 export const colorHue = (hex: string): number => rgbToOklch(hexToRgb(hex))[2];
 
-export const AVATAR_COLOR_COUNT = 24;
+export const AVATAR_COLOR_COUNT = 22;
 /** The yellow slot, forced because sampling always lands on a dark olive (see buildGlyphColors). */
 const BRIGHT_YELLOW = '#ffd60a';
 export const INSTANCE_MARKER_COLORS = [
@@ -123,10 +123,38 @@ const oklchToHex = (lightness: number, chroma: number, hue: number): string => {
 };
 
 /**
+ * Drop the two most redundant violet/magenta tones. Farthest-point sampling keeps a lot of them
+ * because they sit far from the rest of the wheel, but at picker size four purples and four pinks
+ * read as similar shades. Removing the entries closest to a neighbour (and, on a tie, the least
+ * chromatic) merges them without touching the other hues.
+ */
+const mergeVioletTones = (colors: string[]): string[] => {
+  const band = colors
+    .map((hex, index) => {
+      const [, chroma, hue] = rgbToOklch(hexToRgb(hex));
+      return { hex, index, hue, chroma };
+    })
+    .filter((entry) => entry.hue >= 275);
+  if (band.length <= 2) return colors;
+
+  const scored = band.map((entry) => {
+    let nearest = Infinity;
+    colors.forEach((other) => {
+      if (other !== entry.hex) nearest = Math.min(nearest, perceptualDistance(entry.hex, other));
+    });
+    return { ...entry, nearest };
+  });
+  scored.sort((a, b) => a.nearest - b.nearest || a.chroma - b.chroma);
+  const removed = new Set(scored.slice(0, 2).map((entry) => entry.index));
+  return colors.filter((_, index) => !removed.has(index));
+};
+
+/**
  * Candidate colours spread across hue, lightness and chroma, then farthest-point sampled so every
  * pick is as far as possible from the ones already chosen. That guarantees a minimum OKLab
  * distance across the palette instead of relying on a hand-tuned HSL band, which repeatedly
- * collapsed into near-duplicate greens and blues.
+ * collapsed into near-duplicate greens and blues. Two extra colours are sampled so
+ * {@link mergeVioletTones} can merge a pair and still land on AVATAR_COLOR_COUNT.
  */
 const buildGlyphColors = (): string[] => {
   const candidates: Array<{ hex: string; lab: Oklab }> = [];
@@ -158,7 +186,7 @@ const buildGlyphColors = (): string[] => {
 
   const chosen = [candidates[seedIndex]];
   const nearest = candidates.map((candidate) => oklabDistance(candidate.lab, chosen[0].lab));
-  while (chosen.length < AVATAR_COLOR_COUNT) {
+  while (chosen.length < AVATAR_COLOR_COUNT + 2) {
     let bestIndex = 0;
     for (let index = 1; index < candidates.length; index += 1) {
       if (nearest[index] > nearest[bestIndex]) bestIndex = index;
@@ -188,7 +216,7 @@ const buildGlyphColors = (): string[] => {
 
   // Index order is the picker's display order, so lay the picks out as a rainbow (ascending OKLCH
   // hue). Sampling is order-independent, so this only changes which index a colour lands on.
-  return colors.sort((a, b) => colorHue(a) - colorHue(b));
+  return mergeVioletTones(colors.sort((a, b) => colorHue(a) - colorHue(b)));
 };
 
 export const GLYPH_COLORS = buildGlyphColors();

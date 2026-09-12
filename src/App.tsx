@@ -510,21 +510,28 @@ export default function App() {
   const avatarPickerProject = avatarPickerSession
     ? projectForSession(avatarPickerSession, projectsByInstance[avatarPickerSession.instanceId] ?? [])
     : null;
+  // Appearance belongs to the project/folder, so that scope comes first and is the picker's
+  // default; the scheduled-task and single-session scopes stay available underneath it.
+  const avatarPickerFolderName = avatarPickerSession?.directory
+    ? avatarPickerSession.directory.split(/[\\/]/).filter(Boolean).pop() ?? avatarPickerSession.directory
+    : null;
   const avatarPickerScopes = avatarPickerSession
     ? [
-        { key: sessionAvatarKey(avatarPickerSession), label: 'This session' },
-        ...(avatarPickerIdentity.taskKey
-          ? [{
-              key: avatarPickerIdentity.taskKey,
-              label: `Scheduled task: ${scheduledTaskNames[avatarPickerIdentity.taskKey] ?? 'this task'}`,
-            }]
-          : []),
         ...(avatarPickerIdentity.projectKey
           ? [{
               key: avatarPickerIdentity.projectKey,
-              label: avatarPickerProject ? `Project: ${avatarPickerProject.name}` : 'This folder',
+              kind: 'project' as const,
+              label: avatarPickerProject ? `Project: ${avatarPickerProject.name}` : `Folder: ${avatarPickerFolderName}`,
             }]
           : []),
+        ...(avatarPickerIdentity.taskKey
+          ? [{
+              key: avatarPickerIdentity.taskKey,
+              kind: 'task' as const,
+              label: `Scheduled task: ${scheduledTaskNames[avatarPickerIdentity.taskKey] ?? 'this task'}`,
+            }]
+          : []),
+        { key: sessionAvatarKey(avatarPickerSession), kind: 'session' as const, label: 'This session' },
       ]
     : [];
   const pinnedMessageIds = React.useMemo(() => {
@@ -1816,7 +1823,13 @@ export default function App() {
             <React.Suspense fallback={<DialogFallback label="Loading appearance…" />}>
               <AvatarPicker
                 open
-                title={avatarPickerSession.title ?? avatarPickerSession.id}
+                title={
+                  avatarPickerProject
+                    ? `Project: ${avatarPickerProject.name}`
+                    : avatarPickerFolderName
+                      ? `Folder: ${avatarPickerFolderName}`
+                      : avatarPickerSession.title ?? avatarPickerSession.id
+                }
                 style={settings.blobStyle}
                 identity={avatarPickerIdentity}
                 scopes={avatarPickerScopes}

@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/select';
 import type { AvatarIdentity, AvatarOverride, BlobStyle } from '../types';
 
-type Scope = { key: string; label: string };
+type Scope = { key: string; label: string; kind: 'project' | 'task' | 'session' };
 
 type Props = {
   open: boolean;
@@ -57,6 +57,7 @@ export default function AvatarPicker({
       : [];
 
   const firstScopeKey = scopes[0]?.key ?? '';
+  const scopeKind = scopes.find((scope) => scope.key === scopeKey)?.kind ?? 'session';
   const scopeSignature = scopes.map((scope) => scope.key).join('\u0000');
 
   React.useEffect(() => {
@@ -83,18 +84,27 @@ export default function AvatarPicker({
         </DialogHeader>
 
         <div className="flex min-h-0 touch-pan-y flex-col gap-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-xs font-medium">Apply to</span>
-            <Select value={scopeKey} onValueChange={setScopeKey}>
-              <SelectTrigger size="sm" className="w-[min(220px,58vw)]" aria-label="Appearance scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {scopes.map((scope) => (
-                  <SelectItem key={scope.key} value={scope.key}>{scope.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-medium">Apply to</span>
+              <Select value={scopeKey} onValueChange={setScopeKey}>
+                <SelectTrigger size="sm" className="w-[min(220px,58vw)]" aria-label="Appearance scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopes.map((scope) => (
+                    <SelectItem key={scope.key} value={scope.key}>{scope.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              {scopeKind === 'project'
+                ? 'Shared by every session in this project or folder.'
+                : scopeKind === 'task'
+                  ? 'Used only by this scheduled task.'
+                  : 'Used only by this session.'}
+            </span>
           </div>
 
           <div className="flex items-center gap-4 rounded-xl border bg-muted/30 p-4">

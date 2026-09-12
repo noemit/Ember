@@ -3,7 +3,7 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const DEFAULT_LOCAL_PORT = 57123;
 
 /** Mirrors AVATAR_COLOR_COUNT in src/blob/contrast.ts (the two tsconfig roots can't share it). */
-const AVATAR_COLOR_COUNT = 24;
+const AVATAR_COLOR_COUNT = 22;
 
 export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 

@@ -38,13 +38,14 @@
 
 /* Busy: big squash-and-stretch hops, with an occasional somersault layered on top. */
 .blob-grok[data-mood='busy'] .blob-hop {
-  animation: blob-hop 0.9s cubic-bezier(0.4, 0, 0.5, 1) infinite;
+  animation: blob-hop 1.15s cubic-bezier(0.4, 0, 0.5, 1) infinite;
 }
 
 /* The hop scales body and eyes together, which stretched the eyes with it. Counter-scale the eyes
-   by 75% of the inverse so they mostly keep their shape while the body still squashes. */
+   by 75% of the inverse so they mostly keep their shape while the body still squashes. The eyes
+   must share the hop's duration so the counter-scale stays in step. */
 .blob-grok[data-mood='busy'] .blob-eyes {
-  animation: blob-hop-eyes 0.9s cubic-bezier(0.4, 0, 0.5, 1) infinite;
+  animation: blob-hop-eyes 1.15s cubic-bezier(0.4, 0, 0.5, 1) infinite;
 }
 
 .blob-grok[data-mood='busy'] .blob-flip {
