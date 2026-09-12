@@ -1035,7 +1035,7 @@ export default function ChatView({
               className="min-h-9 w-full bg-transparent px-3 pt-2 pb-1 text-base placeholder:text-muted-foreground focus-visible:border-input focus-visible:ring-0 disabled:cursor-not-allowed sm:px-3.5 sm:text-[13px]"
             />
 
-            <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 sm:gap-1.5">
+            <div className="flex items-center gap-1 overflow-x-auto px-2 pt-1.5 pb-2 sm:gap-1.5">
               <Button
                 variant="ghost"
                 size="sm"
