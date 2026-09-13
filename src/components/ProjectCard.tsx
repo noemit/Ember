@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { motion } from 'motion/react';
-import { Plus } from 'lucide-react';
+import { Box, Plus } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobStripLayout } from '@/lib/projectGroups';
 import { cn } from '@/lib/utils';
@@ -94,7 +94,10 @@ export default function ProjectCard({
           {project.name}
         </span>
         {instanceLabel ? (
-          <span className="truncate text-[10px] text-muted-foreground">{instanceLabel}</span>
+          <span className="flex min-w-0 items-center gap-0.5 text-[10px] text-muted-foreground">
+            <Box className="size-2.5 flex-none" aria-hidden="true" />
+            <span className="truncate">{instanceLabel}</span>
+          </span>
         ) : null}
         <Tooltip>
           <TooltipTrigger asChild>

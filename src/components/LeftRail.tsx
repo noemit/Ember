@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, LayoutGroup } from 'motion/react';
-import { Archive, ChevronDown, Clock3, Plus, Search, Settings, X } from 'lucide-react';
+import { Archive, Box, ChevronDown, Clock3, Plus, Search, Settings, X } from 'lucide-react';
 import { normalizeDirectory, projectForSession } from '../blob/seed';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
@@ -201,11 +201,24 @@ export default function LeftRail({
       : undefined);
   const instanceLabelOf = (session: Session): string | undefined =>
     instanceById[session.instanceId]?.label;
-  const topMetaFor = (session: Session): string | undefined => {
-    const parts = [folderNameOf(session), instanceLabelOf(session)].filter(
-      (part): part is string => Boolean(part)
+  // Instance name, shown with the same cube glyph as the chat header's instance badge.
+  const instanceMeta = (label: string): React.ReactNode => (
+    <span className="flex min-w-0 items-center gap-0.5">
+      <Box className="size-2.5 flex-none" aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+  const topMetaFor = (session: Session): React.ReactNode => {
+    const folder = folderNameOf(session);
+    const instance = instanceLabelOf(session);
+    if (!folder && !instance) return undefined;
+    return (
+      <>
+        {folder ? <span className="truncate">{folder}</span> : null}
+        {folder && instance ? <span aria-hidden>·</span> : null}
+        {instance ? instanceMeta(instance) : null}
+      </>
     );
-    return parts.length > 0 ? parts.join(' · ') : undefined;
   };
 
   const renderSession = (session: Session) => {
@@ -250,7 +263,7 @@ export default function LeftRail({
           instanceLabel={multiInstance ? instance?.label : undefined}
           projectName={undefined}
           titleOverride={entry.project.name}
-          topMeta={instance?.label}
+          topMeta={instance?.label ? instanceMeta(instance.label) : undefined}
           preview={previews[key]}
           selected={key === selectedKey}
           mood={moods[key] ?? 'idle'}

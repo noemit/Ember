@@ -92,9 +92,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   then compacts the fork so the new session carries just the summary and the source is left
   untouched (`POST /api/openchamber/sessions/:id/fork` + `/api/session/:id/summarize`). The
   same two display settings are also editable from the top bar's View options dialog
-  (`ViewOptionsDialog.tsx`). As a workspace column it also shows minimize/close controls in the
-  header (`onMinimize`/`onClose`) and calls `onActivate` on pointer-down, so the active session (and
-  the rail's ring/highlight) follows the column the user is working in.
+  (`ViewOptionsDialog.tsx`). As a workspace column it also shows an archive button next to the
+  instance badge (`onArchive`) and minimize/close controls in the header (`onMinimize`/`onClose`),
+  and calls `onActivate` on pointer-down so the active session (and the rail's ring/highlight)
+  follows the column the user is working in.
 - `src/components/InstanceBar.tsx` — the top bar (Ember wordmark, command palette, view options,
   instances menu, settings). App passes the error/notice toasts as `banner`, so they render inline
   next to the search button; both self-dismiss (errors after three minutes).

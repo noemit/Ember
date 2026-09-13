@@ -57,7 +57,7 @@ export type SessionRowProps = {
   /** Overrides the title text; used by a one-session project row to show the project name. */
   titleOverride?: string;
   /** Shown as a small line above the title (e.g. "Project · instance"); moves it out of the meta row. */
-  topMeta?: string;
+  topMeta?: React.ReactNode;
   /** When set, renders a `+` that starts a new session in the row's project. */
   onNewAgent?: () => void;
   onSelect: (session: Session) => void;
@@ -167,7 +167,7 @@ const SessionRow = React.memo(function SessionRow({
 
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               {topMeta ? (
-                <span className="truncate text-[10px] font-medium tracking-wide text-muted-foreground">
+                <span className="flex min-w-0 items-center gap-1 text-[10px] font-medium tracking-wide text-muted-foreground">
                   {topMeta}
                 </span>
               ) : null}

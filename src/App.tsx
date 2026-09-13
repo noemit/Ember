@@ -2135,6 +2135,7 @@ export default function App() {
           onMinimize={() => minimizeSession(key)}
           onClose={() => closeSession(key)}
           onActivate={() => activateSession(key)}
+          onArchive={() => void handleArchive(session, true)}
         />
       </div>
     );

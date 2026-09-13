@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Box, ChevronDown, GitFork, Loader2, MessageCircleQuestion, Minimize2, NotebookPen, Paperclip, Pin, Play, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { Archive, ArrowUp, Box, ChevronDown, GitFork, Loader2, MessageCircleQuestion, Minimize2, NotebookPen, Paperclip, Pin, Play, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
@@ -141,6 +141,8 @@ type Props = {
   onClose?: () => void;
   /** Called when the user interacts with this column, so the active session follows focus. */
   onActivate?: () => void;
+  /** Archive this session from its header (next to the instance badge). */
+  onArchive?: () => void;
 };
 
 
@@ -292,6 +294,7 @@ export default function ChatView({
   onMinimize,
   onClose,
   onActivate,
+  onArchive,
 }: Props) {
   const [text, setText] = React.useState('');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
@@ -747,6 +750,22 @@ export default function ChatView({
                   <Box aria-hidden="true" />
                   {instance.label}
                 </Badge>
+              ) : null}
+              {onArchive ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={onArchive}
+                      aria-label="Archive session"
+                      className="text-muted-foreground"
+                    >
+                      <Archive className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Archive session</TooltipContent>
+                </Tooltip>
               ) : null}
               <Button
                 variant="outline"
