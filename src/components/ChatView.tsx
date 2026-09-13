@@ -143,6 +143,8 @@ type Props = {
   onActivate?: () => void;
   /** Archive this session from its header (next to the instance badge). */
   onArchive?: () => void;
+  /** The column the user is working in; inactive columns trim their composer chrome. Defaults true. */
+  active?: boolean;
 };
 
 
@@ -295,6 +297,7 @@ export default function ChatView({
   onClose,
   onActivate,
   onArchive,
+  active = true,
 }: Props) {
   const [text, setText] = React.useState('');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
@@ -1148,15 +1151,17 @@ export default function ChatView({
                   event.target.value = '';
                 }}
               />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="size-7 flex-none"
-                aria-label="Attach a file"
-                onClick={() => fileRef.current?.click()}
-              >
-                <Paperclip />
-              </Button>
+              {active ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-7 flex-none"
+                  aria-label="Attach a file"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Paperclip />
+                </Button>
+              ) : null}
 
               {session && !notesOpen && sessionNotes.length > 0 ? (
                 <Button
@@ -1220,7 +1225,7 @@ export default function ChatView({
                 ) : null}
               </div>
 
-              {session && contextUsage ? (
+              {active && session && contextUsage ? (
                 <ContextMeter
                   used={contextUsage.used}
                   limit={contextUsage.limit}
@@ -1229,7 +1234,7 @@ export default function ChatView({
                 />
               ) : null}
 
-              {session ? (
+              {active && session ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -1273,7 +1278,7 @@ export default function ChatView({
                 ) : null}
               </AnimatePresence>
 
-              {session ? (
+              {active && session ? (
                 <Button
                   size="icon-sm"
                   variant="ghost"

@@ -2081,6 +2081,24 @@ export default function App() {
 
   const multiInstance = readyIds.length > 1;
 
+  // The column the user is working in: whichever they last clicked, focused or scrolled. Before
+  // any interaction (or if that session left), the most recently updated visible column stands in
+  // using data already in hand — no polling. If timestamps are missing, any non-idle column will do.
+  const featuredKey = React.useMemo(() => {
+    if (activeSession && columns.includes(activeSession)) return activeSession;
+    let best: string | null = null;
+    let bestUpdated = -Infinity;
+    for (const key of columns) {
+      const updated = sessionByKey.get(key)?.updated ?? 0;
+      if (updated > bestUpdated) {
+        bestUpdated = updated;
+        best = key;
+      }
+    }
+    if (best && bestUpdated > 0) return best;
+    return columns.find((key) => (states[key] ?? 'idle') !== 'idle') ?? columns[0] ?? null;
+  }, [activeSession, columns, sessionByKey, states]);
+
   const workspaceTabs: WorkspaceTab[] = React.useMemo(
     () =>
       openSessions.flatMap((key, index) => {
@@ -2130,10 +2148,21 @@ export default function App() {
       : bypassOverrides[key] ?? settings.instanceDefaults[ref.instanceId]?.bypass ?? false;
     const target = queueTargetFor(ref, session);
     return (
-      <div key={key} className="flex min-h-0 min-w-0 flex-1 basis-0 border-r last:border-r-0">
+      <div
+        key={key}
+        style={{ flexGrow: key === featuredKey ? 1.12 : 1 }}
+        className="flex min-h-0 min-w-0 flex-1 basis-0 border-r transition-[flex-grow] duration-200 ease-out last:border-r-0"
+        onWheelCapture={() => {
+          if (key !== activeSession) activateSession(key);
+        }}
+        onFocusCapture={() => {
+          if (key !== activeSession) activateSession(key);
+        }}
+      >
         <ChatView
           session={session}
           instance={instance}
+          active={key === featuredKey}
           instanceMarkerColor={settings.instanceDefaults[ref.instanceId]?.markerColor}
           newSessionInstanceId={null}
           newSessionPrefill={null}
