@@ -10,13 +10,13 @@ import {
   loadAllSessions,
   loadAutoAcceptPolicy,
   loadMessages,
+  loadMessageTail,
   loadModels,
   loadProjects,
   loadQuestions,
   loadSessions,
   loadScheduledIdentityData,
   mergePolledSessions,
-  reconcilePolledMessages,
   removeQueuedMessage,
   reorderQueuedMessages,
   replyPermission,
@@ -133,6 +133,45 @@ describe('session loading', () => {
 
     setRequest(async () => ({ ok: true, status: 200, data: [] }));
     expect(await loadMessages('local', 'session')).toEqual([]);
+  });
+
+  test('full loads send no limit; tail loads encode directory and limit', async () => {
+    const paths: string[] = [];
+    setRequest(async (_instanceId, _method, path) => {
+      paths.push(path);
+      return { ok: true, status: 200, data: [] };
+    });
+
+    await loadMessages('local', 'session', '/workspace/ember');
+    await loadMessageTail('local', 'session', '/workspace/ember', 8);
+    await loadMessageTail('local', 'session');
+
+    expect(paths[0]).toBe('/api/session/session/message?directory=%2Fworkspace%2Fember');
+    expect(paths[1]).toBe('/api/session/session/message?directory=%2Fworkspace%2Fember&limit=8');
+    expect(paths[2]).toBe('/api/session/session/message?limit=8');
+  });
+
+  test('tail loads slice to the latest limit and normalize identically to full loads', async () => {
+    const record = (id: string, text: string) => ({
+      info: { id, role: 'user', time: { created: 1 }, model: { providerID: 'p', modelID: 'm' } },
+      parts: [{ id: `${id}-text`, type: 'text', text }],
+    });
+    const data = [record('m1', 'one'), record('m2', 'two'), record('m3', 'three')];
+    setRequest(async () => ({ ok: true, status: 200, data }));
+
+    expect(await loadMessages('local', 'session')).toEqual(
+      await loadMessageTail('local', 'session', undefined, 3)
+    );
+    // A server that ignores `limit` still yields a bounded tail.
+    expect((await loadMessageTail('local', 'session', undefined, 2)).map((m) => m.id)).toEqual(['m2', 'm3']);
+  });
+
+  test('distinguishes an empty tail success from a request failure', async () => {
+    setRequest(async () => ({ ok: true, status: 200, data: [] }));
+    expect(await loadMessageTail('local', 'session')).toEqual([]);
+
+    setRequest(async () => ({ ok: false, status: 503, data: null }));
+    await expect(loadMessageTail('local', 'session')).rejects.toThrow();
   });
 
   test('normalizes model and timing metadata for user and assistant messages', async () => {
@@ -1002,35 +1041,5 @@ describe('message submission', () => {
       variant: 'high',
       messageID: 'msg_123',
     });
-  });
-
-  test('replaces an optimistic message when the poll returns its server copy', () => {
-    const previous = userMessage('msg_previous', 'Earlier');
-    const optimistic = userMessage('msg_optimistic', 'Hello');
-    const server = userMessage('msg_optimistic', 'Hello');
-
-    expect(
-      reconcilePolledMessages(
-        [previous, optimistic],
-        [previous, server],
-        new Set([optimistic.id])
-      )
-    ).toEqual([previous, server]);
-  });
-
-  test('matches a new legacy server id without consuming an older identical message', () => {
-    const previous = userMessage('msg_previous', 'Hello');
-    const optimistic = userMessage('msg_optimistic', 'Hello');
-    const server = userMessage('msg_server', 'Hello');
-    const pending = new Set([optimistic.id]);
-
-    expect(reconcilePolledMessages([previous, optimistic], [previous], pending)).toEqual([
-      previous,
-      optimistic,
-    ]);
-    expect(reconcilePolledMessages([previous, optimistic], [previous, server], pending)).toEqual([
-      previous,
-      server,
-    ]);
   });
 });

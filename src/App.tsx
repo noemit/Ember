@@ -15,7 +15,7 @@ import {
   seedIdentity,
   sessionAvatarKey,
 } from './blob/seed';
-import { isThinkingMessages, moodFrom } from './blob/mood';
+import { moodFrom } from './blob/mood';
 import {
   abortSession,
   createClientMessageId,
@@ -30,14 +30,13 @@ import {
   loadAllSessions,
   loadAllSessionStates,
   loadMessages,
+  loadMessageTail,
   loadPermissions,
   loadQuestions,
   loadSessionStates,
   loadModels,
   loadScheduledIdentityData,
   mergePolledSessions,
-  previewOf,
-  reconcilePolledMessages,
   rejectQuestion,
   replyPermission,
   replyQuestion,
@@ -53,7 +52,11 @@ import {
 } from './api';
 import { useStableCallback } from '@/lib/useStableCallback';
 import { copyText } from '@/lib/clipboard';
-import { sameMessages } from '@/lib/messageSignature';
+import { summarizeMessages, type SessionMessageSummary } from '@/lib/messageSummary';
+import {
+  reconcileFullTranscript,
+  reconcileTranscriptTail,
+} from '@/lib/transcriptReconciliation';
 import { useEmberSettings } from './hooks/useEmberSettings';
 import { useFeedback } from './hooks/useFeedback';
 import { mergePolledQueues, useMessageQueue, type QueueTarget } from './hooks/useMessageQueue';
@@ -117,9 +120,11 @@ const MESSAGES_POLL_LIVE_MS = 20_000;
 const SCHEDULE_POLL_LIVE_MS = 5 * 60_000;
 const PREVIEW_COUNT = 24;
 const PREVIEW_CONCURRENCY = 4;
-// Transcripts kept warm for instant switching. Must cover PREVIEW_COUNT or the preview
-// loader evicts what it just fetched.
-const MESSAGE_CACHE_LIMIT = 32;
+// Progressive tails for rail previews, largest last: stop as soon as a preview is found.
+const PREVIEW_LIMITS = [8, 32, 128] as const;
+// Transcripts kept warm for instant switching. Preview warming writes summaries only, never the
+// message cache, so this covers the visible columns plus a little slack for quick switches.
+const MESSAGE_CACHE_LIMIT = MAX_OPEN_SESSIONS + 4;
 const RECENT_MODEL_COUNT = 5;
 const CREATED_SESSION_GRACE_MS = 2 * 60_000;
 // Stable empty set for the draft/empty pane, so Transcript's memo isn't defeated each render.
@@ -169,6 +174,9 @@ const sameNumberRecord = (a: Record<string, number>, b: Record<string, number>):
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 };
 
+const sameSummary = (a: SessionMessageSummary, b: SessionMessageSummary): boolean =>
+  a.preview === b.preview && a.failed === b.failed && a.thinking === b.thinking && a.version === b.version;
+
 const composerDraftSignature = (drafts: Record<string, StoredComposerDraft>): string =>
   JSON.stringify(
     Object.keys(drafts).sort().map((key) => {
@@ -210,8 +218,7 @@ export default function App() {
   const [queuesByInstance, setQueuesByInstance] = React.useState<
     Record<string, MessageQueueSession[]>
   >({});
-  const [previews, setPreviews] = React.useState<Record<string, string>>({});
-  const [previewVersions, setPreviewVersions] = React.useState<Record<string, number | undefined>>({});
+  const [summaries, setSummaries] = React.useState<Record<string, SessionMessageSummary>>({});
   const [openSessions, setOpenSessions] = React.useState<string[]>([]);
   const [activeSession, setActiveSession] = React.useState<string | null>(null);
   const [minimizedSessions, setMinimizedSessions] = React.useState<Set<string>>(() => new Set());
@@ -234,7 +241,6 @@ export default function App() {
   // Local fallback for instances whose OpenChamber predates server-side auto-accept.
   const [bypassOverrides, setBypassOverrides] = React.useState<Record<string, boolean>>({});
   const [autoAcceptByInstance, setAutoAcceptByInstance] = React.useState<Record<string, AutoAcceptPolicy>>({});
-  const [failedKeys, setFailedKeys] = React.useState<Set<string>>(() => new Set());
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [viewOptionsOpen, setViewOptionsOpen] = React.useState(false);
   const [viewOptionsActivated, setViewOptionsActivated] = React.useState(false);
@@ -305,18 +311,34 @@ export default function App() {
       if (shouldDrop(pending)) pendingCreatedSessions.current.delete(key);
     });
   };
-  const pendingOptimisticIds = React.useRef(new Set<string>());
-  // Once a reconciled transcript no longer carries an optimistic bubble, the server has its
-  // own copy and the id can be released. Ids of failed sends are released by their caller.
-  const releaseReconciledOptimistic = (messages: ChatMessage[]) => {
-    if (pendingOptimisticIds.current.size === 0) return;
-    const stillPending = new Set(messages.map((message) => message.id));
-    [...pendingOptimisticIds.current].forEach((id) => {
-      if (!stillPending.has(id)) pendingOptimisticIds.current.delete(id);
-    });
+  // Pending optimistic sends, scoped per session so one column's fetch can never release another's.
+  const pendingOptimisticIds = React.useRef(new Map<string, Set<string>>());
+  const pendingFor = (key: string): Set<string> => {
+    let ids = pendingOptimisticIds.current.get(key);
+    if (!ids) {
+      ids = new Set();
+      pendingOptimisticIds.current.set(key, ids);
+    }
+    return ids;
+  };
+  const releaseOptimistic = (key: string, ids: readonly string[]) => {
+    if (ids.length === 0) return;
+    const pending = pendingOptimisticIds.current.get(key);
+    if (!pending) return;
+    ids.forEach((id) => pending.delete(id));
+    if (pending.size === 0) pendingOptimisticIds.current.delete(key);
   };
   const bypassReplyIds = React.useRef(new Set<string>());
   const messageCacheRef = React.useRef(new Map<string, ChatMessage[]>());
+  // A rendered transcript can outlive its LRU cache entry; read it through a ref so a tail still
+  // merges against what is on screen rather than treating the column as empty.
+  const transcriptsRef = React.useRef(transcripts);
+  transcriptsRef.current = transcripts;
+  const summariesRef = React.useRef<Record<string, SessionMessageSummary>>(summaries);
+  summariesRef.current = summaries;
+  // One deduplicated full repair per session when a tail has no safe overlap to merge.
+  const fullRepairRef = React.useRef<(key: string) => void>(() => {});
+  const fullRepairInFlight = React.useRef(new Set<string>());
   const scheduledBindingsRef = React.useRef<Record<string, string>>({});
   const lastStatusAnnouncementRef = React.useRef<{
     key: string;
@@ -332,17 +354,6 @@ export default function App() {
       if (oldest === undefined) break;
       cache.delete(oldest);
     }
-    // The status endpoint never reports errors, so the transcript is the source of truth: a
-    // turn that ended in a failure (not a user stop) puts the session in the error state.
-    const last = messagesForSession[messagesForSession.length - 1];
-    const failed = Boolean(last && last.role === 'assistant' && last.error && !last.aborted);
-    setFailedKeys((prev) => {
-      if (prev.has(key) === failed) return prev;
-      const next = new Set(prev);
-      if (failed) next.add(key);
-      else next.delete(key);
-      return next;
-    });
   };
 
   const setTranscriptFor = (
@@ -357,22 +368,59 @@ export default function App() {
     });
   };
 
-  // A fetched transcript keeps the previous array when nothing changed, so memoized children
-  // don't re-render just because a poll returned an identical body.
-  const setTranscriptFromFetch = (key: string, next: ChatMessage[]) => {
-    setTranscripts((prev) => {
-      const current = prev[key];
-      const messagesForSession = current && sameMessages(current.messages, next) ? current.messages : next;
-      if (current && current.messages === messagesForSession && current.status === 'ready') return prev;
-      return { ...prev, [key]: { messages: messagesForSession, status: 'ready' } };
-    });
-  };
+  const commitSummary = React.useCallback(
+    (key: string, messagesForSession: ChatMessage[], complete: boolean, version?: number) => {
+      const summary = summarizeMessages(messagesForSession, {
+        previous: summariesRef.current[key],
+        complete,
+        version,
+      });
+      setSummaries((prev) => {
+        const existing = prev[key];
+        if (existing && sameSummary(existing, summary)) return prev;
+        return { ...prev, [key]: summary };
+      });
+    },
+    []
+  );
+
+  const requestFullRepair = React.useCallback((key: string) => {
+    if (fullRepairInFlight.current.has(key)) return;
+    fullRepairInFlight.current.add(key);
+    fullRepairRef.current(key);
+  }, []);
+
+  /**
+   * The single transcript commit path. Every fetched full or tail response goes through here so
+   * structural sharing, optimistic reconciliation, the message cache and the compact summary stay
+   * in lockstep no matter which caller issued the fetch.
+   */
+  const commitFetchedTranscript = useStableCallback(
+    (key: string, fetched: ChatMessage[], mode: 'full' | 'tail', version?: number) => {
+      const current =
+        messageCacheRef.current.get(key) ?? transcriptsRef.current[key]?.messages ?? [];
+      const pending = pendingOptimisticIds.current.get(key) ?? new Set<string>();
+      const outcome =
+        mode === 'tail'
+          ? reconcileTranscriptTail(current, fetched, pending)
+          : reconcileFullTranscript(current, fetched, pending);
+      if (outcome.reconciledOptimisticIds.length > 0) {
+        releaseOptimistic(key, outcome.reconciledOptimisticIds);
+      }
+      cacheMessages(key, outcome.messages);
+      setTranscriptFor(key, outcome.messages, 'ready');
+      commitSummary(key, outcome.messages, mode === 'full', version);
+      if (outcome.needsFullFetch) requestFullRepair(key);
+    }
+  );
 
   const updateCachedMessages = (
     key: string,
     updater: (messagesForSession: ChatMessage[]) => ChatMessage[]
   ) => {
-    const next = updater(messageCacheRef.current.get(key) ?? []);
+    const next = updater(
+      messageCacheRef.current.get(key) ?? transcriptsRef.current[key]?.messages ?? []
+    );
     cacheMessages(key, next);
     setTranscriptFor(key, next, 'ready');
   };
@@ -438,14 +486,14 @@ export default function App() {
   // a pending approval or question trumps everything: the agent is blocked on us.
   const states = React.useMemo(() => {
     const merged = Object.assign({}, ...Object.values(statesByInstance)) as Record<string, BallState>;
-    failedKeys.forEach((key) => {
-      if ((merged[key] ?? 'idle') === 'idle') merged[key] = 'error';
+    Object.entries(summaries).forEach(([key, summary]) => {
+      if (summary.failed && (merged[key] ?? 'idle') === 'idle') merged[key] = 'error';
     });
     [...permissions, ...questions].forEach((request) => {
       merged[sessionKey({ instanceId: request.instanceId, sessionId: request.sessionId })] = 'needs-input';
     });
     return merged;
-  }, [statesByInstance, permissions, questions, failedKeys]);
+  }, [statesByInstance, permissions, questions, summaries]);
 
   // Which kind of pending prompt a session has, so the blob can show a lock vs a question.
   const promptKinds = React.useMemo(() => {
@@ -461,21 +509,20 @@ export default function App() {
 
   const selected = React.useMemo(() => parseSessionKey(activeSession), [activeSession]);
   const selectedKey = activeSession;
-  const activeTranscript = selectedKey ? transcripts[selectedKey] : undefined;
-  const cachedTranscript = selectedKey ? messageCacheRef.current.get(selectedKey) : undefined;
-  const messages = activeTranscript?.messages ?? cachedTranscript ?? [];
-  // Thinking = an active session whose latest assistant turn is streaming with no tool running. The
-  // selected session reads the live transcript; the rest use the warmed preview cache.
+  // Rail previews are derived from the compact summaries, which survive transcript-cache eviction.
+  const previews = React.useMemo(
+    () => Object.fromEntries(Object.entries(summaries).map(([key, summary]) => [key, summary.preview])),
+    [summaries]
+  );
+  // Thinking = an active session whose latest assistant turn is streaming with no tool running.
+  // Summaries carry this even for sessions whose full transcript was never cached.
   const thinkingKeys = React.useMemo(() => {
     const keys = new Set<string>();
-    const consider = (key: string, list: ChatMessage[]) => {
-      if ((states[key] ?? 'idle') === 'active' && isThinkingMessages(list)) keys.add(key);
-    };
-    messageCacheRef.current.forEach((list, key) => consider(key, list));
-    if (selectedKey) consider(selectedKey, messages);
+    Object.entries(summaries).forEach(([key, summary]) => {
+      if (summary.thinking && (states[key] ?? 'idle') === 'active') keys.add(key);
+    });
     return keys;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- previews/polls refresh the ref'd cache
-  }, [states, selectedKey, messages, previews]);
+  }, [states, summaries]);
   const moods = React.useMemo(() => {
     const map: Record<string, BallMood> = {};
     Object.entries(sessionsByInstance).forEach(([, list]) =>
@@ -1073,24 +1120,21 @@ export default function App() {
     setQueuesByInstance((prev) => mergePolledQueues(prev, next));
   });
 
-  /** Refetch one transcript; applies to the open view only if it's still the selected session. */
+  /** Directory + `updated` for a session, read through the ref so pollers stay stable. */
+  const sessionMetaFor = (ref: SessionRef): { directory?: string; updated?: number } => {
+    const session = (sessionsByInstanceRef.current[ref.instanceId] ?? []).find(
+      (entry) => entry.id === ref.sessionId
+    );
+    return { directory: session?.directory, updated: session?.updated };
+  };
+
+  /** Refetch one transcript in full; authoritative for removals, compaction and terminal events. */
   const refreshMessages = useStableCallback(async (ref: SessionRef) => {
     const key = sessionKey(ref);
-    const directory =
-      (sessionsByInstanceRef.current[ref.instanceId] ?? []).find((session) => session.id === ref.sessionId)?.directory;
+    const { directory, updated } = sessionMetaFor(ref);
     try {
       const next = await loadMessages(ref.instanceId, ref.sessionId, directory);
-      const merged = reconcilePolledMessages(messageCacheRef.current.get(key) ?? [], next, pendingOptimisticIds.current);
-      releaseReconciledOptimistic(merged);
-      const result = sameMessages(messageCacheRef.current.get(key) ?? [], merged)
-        ? messageCacheRef.current.get(key) ?? merged
-        : merged;
-      cacheMessages(key, result);
-      setTranscriptFor(key, result, 'ready');
-      const preview = previewOf(next);
-      if (preview) {
-        setPreviews((prev) => (prev[key] === preview ? prev : { ...prev, [key]: preview }));
-      }
+      commitFetchedTranscript(key, next, 'full', updated);
     } catch (err) {
       console.error('Failed to load messages', err);
       setTranscripts((prev) => {
@@ -1101,8 +1145,41 @@ export default function App() {
           [key]: { messages: current?.messages ?? messageCacheRef.current.get(key) ?? [], status: 'error' },
         };
       });
+    } finally {
+      fullRepairInFlight.current.delete(key);
     }
   });
+
+  /** Bounded tail refresh for a visible column while a turn streams. */
+  const refreshMessageTail = useStableCallback(async (ref: SessionRef) => {
+    const key = sessionKey(ref);
+    const { directory, updated } = sessionMetaFor(ref);
+    try {
+      const tail = await loadMessageTail(ref.instanceId, ref.sessionId, directory);
+      commitFetchedTranscript(key, tail, 'tail', updated);
+    } catch (err) {
+      console.error('Failed to load message tail', err);
+    }
+  });
+
+  /** Background sessions refresh only their summary; they never touch the transcript cache. */
+  const refreshMessageSummary = useStableCallback(async (ref: SessionRef) => {
+    const key = sessionKey(ref);
+    const { directory, updated } = sessionMetaFor(ref);
+    try {
+      const tail = await loadMessageTail(ref.instanceId, ref.sessionId, directory);
+      commitSummary(key, tail, false, updated);
+    } catch (err) {
+      console.warn('Failed to load message summary', err);
+    }
+  });
+
+  // A tail with no safe overlap asks for one full repair; route it through the normal loader.
+  fullRepairRef.current = (key: string) => {
+    const ref = parseSessionKey(key);
+    if (ref) void refreshMessages(ref);
+    else fullRepairInFlight.current.delete(key);
+  };
 
   const refreshScheduled = useStableCallback(async (instanceIds: string[]) => {
     const projects = projectsByInstanceRef.current;
@@ -1130,7 +1207,7 @@ export default function App() {
   // ---- Event streams: hints invalidate, refreshers refetch. ----
   const [liveInstances, setLiveInstances] = React.useState<Record<string, boolean>>({});
   const liveInstancesRef = React.useRef(liveInstances);
-  const refetch = useStableCallback(async ({ instanceId, resource, sessionId }: Invalidation) => {
+  const refetch = useStableCallback(async ({ instanceId, resource, sessionId, messageMode }: Invalidation) => {
     switch (resource) {
       case 'sessions': await refreshSessions([instanceId]); break;
       case 'states': await refreshStates([instanceId]); break;
@@ -1139,10 +1216,15 @@ export default function App() {
       case 'queues': await refreshQueues([instanceId]); break;
       case 'autoAccept': await refreshAutoAccept([instanceId]); break;
       case 'scheduled': await refreshScheduled([instanceId]); break;
-      case 'messages': if (sessionId) await refreshMessages({ instanceId, sessionId }); break;
-      // PERF-1–3 (bounded tails) is not implemented yet: refetch the full transcript so a token
-      // hint never truncates the visible history.
-      case 'tail': if (sessionId) await refreshMessages({ instanceId, sessionId }); break;
+      case 'messages':
+        if (sessionId) {
+          if (messageMode === 'full') await refreshMessages({ instanceId, sessionId });
+          else await refreshMessageTail({ instanceId, sessionId });
+        }
+        break;
+      case 'messageSummary':
+        if (sessionId) await refreshMessageSummary({ instanceId, sessionId });
+        break;
     }
   });
   const invalidationQueue = React.useMemo(() => new InvalidationQueue(refetch), [refetch]);
@@ -1164,7 +1246,12 @@ export default function App() {
       columnsRef.current.forEach((key) => {
         const ref = parseSessionKey(key);
         if (ref?.instanceId === instanceId) {
-          invalidationQueue.push({ instanceId, resource: 'messages', sessionId: ref.sessionId });
+          invalidationQueue.push({
+            instanceId,
+            resource: 'messages',
+            sessionId: ref.sessionId,
+            messageMode: 'full',
+          });
         }
       });
     };
@@ -1225,54 +1312,61 @@ export default function App() {
   usePoll(() => refreshStateFor(deadIdsRef.current), STATE_POLL_MS, deadIds.length > 0);
   usePoll(() => refreshStateFor(liveIdsRef.current), STATE_POLL_LIVE_MS, liveIds.length > 0);
 
-  // Read through refs so this effect only re-runs when the session list changes. Depending on
-  // `previews` directly made every 3s transcript poll cancel an in-flight preview batch.
-  const previewsRef = React.useRef(previews);
-  previewsRef.current = previews;
-  const previewVersionsRef = React.useRef(previewVersions);
-  previewVersionsRef.current = previewVersions;
-
+  // Preview warming writes only compact summaries; it never inserts a transcript into the message
+  // cache. The effect reads summaries through a ref so a poll that lands mid-batch doesn't cancel it.
   React.useEffect(() => {
     const targets = [...sessions]
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
       .slice(0, PREVIEW_COUNT)
       .filter((session) => {
-        const key = sessionKey(session);
-        return !(key in previewsRef.current) || previewVersionsRef.current[key] !== session.updated;
+        const summary = summariesRef.current[sessionKey(session)];
+        return !summary || summary.version !== session.updated;
       });
     if (targets.length === 0) return;
     let cancelled = false;
 
     void (async () => {
-      const entries: Array<readonly [string, string | null, number | undefined]> = [];
+      const results: Array<readonly [string, SessionMessageSummary]> = [];
       let cursor = 0;
       const loadNext = async (): Promise<void> => {
         while (cursor < targets.length) {
           const session = targets[cursor];
           cursor += 1;
           const key = sessionKey(session);
-          const loaded = await loadMessages(session.instanceId, session.id, session.directory).catch(() => null);
-          if (loaded) cacheMessages(key, loaded);
-          entries.push([key, loaded ? previewOf(loaded) : null, session.updated]);
+          const previous = summariesRef.current[key];
+          let summary: SessionMessageSummary | null = null;
+          for (const limit of PREVIEW_LIMITS) {
+            const tail = await loadMessageTail(
+              session.instanceId,
+              session.id,
+              session.directory,
+              limit
+            ).catch(() => null);
+            // A failed request leaves the prior summary in place.
+            if (!tail) break;
+            summary = summarizeMessages(tail, { previous, complete: false, version: session.updated });
+            // Stop once a previewable turn is found, or once the transcript is exhausted; otherwise
+            // expand through 32 and 128. A tool-only tail at the largest limit retains `previous`.
+            if (summary.preview || summary.failed || tail.length < limit) break;
+          }
+          if (summary) results.push([key, summary]);
         }
       };
       await Promise.all(
         Array.from({ length: Math.min(PREVIEW_CONCURRENCY, targets.length) }, () => loadNext())
       );
-      if (cancelled) return;
-      const successful = entries.filter(
-        (entry): entry is readonly [string, string, number | undefined] => entry[1] !== null
-      );
-      if (successful.length > 0) {
-        setPreviews((prev) => ({
-          ...prev,
-          ...Object.fromEntries(successful.map(([key, preview]) => [key, preview])),
-        }));
-        setPreviewVersions((prev) => ({
-          ...prev,
-          ...Object.fromEntries(successful.map(([key, , updated]) => [key, updated])),
-        }));
-      }
+      if (cancelled || results.length === 0) return;
+      setSummaries((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        results.forEach(([key, summary]) => {
+          const existing = prev[key];
+          if (existing && sameSummary(existing, summary)) return;
+          next[key] = summary;
+          changed = true;
+        });
+        return changed ? next : prev;
+      });
     })();
 
     return () => {
@@ -1448,7 +1542,7 @@ export default function App() {
       createdAt,
       completed: true,
     };
-    pendingOptimisticIds.current.add(optimisticId);
+    pendingFor(key).add(optimisticId);
     updateCachedMessages(key, (prev) => [...prev, optimistic]);
     setSendingKeys((prev) => new Set(prev).add(key));
 
@@ -1461,7 +1555,7 @@ export default function App() {
       // Keep the optimistic id registered until the transcript below is reconciled; the 3s
       // poller can land in between and would otherwise drop the bubble for one tick.
       if (!sent.ok) {
-        pendingOptimisticIds.current.delete(optimisticId);
+        releaseOptimistic(key, [optimisticId]);
         removeOptimistic();
         showActionError(
           responseError(sent.data, 'Message could not be sent.', instanceLabelOf(instanceId)),
@@ -1485,18 +1579,8 @@ export default function App() {
         ),
       }));
       const loaded = await loadMessages(instanceId, sessionId, directory);
-      // The server may not have indexed the user turn yet; keep the bubble until it does.
-      const next = reconcilePolledMessages(
-        messageCacheRef.current.get(key) ?? [],
-        loaded,
-        pendingOptimisticIds.current
-      );
-      releaseReconciledOptimistic(next);
-      const preview = previewOf(next);
-      cacheMessages(key, next);
-      setTranscriptFor(key, next, 'ready');
-      setPreviews((prev) => ({ ...prev, [key]: preview }));
-      setPreviewVersions((prev) => ({ ...prev, [key]: updated }));
+      // The server may not have indexed the user turn yet; reconcile keeps the bubble until it does.
+      commitFetchedTranscript(key, loaded, 'full', updated);
       return true;
     } catch (err) {
       console.error('Send failed', err);
@@ -1511,8 +1595,8 @@ export default function App() {
       );
       return accepted;
     } finally {
-      // Accepted sends keep the id until a poll shows the server copy (see releaseReconciledOptimistic).
-      if (!accepted) pendingOptimisticIds.current.delete(optimisticId);
+      // Accepted sends keep the id until a poll shows the server copy (see releaseOptimistic).
+      if (!accepted) releaseOptimistic(key, [optimisticId]);
       setSendingKeys((prev) => {
         if (!prev.has(key)) return prev;
         const next = new Set(prev);
@@ -1559,16 +1643,7 @@ export default function App() {
       );
     }
     if (messageResult.status === 'fulfilled') {
-      const merged = reconcilePolledMessages(
-        messageCacheRef.current.get(key) ?? [],
-        messageResult.value,
-        pendingOptimisticIds.current
-      );
-      cacheMessages(key, merged);
-      setTranscriptFor(key, merged, 'ready');
-      const preview = previewOf(messageResult.value);
-      setPreviews((current) => ({ ...current, [key]: preview }));
-      setPreviewVersions((current) => ({ ...current, [key]: session.updated }));
+      commitFetchedTranscript(key, messageResult.value, 'full', session.updated);
     } else {
       setTranscriptFor(key, messageCacheRef.current.get(key) ?? [], 'error');
     }
@@ -1755,8 +1830,7 @@ export default function App() {
         return;
       }
       const next = await loadMessages(session.instanceId, session.id, session.directory);
-      cacheMessages(key, next);
-      setTranscriptFromFetch(key, next);
+      commitFetchedTranscript(key, next, 'full', session.updated);
     } catch (err) {
       console.error('Abort refresh failed', err);
       showActionError(
@@ -1779,8 +1853,7 @@ export default function App() {
         return;
       }
       const next = await loadMessages(session.instanceId, session.id, session.directory);
-      cacheMessages(key, next);
-      setTranscriptFromFetch(key, next);
+      commitFetchedTranscript(key, next, 'full', session.updated);
       setActionNotice({ message: 'Context compacted.' });
     } catch (err) {
       console.error('Compact failed', err);

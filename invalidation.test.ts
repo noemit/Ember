@@ -1,33 +1,56 @@
 import { describe, expect, test } from 'bun:test';
-import { InvalidationQueue, invalidationsFor, type Invalidation } from './src/lib/invalidation';
+import {
+  InvalidationQueue,
+  invalidationsFor,
+  type Invalidation,
+  type InvalidationPolicy,
+} from './src/lib/invalidation';
 
 const loadedNone = () => false;
 const loaded = (_instance: string, sessionId: string) => sessionId === 'open';
+const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('event → invalidations', () => {
-  test('status events refresh states; session lifecycle refreshes the list', () => {
-    expect(invalidationsFor({ instanceId: 'a', type: 'session.status', sessionId: 's' }, loadedNone)).toEqual([
-      { instanceId: 'a', resource: 'states' },
-    ]);
-    expect(invalidationsFor({ instanceId: 'a', type: 'session.created', sessionId: 's' }, loadedNone)).toEqual([
-      { instanceId: 'a', resource: 'sessions' },
-    ]);
-    expect(invalidationsFor({ instanceId: 'a', type: 'openchamber:session-created' }, loadedNone)).toEqual([
-      { instanceId: 'a', resource: 'sessions' },
-    ]);
-  });
-
-  test('message events refetch the transcript (or its tail) only when it is loaded, else the session list', () => {
-    expect(invalidationsFor({ instanceId: 'a', type: 'message.part.updated', sessionId: 'open' }, loaded)).toEqual([
-      { instanceId: 'a', resource: 'tail', sessionId: 'open' },
-    ]);
-    expect(invalidationsFor({ instanceId: 'a', type: 'message.part.updated', sessionId: 'other' }, loaded)).toEqual([
-      { instanceId: 'a', resource: 'sessions' },
-    ]);
+  test('a visible token update requests a bounded tail; a background one only its summary', () => {
+    expect(
+      invalidationsFor({ instanceId: 'a', type: 'message.part.updated', sessionId: 'open' }, loaded)
+    ).toEqual([{ instanceId: 'a', resource: 'messages', sessionId: 'open', messageMode: 'tail' }]);
+    expect(
+      invalidationsFor({ instanceId: 'a', type: 'message.part.updated', sessionId: 'other' }, loaded)
+    ).toEqual([{ instanceId: 'a', resource: 'messageSummary', sessionId: 'other' }]);
     expect(invalidationsFor({ instanceId: 'a', type: 'message.updated' }, loaded)).toEqual([]);
   });
 
-  test('permission and question events also refresh states, since they force needs-input', () => {
+  test('removal, error and compaction request a full repair for visible sessions', () => {
+    for (const type of ['message.removed', 'message.part.removed', 'session.error', 'session.compacted']) {
+      expect(invalidationsFor({ instanceId: 'a', type, sessionId: 'open' }, loaded)).toContainEqual({
+        instanceId: 'a',
+        resource: 'messages',
+        sessionId: 'open',
+        messageMode: 'full',
+      });
+    }
+    expect(invalidationsFor({ instanceId: 'a', type: 'session.idle', sessionId: 'open' }, loaded)).toEqual([
+      { instanceId: 'a', resource: 'states' },
+      { instanceId: 'a', resource: 'sessions' },
+      { instanceId: 'a', resource: 'messages', sessionId: 'open', messageMode: 'full' },
+    ]);
+    expect(invalidationsFor({ instanceId: 'a', type: 'session.idle', sessionId: 'other' }, loadedNone)).toEqual([
+      { instanceId: 'a', resource: 'states' },
+      { instanceId: 'a', resource: 'sessions' },
+      { instanceId: 'a', resource: 'messageSummary', sessionId: 'other' },
+    ]);
+  });
+
+  test('background token events never invalidate the session list', () => {
+    const result = invalidationsFor(
+      { instanceId: 'a', type: 'message.part.updated', sessionId: 'background' },
+      loaded
+    );
+    expect(result.some((invalidation) => invalidation.resource === 'sessions')).toBe(false);
+  });
+
+  test('permission, question and schedule events keep their existing mapping', () => {
     expect(invalidationsFor({ instanceId: 'a', type: 'permission.updated', sessionId: 's' }, loadedNone)).toEqual([
       { instanceId: 'a', resource: 'permissions' },
       { instanceId: 'a', resource: 'states' },
@@ -35,12 +58,6 @@ describe('event → invalidations', () => {
     expect(invalidationsFor({ instanceId: 'a', type: 'question.asked', sessionId: 's' }, loadedNone)).toEqual([
       { instanceId: 'a', resource: 'questions' },
       { instanceId: 'a', resource: 'states' },
-    ]);
-  });
-
-  test('policy and schedule events map to their resources; unknown or chatter events map to nothing', () => {
-    expect(invalidationsFor({ instanceId: 'a', type: 'openchamber:permission-auto-accept.updated' }, loadedNone)).toEqual([
-      { instanceId: 'a', resource: 'autoAccept' },
     ]);
     expect(invalidationsFor({ instanceId: 'a', type: 'openchamber:scheduled-task-ran' }, loadedNone)).toEqual([
       { instanceId: 'a', resource: 'scheduled' },
@@ -53,18 +70,21 @@ describe('event → invalidations', () => {
 });
 
 describe('invalidation queue', () => {
-  const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const promptPolicy = (): InvalidationPolicy => ({ leadMs: 10, minIntervalMs: 0 });
+  const throttledPolicy = (): InvalidationPolicy => ({ leadMs: 10, minIntervalMs: 60 });
 
   test('coalesces a burst into one refetch per key', async () => {
     const calls: Invalidation[] = [];
-    const queue = new InvalidationQueue(async (inv) => {
-      calls.push(inv);
-    }, 10);
-    for (let i = 0; i < 20; i += 1) queue.push({ instanceId: 'a', resource: 'messages', sessionId: 's' });
+    const queue = new InvalidationQueue(async (invalidation) => {
+      calls.push(invalidation);
+    }, promptPolicy);
+    for (let i = 0; i < 20; i += 1) {
+      queue.push({ instanceId: 'a', resource: 'messages', sessionId: 's', messageMode: 'tail' });
+    }
     queue.push({ instanceId: 'a', resource: 'states' });
     await tick(30);
     expect(calls).toEqual([
-      { instanceId: 'a', resource: 'messages', sessionId: 's' },
+      { instanceId: 'a', resource: 'messages', sessionId: 's', messageMode: 'tail' },
       { instanceId: 'a', resource: 'states' },
     ]);
   });
@@ -74,16 +94,55 @@ describe('invalidation queue', () => {
     let release: () => void = () => {};
     const queue = new InvalidationQueue(async () => {
       calls += 1;
-      if (calls === 1) await new Promise<void>((resolve) => { release = resolve; });
-    }, 5);
+      if (calls === 1) {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+    }, promptPolicy);
     queue.push({ instanceId: 'a', resource: 'states' });
-    await tick(10);
+    await tick(20);
     expect(calls).toBe(1);
     queue.push({ instanceId: 'a', resource: 'states' });
     queue.push({ instanceId: 'a', resource: 'states' });
     release();
-    await tick(20);
+    await tick(30);
     expect(calls).toBe(2);
+  });
+
+  test('a pending tail is upgraded to a full repair and never downgraded', async () => {
+    const calls: Invalidation[] = [];
+    const queue = new InvalidationQueue(async (invalidation) => {
+      calls.push(invalidation);
+    }, promptPolicy);
+    queue.push({ instanceId: 'a', resource: 'messages', sessionId: 's', messageMode: 'tail' });
+    queue.push({ instanceId: 'a', resource: 'messages', sessionId: 's', messageMode: 'full' });
+    queue.push({ instanceId: 'a', resource: 'messages', sessionId: 's', messageMode: 'tail' });
+    await tick(30);
+    expect(calls).toEqual([
+      { instanceId: 'a', resource: 'messages', sessionId: 's', messageMode: 'full' },
+    ]);
+  });
+
+  test('continuous token hints respect the minimum interval', async () => {
+    const startedAt: number[] = [];
+    const queue = new InvalidationQueue(
+      async () => {
+        startedAt.push(Date.now());
+      },
+      throttledPolicy
+    );
+    const timer = setInterval(
+      () => queue.push({ instanceId: 'a', resource: 'messages', sessionId: 's', messageMode: 'tail' }),
+      15
+    );
+    await tick(200);
+    clearInterval(timer);
+    queue.clear();
+    expect(startedAt.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < startedAt.length; i += 1) {
+      expect(startedAt[i] - startedAt[i - 1]).toBeGreaterThanOrEqual(60);
+    }
   });
 
   test('a failing refetch does not wedge the key', async () => {
@@ -91,11 +150,34 @@ describe('invalidation queue', () => {
     const queue = new InvalidationQueue(async () => {
       calls += 1;
       throw new Error('boom');
-    }, 5);
+    }, promptPolicy);
     queue.push({ instanceId: 'a', resource: 'states' });
-    await tick(10);
+    await tick(20);
     queue.push({ instanceId: 'a', resource: 'states' });
-    await tick(10);
+    await tick(20);
     expect(calls).toBe(2);
+  });
+
+  test('sessions and instances remain independently keyed', async () => {
+    const calls: Invalidation[] = [];
+    const queue = new InvalidationQueue(async (invalidation) => {
+      calls.push(invalidation);
+    }, promptPolicy);
+    queue.push({ instanceId: 'a', resource: 'messages', sessionId: 's1' });
+    queue.push({ instanceId: 'a', resource: 'messages', sessionId: 's2' });
+    queue.push({ instanceId: 'b', resource: 'messages', sessionId: 's1' });
+    await tick(30);
+    expect(calls).toHaveLength(3);
+  });
+
+  test('clear() prevents delayed work', async () => {
+    let calls = 0;
+    const queue = new InvalidationQueue(async () => {
+      calls += 1;
+    }, promptPolicy);
+    queue.push({ instanceId: 'a', resource: 'states' });
+    queue.clear();
+    await tick(30);
+    expect(calls).toBe(0);
   });
 });

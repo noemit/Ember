@@ -1,9 +1,26 @@
 import type { EmberEvent } from '../types';
 
-/** A REST resource the renderer can refetch. `messages` is per session; the rest are per instance. */
-export type Resource = 'sessions' | 'states' | 'permissions' | 'questions' | 'queues' | 'autoAccept' | 'scheduled' | 'messages' | 'tail';
+/** A REST resource the renderer can refetch. `messages`/`messageSummary` are per session. */
+export type Resource =
+  | 'sessions'
+  | 'states'
+  | 'permissions'
+  | 'questions'
+  | 'queues'
+  | 'autoAccept'
+  | 'scheduled'
+  | 'messages'
+  | 'messageSummary';
 
-export type Invalidation = { instanceId: string; resource: Resource; sessionId?: string };
+/** A visible column wants a bounded tail; terminal events upgrade it to a full repair. */
+export type MessageRefreshMode = 'tail' | 'full';
+
+export type Invalidation = {
+  instanceId: string;
+  resource: Resource;
+  sessionId?: string;
+  messageMode?: MessageRefreshMode;
+};
 
 /** Bridge payloads are untrusted until they look like an event hint. */
 export const parseEmberEvent = (raw: unknown): EmberEvent | null => {
@@ -19,82 +36,151 @@ export const parseEmberEvent = (raw: unknown): EmberEvent | null => {
   };
 };
 
-/** Anything on the OpenCode stream that isn't listed here is deliberately ignored. */
-const OPENCODE_RESOURCES: Record<string, Resource[]> = {
-  'session.created': ['sessions'],
-  'session.updated': ['sessions'],
-  'session.deleted': ['sessions'],
-  'session.status': ['states'],
-  'session.idle': ['states', 'sessions'],
-  'session.error': ['states', 'messages'],
+type ResourceHint = { resource: Resource; messageMode?: MessageRefreshMode };
+
+/**
+ * Anything on the OpenCode stream that isn't listed here is deliberately ignored. Message hints
+ * carry a mode so a visible column can fetch a bounded tail while a terminal event upgrades the
+ * pending work to a full repair.
+ */
+const OPENCODE_RESOURCES: Record<string, ResourceHint[]> = {
+  'session.created': [{ resource: 'sessions' }],
+  'session.updated': [{ resource: 'sessions' }],
+  'session.deleted': [{ resource: 'sessions' }],
+  'session.status': [{ resource: 'states' }],
+  'session.idle': [
+    { resource: 'states' },
+    { resource: 'sessions' },
+    { resource: 'messages', messageMode: 'full' },
+  ],
+  'session.error': [
+    { resource: 'states' },
+    { resource: 'messages', messageMode: 'full' },
+  ],
+  'session.compacted': [{ resource: 'messages', messageMode: 'full' }],
   'session.diff': [],
-  'message.updated': ['messages'],
-  'message.part.updated': ['tail'],
-  'message.part.removed': ['messages'],
-  'message.removed': ['messages'],
-  'permission.updated': ['permissions', 'states'],
-  'permission.replied': ['permissions', 'states'],
-  'question.asked': ['questions', 'states'],
-  'question.replied': ['questions', 'states'],
-  'question.rejected': ['questions', 'states'],
+  'message.updated': [{ resource: 'messages', messageMode: 'tail' }],
+  'message.part.updated': [{ resource: 'messages', messageMode: 'tail' }],
+  'message.part.removed': [{ resource: 'messages', messageMode: 'full' }],
+  'message.removed': [{ resource: 'messages', messageMode: 'full' }],
+  'permission.updated': [{ resource: 'permissions' }, { resource: 'states' }],
+  'permission.replied': [{ resource: 'permissions' }, { resource: 'states' }],
+  'question.asked': [{ resource: 'questions' }, { resource: 'states' }],
+  'question.replied': [{ resource: 'questions' }, { resource: 'states' }],
+  'question.rejected': [{ resource: 'questions' }, { resource: 'states' }],
 };
 
-const OPENCHAMBER_RESOURCES: Record<string, Resource[]> = {
-  'openchamber:session-status': ['states'],
+const OPENCHAMBER_RESOURCES: Record<string, ResourceHint[]> = {
+  'openchamber:session-status': [{ resource: 'states' }],
   'openchamber:session-activity': [],
-  'openchamber:session-created': ['sessions'],
-  'openchamber:permission-auto-accept.updated': ['autoAccept'],
-  'openchamber:scheduled-task-ran': ['scheduled', 'sessions'],
+  'openchamber:session-created': [{ resource: 'sessions' }],
+  'openchamber:permission-auto-accept.updated': [{ resource: 'autoAccept' }],
+  'openchamber:scheduled-task-ran': [{ resource: 'scheduled' }, { resource: 'sessions' }],
   'openchamber:notification': [],
 };
 
 /**
- * Which REST resources an event makes stale. Message events are only worth acting on for a
- * session whose transcript is currently loaded (`isLoaded`); for the rest the session list's
- * `updated` timestamp, refreshed by its own event, is what drives the preview loader.
+ * Which REST resources an event makes stale. A visible column gets a bounded message tail; the same
+ * event for a background session refreshes only its compact summary, never the session list. Session
+ * lifecycle events and safety polling remain the authority for list membership and ordering.
  */
 export const invalidationsFor = (
   event: EmberEvent,
   isLoaded: (instanceId: string, sessionId: string) => boolean
 ): Invalidation[] => {
-  const resources = OPENCODE_RESOURCES[event.type] ?? OPENCHAMBER_RESOURCES[event.type];
-  if (!resources) return [];
-  return resources.flatMap((resource): Invalidation[] => {
-    if (resource !== 'messages' && resource !== 'tail') return [{ instanceId: event.instanceId, resource }];
+  const hints = OPENCODE_RESOURCES[event.type] ?? OPENCHAMBER_RESOURCES[event.type];
+  if (!hints) return [];
+  return hints.flatMap((hint): Invalidation[] => {
+    if (hint.resource !== 'messages') {
+      return [{ instanceId: event.instanceId, resource: hint.resource }];
+    }
     if (!event.sessionId) return [];
-    // A message landing in a session we aren't showing still moves it in the rail.
-    return isLoaded(event.instanceId, event.sessionId)
-      ? [{ instanceId: event.instanceId, resource, sessionId: event.sessionId }]
-      : [{ instanceId: event.instanceId, resource: 'sessions' }];
+    if (isLoaded(event.instanceId, event.sessionId)) {
+      return [
+        {
+          instanceId: event.instanceId,
+          resource: 'messages',
+          sessionId: event.sessionId,
+          messageMode: hint.messageMode ?? 'tail',
+        },
+      ];
+    }
+    return [{ instanceId: event.instanceId, resource: 'messageSummary', sessionId: event.sessionId }];
   });
 };
 
 export const invalidationKey = (invalidation: Invalidation): string =>
   `${invalidation.instanceId}\u0000${invalidation.resource}\u0000${invalidation.sessionId ?? ''}`;
 
+export type InvalidationPolicy = {
+  /** Debounce before the first request for a quiet key. */
+  leadMs: number;
+  /** Minimum spacing between two requests for the same key. */
+  minIntervalMs: number;
+};
+
+/** Per-resource defaults: a streaming tail is throttled, full repairs are prompt. */
+export const defaultPolicyFor = (invalidation: Invalidation): InvalidationPolicy => {
+  if (invalidation.resource === 'messages') {
+    return invalidation.messageMode === 'full'
+      ? { leadMs: 50, minIntervalMs: 0 }
+      : { leadMs: 100, minIntervalMs: 750 };
+  }
+  if (invalidation.resource === 'messageSummary') return { leadMs: 150, minIntervalMs: 1000 };
+  if (invalidation.resource === 'sessions') return { leadMs: 250, minIntervalMs: 2000 };
+  return { leadMs: 250, minIntervalMs: 0 };
+};
+
+const mergeMode = (a?: MessageRefreshMode, b?: MessageRefreshMode): MessageRefreshMode | undefined =>
+  a === 'full' || b === 'full' ? 'full' : (a ?? b);
+
+/** Same-key invalidations only differ by message mode; a full repair must never downgrade. */
+const mergeInvalidation = (current: Invalidation, incoming: Invalidation): Invalidation => {
+  if (current.resource !== 'messages') return current;
+  return { ...current, messageMode: mergeMode(current.messageMode, incoming.messageMode) };
+};
+
 /**
- * Coalesces bursts: a streaming turn emits a part update per token, and one refetch per
- * ~250ms is plenty. First hint in a quiet period fires after `leadMs`; further hints within
- * the window fold into that one refetch, and a hint that arrives while a refetch is in flight
- * schedules exactly one follow-up so nothing is missed.
+ * Coalesces bursts by instance/resource/session. A streaming turn emits a part update per token, so
+ * the first hint schedules a refetch after the resource's lead time; hints that arrive during that
+ * refetch fold into exactly one follow-up, which waits out the resource's minimum interval. A
+ * terminal full-repair hint upgrades a pending tail rather than queuing behind it.
  */
 export class InvalidationQueue {
-  private readonly pending = new Map<string, { invalidation: Invalidation; timer: ReturnType<typeof setTimeout> }>();
-  private readonly inFlight = new Map<string, boolean>();
+  private readonly pending = new Map<
+    string,
+    { invalidation: Invalidation; timer: ReturnType<typeof setTimeout> }
+  >();
+  private readonly inFlight = new Map<string, { invalidation: Invalidation; followUp: Invalidation | null }>();
+  private readonly lastRunAt = new Map<string, number>();
 
   constructor(
     private readonly refetch: (invalidation: Invalidation) => Promise<void>,
-    private readonly leadMs = 250
+    private readonly policyFor: (invalidation: Invalidation) => InvalidationPolicy = defaultPolicyFor
   ) {}
 
   push(invalidation: Invalidation): void {
     const key = invalidationKey(invalidation);
-    if (this.inFlight.has(key)) {
-      this.inFlight.set(key, true);
+    const flight = this.inFlight.get(key);
+    if (flight) {
+      flight.followUp = flight.followUp
+        ? mergeInvalidation(flight.followUp, invalidation)
+        : invalidation;
       return;
     }
-    if (this.pending.has(key)) return;
-    const timer = setTimeout(() => void this.run(key), this.leadMs);
+    const pending = this.pending.get(key);
+    if (pending) {
+      pending.invalidation = mergeInvalidation(pending.invalidation, invalidation);
+      return;
+    }
+    this.schedule(key, invalidation);
+  }
+
+  private schedule(key: string, invalidation: Invalidation): void {
+    const policy = this.policyFor(invalidation);
+    const sinceLast = this.lastRunAt.has(key) ? Date.now() - (this.lastRunAt.get(key) ?? 0) : Infinity;
+    const wait = Math.max(policy.leadMs, policy.minIntervalMs - sinceLast);
+    const timer = setTimeout(() => void this.run(key), wait);
     this.pending.set(key, { invalidation, timer });
   }
 
@@ -102,21 +188,24 @@ export class InvalidationQueue {
     const entry = this.pending.get(key);
     if (!entry) return;
     this.pending.delete(key);
-    this.inFlight.set(key, false);
+    this.lastRunAt.set(key, Date.now());
+    this.inFlight.set(key, { invalidation: entry.invalidation, followUp: null });
     try {
       await this.refetch(entry.invalidation);
     } catch {
       // The refetcher reports its own errors; the queue just keeps going.
     } finally {
-      const again = this.inFlight.get(key) === true;
+      const flight = this.inFlight.get(key);
       this.inFlight.delete(key);
-      if (again) this.push(entry.invalidation);
+      const followUp = flight?.followUp ?? null;
+      if (followUp) this.schedule(key, followUp);
     }
   }
 
   clear(): void {
     this.pending.forEach((entry) => clearTimeout(entry.timer));
     this.pending.clear();
+    // Dropping in-flight entries makes their completion skip the follow-up.
     this.inFlight.clear();
   }
 }

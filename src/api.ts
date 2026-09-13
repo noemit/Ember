@@ -463,22 +463,17 @@ export const loadAllSessionStates = async (
   return map;
 };
 
-export const loadMessages = async (
-  instanceId: string,
-  sessionId: string,
-  directory?: string
-): Promise<ChatMessage[]> => {
-  const response = await window.ember.request(
-    instanceId,
-    'GET',
-    `/api/session/${encodeURIComponent(sessionId)}/message${directoryQuery(directory)}`
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to load messages for ${sessionId}: ${response.status}`);
-  }
+/** How many records a token-driven tail fetch asks for. Older servers may return more. */
+export const MESSAGE_TAIL_LIMIT = 8;
 
-  const list = payloadArray(response.data);
+const messagesPath = (sessionId: string, params: URLSearchParams): string => {
+  const query = params.toString();
+  return `/api/session/${encodeURIComponent(sessionId)}/message${query ? `?${query}` : ''}`;
+};
 
+/** One normalizer for full and tail loads so both modes produce identical shapes. */
+const normalizeMessages = (data: unknown): ChatMessage[] => {
+  const list = payloadArray(data);
   return list
     .map((entry, index) => {
       const item = asRecord(entry);
@@ -526,49 +521,39 @@ export const loadMessages = async (
     .filter((message) => message.parts.length > 0 || message.error);
 };
 
-export const loadTranscriptTail = async (
+export const loadMessages = async (
   instanceId: string,
   sessionId: string,
   directory?: string
 ): Promise<ChatMessage[]> => {
-  const messages = await loadMessages(instanceId, sessionId, directory);
-  return messages.slice(-10);
+  const params = new URLSearchParams();
+  if (directory) params.set('directory', directory);
+  const response = await window.ember.request(instanceId, 'GET', messagesPath(sessionId, params));
+  if (!response.ok) {
+    throw new Error(`Failed to load messages for ${sessionId}: ${response.status}`);
+  }
+  return normalizeMessages(response.data);
 };
 
-const outgoingMessageSignature = (message: ChatMessage): string | null => {
-  if (message.role !== 'user') return null;
-  const files = message.parts
-    .filter((part) => part.type === 'file')
-    .map((part) => [part.file.mime, part.file.filename]);
-  return JSON.stringify([message.text, files]);
-};
-
-export const reconcilePolledMessages = (
-  current: ChatMessage[],
-  polled: ChatMessage[],
-  pendingIds: ReadonlySet<string>
-): ChatMessage[] => {
-  const pending = current.filter((message) => pendingIds.has(message.id));
-  if (pending.length === 0) return polled;
-
-  const knownIds = new Set(
-    current.filter((message) => !pendingIds.has(message.id)).map((message) => message.id)
-  );
-  const candidates = polled.filter((message) => !knownIds.has(message.id));
-  const consumed = new Set<number>();
-  const unmatched = pending.filter((message) => {
-    if (polled.some((candidate) => candidate.id === message.id)) return false;
-    const signature = outgoingMessageSignature(message);
-    const index = candidates.findIndex(
-      (candidate, candidateIndex) =>
-        !consumed.has(candidateIndex) && outgoingMessageSignature(candidate) === signature
-    );
-    if (index < 0) return true;
-    consumed.add(index);
-    return false;
-  });
-
-  return [...polled, ...unmatched];
+/**
+ * The latest `limit` records only. The bridge proxies query strings, so `directory` and `limit`
+ * compose; older servers that ignore `limit` still return a correct (if larger) list, and the
+ * slice keeps the returned tail bounded either way.
+ */
+export const loadMessageTail = async (
+  instanceId: string,
+  sessionId: string,
+  directory?: string,
+  limit = MESSAGE_TAIL_LIMIT
+): Promise<ChatMessage[]> => {
+  const params = new URLSearchParams();
+  if (directory) params.set('directory', directory);
+  params.set('limit', String(limit));
+  const response = await window.ember.request(instanceId, 'GET', messagesPath(sessionId, params));
+  if (!response.ok) {
+    throw new Error(`Failed to load messages for ${sessionId}: ${response.status}`);
+  }
+  return normalizeMessages(response.data).slice(-limit);
 };
 
 const TOOL_STATUSES: ToolStatus[] = ['pending', 'running', 'completed', 'error'];

@@ -22,17 +22,36 @@ const digestInput = (input: Record<string, unknown> | undefined): string => {
   }
 };
 
-/** Everything that can visibly change on a message. Tool calls change status without the text changing, so parts count too. */
-export const messageSignature = (message: ChatMessage): string =>
-  `${message.id}|${message.completed ? 1 : 0}|${message.createdAt ?? ''}|${message.completedAt ?? ''}|${message.model ? modelRefKey(message.model) : ''}|${message.error ?? ''}|${message.parts
-    .map((part) => {
-      if (part.type === 'text' || part.type === 'reasoning') return digest(part.text);
-      if (part.type === 'file') return `${part.file.mime}:${part.file.filename}:${digest(part.file.url)}`;
-      const { call } = part;
-      return `${call.id}:${call.status}:${call.title ?? ''}:${call.error ?? ''}:${digestInput(call.input)}:${digest(call.output ?? '')}:${digest(call.diff ?? '')}`;
-    })
-    .join('\u0001')}`;
+const partSignature = (part: ChatMessage['parts'][number]): string => {
+  if (part.type === 'text' || part.type === 'reasoning') {
+    return `${part.type}:${part.id}:${digest(part.text)}`;
+  }
+  if (part.type === 'file') {
+    return `file:${part.id}:${part.file.mime}:${part.file.filename}:${digest(part.file.url)}`;
+  }
+  const { call } = part;
+  return `tool:${part.id}:${call.id}:${call.tool}:${call.status}:${call.title ?? ''}:${call.error ?? ''}:${digestInput(call.input)}:${digest(call.output ?? '')}:${digest(call.diff ?? '')}`;
+};
 
-/** True when a fresh poll would render identically, so the previous array can be kept. */
-export const sameMessages = (a: ChatMessage[], b: ChatMessage[]): boolean =>
-  a.length === b.length && a.every((m, i) => messageSignature(m) === messageSignature(b[i]));
+/**
+ * Everything that can visibly change on a message. A fresh poll that yields the same signature can
+ * reuse the previous object; anything the transcript renders (tokens, cost, abort state, model
+ * variant, part shape, tool metadata) must be part of it or a streamed update would be dropped.
+ */
+export const messageSignature = (message: ChatMessage): string =>
+  [
+    message.id,
+    message.role,
+    message.completed ? 1 : 0,
+    message.createdAt ?? '',
+    message.completedAt ?? '',
+    message.model ? `${modelRefKey(message.model)}/${message.model.variant ?? ''}` : '',
+    message.error ?? '',
+    message.aborted ? 1 : 0,
+    message.tokens
+      ? `${message.tokens.input},${message.tokens.output},${message.tokens.cacheRead},${message.tokens.cacheWrite}`
+      : '',
+    message.cost ?? '',
+    digest(message.text),
+    message.parts.map(partSignature).join('\u0001'),
+  ].join('|');

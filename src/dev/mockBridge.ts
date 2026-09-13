@@ -138,6 +138,20 @@ const sessions: Record<string, MockSession[]> = {
       { role: 'user', text: 'Run the scheduled morning channel brief.' },
       { role: 'assistant', text: 'Yesterday’s brief is complete: views were up 18%, subscriber conversion held steady, and two comments were flagged for a reply.' },
     ] },
+    // Trailing tool-only turns plus a streaming final message, for exercising bounded tails and
+    // the progressive preview's tool-only skip: the final turn has no text yet, so a preview must
+    // walk back to an older turn.
+    { id: 'ses_a8', title: 'CI failure triage', directory: '/workspace/agent', updated: minutes(3), model: { id: 'claude-sonnet', providerID: 'anthropic' }, status: 'busy', messages: [
+      { role: 'user', text: 'Find the failing test in the last CI run and fix it.' },
+      { role: 'assistant', text: 'Reading the run log now.' },
+      { role: 'assistant', text: '', tools: [
+        { tool: 'read', status: 'completed', title: 'ci/run-4821.log', input: { filePath: '/workspace/agent/ci/run-4821.log' } },
+        { tool: 'grep', status: 'completed', title: 'FAIL', input: { pattern: 'FAIL' } },
+      ] },
+      { role: 'assistant', text: '', open: true, reasoning: 'The failing assertion is in the retry test; checking the helper before patching.', tools: [
+        { tool: 'read', status: 'running', title: 'src/lib/retry.test.ts' },
+      ] },
+    ] },
   ],
   studio: [
     { id: 'ses_b1', title: 'Habit partner outreach', directory: '/workspace/habit', updated: minutes(6), status: 'idle', messages: [
@@ -352,17 +366,46 @@ const STREAMING_INSTANCES = new Set(['local']);
 type EventListener = (event: unknown) => void;
 const eventListeners = new Set<EventListener>();
 const emit = (event: unknown) => eventListeners.forEach((listener) => listener(event));
+
+// Streaming scenario for the triage session: grow the open final turn one chunk at a time without
+// changing the message count, so the watcher emits `message.part.updated` and the renderer
+// exercises bounded tail fetches. It resets once the text gets long, keeping the mock bounded.
+const STREAM_CHUNKS = ['Checking ', 'the retry ', 'helper… ', 'the assertion ', 'looks off by one. '];
+let streamTick = 0;
+const advanceStreamingScenario = () => {
+  streamTick += 1;
+  if (streamTick % 4 !== 0) return;
+  const session = (sessions.local ?? []).find((entry) => entry.id === 'ses_a8');
+  const last = session?.messages[session.messages.length - 1];
+  if (!session || !last?.open) return;
+  last.text = last.text.length > 160 ? '' : `${last.text}${STREAM_CHUNKS[streamTick % STREAM_CHUNKS.length]}`;
+  session.updated = Date.now();
+};
+
 let watcher: number | undefined;
 const watchForChanges = () => {
   const snapshot = new Map<string, string>();
+  // Include a content signature so a streaming turn that grows a message without adding one still
+  // emits a `message.part.updated` hint (the message count would not change).
+  const contentSignature = (s: MockSession): string =>
+    s.messages
+      .map((m) => `${(m.text ?? '').length}:${m.reasoning?.length ?? 0}:${m.open ? 1 : 0}:${m.error ?? ''}:${m.tools?.length ?? 0}`)
+      .join(',');
   const fingerprint = (instanceId: string) =>
     JSON.stringify({
-      sessions: (sessions[instanceId] ?? []).map((s) => [s.id, s.status, s.messages.length, s.archived ?? 0]),
+      sessions: (sessions[instanceId] ?? []).map((s) => [
+        s.id,
+        s.status,
+        s.messages.length,
+        s.archived ?? 0,
+        contentSignature(s),
+      ]),
       permissions: (permissions[instanceId] ?? []).map((p) => p.id),
       questions: (questions[instanceId] ?? []).map((q) => q.id),
     });
   STREAMING_INSTANCES.forEach((instanceId) => snapshot.set(instanceId, fingerprint(instanceId)));
   watcher = window.setInterval(() => {
+    advanceStreamingScenario();
     STREAMING_INSTANCES.forEach((instanceId) => {
       const before = JSON.parse(snapshot.get(instanceId) ?? '{}') as ReturnType<typeof JSON.parse>;
       const nowPrint = fingerprint(instanceId);
@@ -372,11 +415,12 @@ const watchForChanges = () => {
       const previous = new Map<string, unknown[]>((before.sessions ?? []).map((row: unknown[]) => [String(row[0]), row]));
       (after.sessions as unknown[][]).forEach((row) => {
         const [id, status, count] = row as [string, string, number];
-        const prior = previous.get(id) as [string, string, number] | undefined;
+        const prior = previous.get(id) as [string, string, number, number, string] | undefined;
         if (!prior) emit({ instanceId, type: 'session.created', sessionId: id });
         else {
           if (prior[1] !== status) emit({ instanceId, type: 'session.status', sessionId: id });
           if (prior[2] !== count) emit({ instanceId, type: 'message.updated', sessionId: id });
+          else if (prior[4] !== row[4]) emit({ instanceId, type: 'message.part.updated', sessionId: id });
         }
       });
       if (JSON.stringify(before.permissions) !== JSON.stringify(after.permissions)) emit({ instanceId, type: 'permission.updated' });
@@ -635,7 +679,7 @@ const bridge: EmberBridge = {
     const messageMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/message$/);
     if (messageMatch) {
       const session = list.find((s) => s.id === decodeURIComponent(messageMatch[1]));
-      return delay(ok((session?.messages ?? []).map((m, i, all) => {
+      const normalized = (session?.messages ?? []).map((m, i, all) => {
         const id = `${session?.id}-${i}`;
         const created = (session?.updated ?? Date.now()) - (all.length - i) * 5000;
         const time = m.role === 'assistant' && !m.open ? { created, completed: created + 2400 } : { created };
@@ -660,7 +704,11 @@ const bridge: EmberBridge = {
               cost: m.open || m.error ? undefined : 0.0123,
             };
         return { info, parts: toParts(m, id) };
-      })));
+      });
+      // Honor `limit` the way OpenCode does: the latest N records in chronological order.
+      const limitParam = Number(url.searchParams.get('limit'));
+      const limited = Number.isFinite(limitParam) && limitParam > 0 ? normalized.slice(-limitParam) : normalized;
+      return delay(ok(limited));
     }
     const promptMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/prompt_async$/);
     if (promptMatch) {
