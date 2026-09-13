@@ -233,6 +233,10 @@ from an event payload.
 - Vite config is `vite.config.mts` (ESM) because `package.json` has no `"type": "module"` — the
   electron build needs CommonJS.
 - Animations: `motion` for layout/reorder, `tw-animate-css` for Radix enter/exit.
+- Errors name their layer: the transport's own 20s deadline reads "… (Ember → OpenChamber)", other
+  request failures are prefixed with the instance label, and OpenChamber/OpenCode/provider messages
+  pass through with their text (`proxyApiRequest` in `electron/main.ts`;
+  `responseError` in `App.tsx`).
 - Archiving is OpenCode-native: `PATCH /api/session/:id` with `{ time: { archived: ms | 0 } }`.
   Sessions load from `/api/experimental/session?archived=true` (plain `/api/session` ignores the
   archived filter) and are split client-side on a truthy `time.archived`, since restored sessions

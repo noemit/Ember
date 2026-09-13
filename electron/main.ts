@@ -314,6 +314,24 @@ const loadInstances = async (): Promise<Instance[]> => {
   return instances;
 };
 
+/** Best-effort display label for an instance id, without probing health (error paths only). */
+const instanceLabel = (instanceId: string): string => {
+  if (instanceId === 'local') return 'Local';
+  const root = readOpenchamberSettings();
+  const hosts = Array.isArray(root.desktopHosts) ? (root.desktopHosts as StoredHost[]) : [];
+  const host = hosts.find((entry, index) => hostId(entry, index) === instanceId);
+  if (host) {
+    const rawUrl = typeof host.url === 'string' ? host.url : '';
+    const isRelay = rawUrl.startsWith('relay://') || Boolean(host.relay);
+    return host.label || (isRelay ? rawUrl : hostUrl(host)) || instanceId;
+  }
+  const sshInstances = Array.isArray(root.desktopSshInstances)
+    ? (root.desktopSshInstances as StoredSshInstance[])
+    : [];
+  const ssh = sshInstances.find((entry) => String(entry.id || '') === instanceId);
+  return ssh ? ssh.nickname || ssh.sshParsed?.destination || ssh.host || instanceId : instanceId;
+};
+
 const instanceTarget = (instanceId: string): { url: string; headers: Record<string, string> } | null => {
   const root = readOpenchamberSettings();
   const hosts = Array.isArray(root.desktopHosts) ? (root.desktopHosts as StoredHost[]) : [];
@@ -571,7 +589,7 @@ const proxyApiRequest = async (
   const target = instanceTarget(instanceId);
   const method = normalizeApiMethod(rawMethod);
   const requestUrl = target ? resolveApiUrl(target.url, apiPath) : null;
-  if (!target) return { ok: false, status: 0, data: { error: 'Instance is not attachable' } };
+  if (!target) return { ok: false, status: 0, data: { error: `${instanceLabel(instanceId)} is not connected in OpenChamber — check the instance and retry.`, source: 'ember' } };
   if (!method || !requestUrl || (method === 'GET' && requestBody !== undefined)) {
     return { ok: false, status: 400, data: { error: 'Invalid API request' } };
   }
@@ -588,7 +606,27 @@ const proxyApiRequest = async (
     try { data = text ? JSON.parse(text) : null; } catch { data = text; }
     return { ok: response.ok, status: response.status, data };
   } catch (error) {
-    return { ok: false, status: 0, data: { error: error instanceof Error ? error.message : String(error) } };
+    // Attribute the failure: a raw "aborted due to timeout" doesn't say what timed out. Ember's
+    // own proxy deadline is the layer here; OpenChamber/OpenCode/provider errors come back as HTTP
+    // responses instead and keep their own message.
+    const label = instanceLabel(instanceId);
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      const seconds = Math.round(API_TIMEOUT_MS / 1000);
+      return {
+        ok: false,
+        status: 0,
+        data: {
+          error: `Ember timed out after ${seconds}s waiting for ${label} (Ember → OpenChamber). OpenChamber or its provider may still be working — retry.`,
+          source: 'ember',
+        },
+      };
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      status: 0,
+      data: { error: `Could not reach ${label} (Ember → OpenChamber): ${detail}`, source: 'ember' },
+    };
   }
 };
 

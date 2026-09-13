@@ -30,6 +30,7 @@ import {
   loadAllSessions,
   loadAllSessionStates,
   loadMessages,
+  loadTranscriptTail,
   loadPermissions,
   loadQuestions,
   loadSessionStates,
@@ -177,8 +178,13 @@ const composerDraftSignature = (drafts: Record<string, StoredComposerDraft>): st
     })
   );
 
-const responseError = (data: unknown, fallback: string): string =>
-  errorMessageOf(data) ?? fallback;
+const responseError = (data: unknown, fallback: string, source?: string): string => {
+  const detail = errorMessageOf(data);
+  const message = detail ?? fallback;
+  // Middle-process errors already say "Ember → …"; don't double-label those.
+  const origin = data && typeof data === 'object' ? (data as Record<string, unknown>).source : undefined;
+  return source && origin !== 'ember' ? `${source}: ${message}` : message;
+};
 
 const messagePinKey = (session: SessionRef, messageId: string): string =>
   `${sessionKey(session)}::${messageId}`;
@@ -1099,6 +1105,28 @@ export default function App() {
     }
   });
 
+  const refreshTail = useStableCallback(async (ref: SessionRef) => {
+    const key = sessionKey(ref);
+    const directory =
+      (sessionsByInstanceRef.current[ref.instanceId] ?? []).find((session) => session.id === ref.sessionId)?.directory;
+    try {
+      const tail = await loadTranscriptTail(ref.instanceId, ref.sessionId, directory);
+      // Merge the tail into the full transcript; this is a placeholder until Phase 3.
+      const current = messageCacheRef.current.get(key) ?? [];
+      const merged = reconcilePolledMessages(current, tail, pendingOptimisticIds.current);
+      releaseReconciledOptimistic(merged);
+      const result = sameMessages(current, merged) ? current : merged;
+      cacheMessages(key, result);
+      setTranscriptFor(key, result, 'ready');
+      const preview = previewOf(tail);
+      if (preview) {
+        setPreviews((prev) => (prev[key] === preview ? prev : { ...prev, [key]: preview }));
+      }
+    } catch (err) {
+      console.error('Failed to load tail', err);
+    }
+  });
+
   const refreshScheduled = useStableCallback(async (instanceIds: string[]) => {
     const projects = projectsByInstanceRef.current;
     const targets = instanceIds.filter((instanceId) => (projects[instanceId] ?? []).length > 0);
@@ -1135,6 +1163,7 @@ export default function App() {
       case 'autoAccept': await refreshAutoAccept([instanceId]); break;
       case 'scheduled': await refreshScheduled([instanceId]); break;
       case 'messages': if (sessionId) await refreshMessages({ instanceId, sessionId }); break;
+      case 'tail': if (sessionId) await refreshTail({ instanceId, sessionId }); break;
     }
   });
   const invalidationQueue = React.useMemo(() => new InvalidationQueue(refetch), [refetch]);
@@ -1409,6 +1438,9 @@ export default function App() {
   const handleSend = (input: PromptInput): Promise<boolean> =>
     selected ? sendTo(selected, selectedSession?.directory, input) : Promise.resolve(false);
 
+  const instanceLabelOf = (instanceId: string): string =>
+    instances.find((instance) => instance.id === instanceId)?.label ?? instanceId;
+
   const sendTo = async (target: SessionRef, directory: string | undefined, input: PromptInput): Promise<boolean> => {
     showActionError(null);
     const { instanceId, sessionId } = target;
@@ -1453,7 +1485,7 @@ export default function App() {
         pendingOptimisticIds.current.delete(optimisticId);
         removeOptimistic();
         showActionError(
-          responseError(sent.data, 'Message could not be sent.'),
+          responseError(sent.data, 'Message could not be sent.', instanceLabelOf(instanceId)),
           () => void sendTo(target, directory, input)
         );
         return false;
