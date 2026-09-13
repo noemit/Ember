@@ -44,6 +44,7 @@ type Props = {
   modelsByInstance: Record<string, ModelList>;
   onChange: (patch: EmberSettingsPatch) => void;
   onOpenChange: (open: boolean) => void;
+  onViewChange: (view: 'general' | 'instances') => void;
 };
 
 const BLOB_STYLES: Array<{ id: BlobStyle; name: string; hint: string }> = [
@@ -234,6 +235,7 @@ export default function SettingsPanel({
   modelsByInstance,
   onChange,
   onOpenChange,
+  onViewChange,
 }: Props) {
   const [remotePassword, setRemotePassword] = React.useState('');
 
@@ -254,7 +256,11 @@ export default function SettingsPanel({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={view} className="flex min-h-0 flex-col">
+        <Tabs
+          value={view}
+          onValueChange={(value) => onViewChange(value as 'general' | 'instances')}
+          className="flex min-h-0 flex-col"
+        >
           <TabsList className="mx-4 mt-4 mb-0 w-auto self-start">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="instances">Instances</TabsTrigger>

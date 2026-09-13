@@ -2497,6 +2497,7 @@ export default function App() {
                 modelsByInstance={modelsByInstance}
                 onChange={handleSettings}
                 onOpenChange={setSettingsOpen}
+                onViewChange={setSettingsView}
               />
             </React.Suspense>
           ) : null}
