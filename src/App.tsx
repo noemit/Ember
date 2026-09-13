@@ -2253,7 +2253,6 @@ export default function App() {
               }
               showScheduled={showScheduled}
               onShowScheduled={setShowScheduled}
-              archivedCount={archivedSessions.length}
               onOpenArchive={() => setArchiveOpen(true)}
               onSelectSession={(session) => {
                 openSession({ instanceId: session.instanceId, sessionId: session.id }, session);

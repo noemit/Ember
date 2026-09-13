@@ -122,7 +122,7 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `session.archived`.
 - `src/components/ArchiveDialog.tsx` — the rail's archive screen (`archivedSessions`): every
   archived session as an individual row, newest first, with restore. Opened from the rail toolbar's
-  archive button (`archivedCount`).
+  archive button.
 - `src/components/ColumnTabStrip.tsx` — the numbered open-session strip above the columns (to the
   right of the rail, aligned with the session header). Columns
   and overflow/minimized sessions share one numbering (1-based `openSessions` order); a tab click

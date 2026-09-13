@@ -47,7 +47,6 @@ type Props = {
   showScheduled: boolean;
   onShowScheduled: (value: boolean) => void;
   /** Archived sessions across instances; opens the archive screen. */
-  archivedCount: number;
   onOpenArchive: () => void;
   onSelectSession: (session: Session) => void;
   /** Opens a project's sessions (those shown on its card) as the open list. */
@@ -81,7 +80,6 @@ export default function LeftRail({
   windowLabel,
   showScheduled,
   onShowScheduled,
-  archivedCount,
   onOpenArchive,
   onSelectSession,
   onOpenProject,
@@ -417,14 +415,9 @@ export default function LeftRail({
                 size="sm"
                 onClick={onOpenArchive}
                 aria-label="Archived sessions"
-                className="relative w-8 justify-center px-0"
+                className="w-8 justify-center px-0"
               >
                 <Archive className="size-4" />
-                {archivedCount > 0 ? (
-                  <span className="pointer-events-none absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-highlight px-0.5 text-[9px] font-semibold leading-none text-highlight-foreground">
-                    {archivedCount}
-                  </span>
-                ) : null}
               </Button>
             </TooltipTrigger>
             <TooltipContent>Archived sessions</TooltipContent>
