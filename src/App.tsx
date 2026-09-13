@@ -2019,6 +2019,11 @@ export default function App() {
     () => recentModelKeys(modelInstanceSessions ?? []),
     [modelInstanceSessions]
   );
+  const recentModelsByInstance = React.useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const [id, list] of Object.entries(sessionsByInstance)) out[id] = recentModelKeys(list);
+    return out;
+  }, [sessionsByInstance]);
   const selectedPermissions = React.useMemo(() => forSession(permissions, selected), [permissions, selected]);
   const selectedQuestions = React.useMemo(() => forSession(questions, selected), [questions, selected]);
 
@@ -2495,6 +2500,7 @@ export default function App() {
                 instances={instances}
                 projectsByInstance={projectsByInstance}
                 modelsByInstance={modelsByInstance}
+                recentModelsByInstance={recentModelsByInstance}
                 onChange={handleSettings}
                 onOpenChange={setSettingsOpen}
                 onViewChange={setSettingsView}

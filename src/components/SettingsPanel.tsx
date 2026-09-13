@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { motion } from 'motion/react';
-import { Check, KeyRound, ShieldCheck } from 'lucide-react';
+import { Check, ChevronRight, KeyRound, ShieldCheck } from 'lucide-react';
 import Blob from '../blob/Blob';
+import ModelPicker from './ModelPicker';
 import { INSTANCE_MARKER_COLORS } from '../blob/contrast';
 import { THEME_GROUPS, THEMES } from '../themes';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,7 @@ type Props = {
   instances: Instance[];
   projectsByInstance: Record<string, Project[]>;
   modelsByInstance: Record<string, ModelList>;
+  recentModelsByInstance: Record<string, string[]>;
   onChange: (patch: EmberSettingsPatch) => void;
   onOpenChange: (open: boolean) => void;
   onViewChange: (view: 'general' | 'instances') => void;
@@ -56,10 +58,12 @@ const InstanceDefaultsSettings = ({
   instances,
   projectsByInstance,
   modelsByInstance,
+  recentModelsByInstance,
   settings,
   onChange,
-}: Pick<Props, 'instances' | 'projectsByInstance' | 'modelsByInstance' | 'settings' | 'onChange'>) => {
+}: Pick<Props, 'instances' | 'projectsByInstance' | 'modelsByInstance' | 'recentModelsByInstance' | 'settings' | 'onChange'>) => {
   const [instanceId, setInstanceId] = React.useState(instances.find((instance) => instance.attachable)?.id ?? instances[0]?.id ?? '');
+  const [modelPickerOpen, setModelPickerOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!instances.some((instance) => instance.id === instanceId)) {
@@ -78,7 +82,15 @@ const InstanceDefaultsSettings = ({
   const defaults = settings.instanceDefaults[instanceId] ?? {};
   const projects = projectsByInstance[instanceId] ?? [];
   const models = modelsByInstance[instanceId]?.models ?? [];
+  const defaultModelId = modelsByInstance[instanceId]?.defaultModelId ?? null;
+  const recentModels = recentModelsByInstance[instanceId] ?? [];
   const modelKey = defaults.model ? modelRefKey(defaults.model) : DEFAULT_MODEL;
+  const selectedModel = defaults.model
+    ? models.find((entry) => modelRefKey(entry) === modelKey)
+    : undefined;
+  const selectedModelLabel = defaults.model
+    ? selectedModel?.label ?? `${defaults.model.providerID} / ${defaults.model.modelID}`
+    : 'Instance default';
   const projectValue = defaults.directory && projects.some((project) => project.path === defaults.directory)
     ? defaults.directory
     : '__none';
@@ -176,31 +188,38 @@ const InstanceDefaultsSettings = ({
 
       <section className="flex flex-col gap-1.5">
         <span className="text-xs font-medium">Default model</span>
-        <Select
-          value={modelKey}
-          onValueChange={(value) => {
-            const model = models.find((entry) => modelRefKey(entry) === value);
-            update({
-              model:
-                value === DEFAULT_MODEL || !model
-                  ? undefined
-                  : { providerID: model.providerID, modelID: model.modelID },
-            });
-          }}
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-between font-normal"
+          aria-label="Default model"
+          onClick={() => setModelPickerOpen(true)}
         >
-          <SelectTrigger aria-label="Default model">
-            <SelectValue placeholder="Instance default" />
-          </SelectTrigger>
-          <SelectContent className="max-h-[300px]">
-            <SelectItem value={DEFAULT_MODEL}>Instance default</SelectItem>
-            {models.map((model) => (
-              <SelectItem key={modelRefKey(model)} value={modelRefKey(model)}>
-                {model.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <span className="truncate">{selectedModelLabel}</span>
+          <ChevronRight className="size-4 flex-none opacity-50" />
+        </Button>
       </section>
+
+      <ModelPicker
+        open={modelPickerOpen}
+        models={models}
+        recentModels={recentModels}
+        value={modelKey}
+        variant={defaults.variant ?? ''}
+        defaultModelId={defaultModelId}
+        collapseProviders
+        onSelect={(key, variant) => {
+          const model = models.find((entry) => modelRefKey(entry) === key);
+          update({
+            model:
+              key === DEFAULT_MODEL || !model
+                ? undefined
+                : { providerID: model.providerID, modelID: model.modelID },
+            variant: variant || undefined,
+          });
+        }}
+        onOpenChange={setModelPickerOpen}
+      />
 
       <Card>
         <CardContent className="flex items-center justify-between gap-4 p-3">
@@ -233,6 +252,7 @@ export default function SettingsPanel({
   instances,
   projectsByInstance,
   modelsByInstance,
+  recentModelsByInstance,
   onChange,
   onOpenChange,
   onViewChange,
@@ -463,6 +483,7 @@ export default function SettingsPanel({
                     instances={instances}
                     projectsByInstance={projectsByInstance}
                     modelsByInstance={modelsByInstance}
+                    recentModelsByInstance={recentModelsByInstance}
                     settings={settings}
                     onChange={onChange}
                   />
