@@ -7,6 +7,8 @@ export type ActionNotice = {
 };
 
 const NOTICE_TIMEOUT_MS = 8000;
+/** An error toast lingers long enough to act on, then fades on its own. */
+const ERROR_TIMEOUT_MS = 3 * 60_000;
 const COPIED_FLASH_MS = 1600;
 /** Long enough for the live region to notice the text was cleared before it's set again. */
 const ANNOUNCE_RESET_MS = 40;
@@ -45,6 +47,13 @@ export const useFeedback = () => {
   React.useEffect(() => {
     setNoticePaused(false);
   }, [actionNotice]);
+
+  // Errors fade on their own after three minutes, matching the notices' self-dismissing feel.
+  React.useEffect(() => {
+    if (!actionError) return;
+    const timer = window.setTimeout(() => showActionError(null), ERROR_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [actionError, showActionError]);
 
   React.useEffect(() => {
     if (!actionNotice || noticePaused) return;

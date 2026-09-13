@@ -18,6 +18,8 @@ type Props = {
   /** Instances whose event stream is up; the rest fall back to fast polling. */
   live: Record<string, boolean>;
   refreshing: boolean;
+  /** Transient error/notice toasts, rendered inline next to the search button. */
+  banner?: React.ReactNode;
   onToggle: (instanceId: string) => void;
   onToggleNavigation: () => void;
   onOpenCommandPalette: () => void;
@@ -53,6 +55,7 @@ export default function InstanceBar({
   hidden,
   live,
   refreshing,
+  banner,
   onToggle,
   onToggleNavigation,
   onOpenCommandPalette,
@@ -90,7 +93,13 @@ export default function InstanceBar({
         <kbd className="hidden rounded bg-background px-1 text-[10px] sm:inline">⌘K</kbd>
       </button>
 
-      <div className="flex-1" />
+      {banner ? (
+        <div className="no-drag flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+          {banner}
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       <button
         type="button"

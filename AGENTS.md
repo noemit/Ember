@@ -94,6 +94,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   same two display settings are also editable from the top bar's View options dialog
   (`ViewOptionsDialog.tsx`). As a workspace column it also shows minimize/close controls in the
   header (`onMinimize`/`onClose`).
+- `src/components/InstanceBar.tsx` — the top bar (Ember wordmark, command palette, view options,
+  instances menu, settings). App passes the error/notice toasts as `banner`, so they render inline
+  next to the search button; both self-dismiss (errors after three minutes).
 - `src/components/LeftRail.tsx` — the rail is a single recency-ordered list from
   `src/lib/projectGroups.ts` (`buildRailEntries`). A configured project with one active session
   renders as a plain `SessionRow` whose title is the project name (a hover `+` starts a new session

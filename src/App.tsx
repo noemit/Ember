@@ -2107,6 +2107,92 @@ export default function App() {
     );
   };
 
+  // Error + notice toasts. They render inline at the very top of the window, next to the search
+  // button, and both self-dismiss (errors after three minutes).
+  const feedbackBanner =
+    actionError || actionNotice ? (
+      <>
+        {actionError ? (
+          <div
+            role="alert"
+            className="animate-in fade-in flex h-7 min-w-0 items-center gap-2 rounded-full border border-destructive/40 bg-popover px-2.5 text-[11.5px] shadow-sm"
+          >
+            <span className="min-w-0 max-w-[44ch] truncate" title={actionError}>
+              {actionError}
+            </span>
+            {actionErrorRetry ? (
+              <button
+                type="button"
+                className="shrink-0 rounded font-medium text-highlight hover:underline focus-visible:outline-2"
+                onClick={() => actionErrorRetry()}
+                aria-label="Retry failed action"
+              >
+                Retry
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="shrink-0 rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
+              onClick={() => {
+                void copyText(actionError).then((copied) => setErrorCopied(copied));
+              }}
+              aria-label="Copy error message"
+            >
+              {errorCopied ? 'Copied' : 'Copy'}
+            </button>
+            <button
+              type="button"
+              className="shrink-0 rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
+              onClick={() => showActionError(null)}
+              aria-label="Dismiss error"
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+        {actionNotice ? (
+          <div
+            role="status"
+            aria-live="polite"
+            onFocusCapture={() => setNoticePaused(true)}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setNoticePaused(false);
+              }
+            }}
+            onPointerEnter={() => setNoticePaused(true)}
+            onPointerLeave={() => setNoticePaused(false)}
+            className="animate-in fade-in flex h-7 min-w-0 items-center gap-2 rounded-full border border-highlight/35 bg-popover px-2.5 text-[11.5px] shadow-sm"
+          >
+            <span className="min-w-0 max-w-[44ch] truncate" title={actionNotice.message}>
+              {actionNotice.message}
+            </span>
+            {actionNotice.actionLabel && actionNotice.action ? (
+              <button
+                type="button"
+                className="shrink-0 rounded font-medium text-highlight hover:underline focus-visible:outline-2"
+                onClick={() => {
+                  const action = actionNotice.action;
+                  setActionNotice(null);
+                  action?.();
+                }}
+              >
+                {actionNotice.actionLabel}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="shrink-0 rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
+              onClick={() => setActionNotice(null)}
+              aria-label="Dismiss message"
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+      </>
+    ) : null;
+
   return (
     <MotionConfig reducedMotion="user">
       <TooltipProvider delayDuration={300}>
@@ -2119,6 +2205,7 @@ export default function App() {
             hidden={hidden}
             live={liveInstances}
             refreshing={refreshing}
+            banner={feedbackBanner}
             onToggle={toggleInstance}
             onToggleNavigation={() => setMobileRailOpen((open) => !open)}
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
@@ -2365,84 +2452,6 @@ export default function App() {
             </React.Suspense>
           ) : null}
 
-          {actionError || actionNotice ? (
-            <div className="fixed top-[calc(3.5rem+env(safe-area-inset-top))] right-3 left-3 z-[100] flex max-w-[420px] flex-col gap-2 sm:top-auto sm:right-3 sm:bottom-[max(0.75rem,env(safe-area-inset-bottom))] sm:left-auto">
-              {actionError ? (
-                <div
-                  role="alert"
-                  className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-popover px-3 py-2.5 text-[12px] shadow-lg"
-                >
-                  <span className="min-w-0 flex-1">{actionError}</span>
-                  {actionErrorRetry ? (
-                    <button
-                      type="button"
-                      className="rounded font-medium text-highlight hover:underline focus-visible:outline-2"
-                      onClick={() => actionErrorRetry()}
-                      aria-label="Retry failed action"
-                    >
-                      Retry
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
-                    onClick={() => {
-                      void copyText(actionError).then((copied) => setErrorCopied(copied));
-                    }}
-                    aria-label="Copy error message"
-                  >
-                    {errorCopied ? 'Copied' : 'Copy'}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
-                    onClick={() => showActionError(null)}
-                    aria-label="Dismiss error"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              ) : null}
-              {actionNotice ? (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  onFocusCapture={() => setNoticePaused(true)}
-                  onBlurCapture={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                      setNoticePaused(false);
-                    }
-                  }}
-                  onPointerEnter={() => setNoticePaused(true)}
-                  onPointerLeave={() => setNoticePaused(false)}
-                  className="flex items-start gap-3 rounded-lg border border-highlight/35 bg-popover px-3 py-2.5 text-[12px] shadow-lg"
-                >
-                  <span className="min-w-0 flex-1">{actionNotice.message}</span>
-                  {actionNotice.actionLabel && actionNotice.action ? (
-                    <button
-                      type="button"
-                      className="rounded font-medium text-highlight hover:underline focus-visible:outline-2"
-                      onClick={() => {
-                        const action = actionNotice.action;
-                        setActionNotice(null);
-                        action?.();
-                      }}
-                    >
-                      {actionNotice.actionLabel}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-2"
-                    onClick={() => setActionNotice(null)}
-                    aria-label="Dismiss message"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </TooltipProvider>
     </MotionConfig>
