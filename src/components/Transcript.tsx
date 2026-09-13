@@ -271,14 +271,28 @@ const ToolGroupRow = ({ tool, calls }: { tool: string; calls: ToolCall[] }) => {
   );
 };
 
-const ReasoningRow = ({ text, defaultOpen }: { text: string; defaultOpen: boolean }) => {
+const ReasoningRow = ({
+  text,
+  defaultOpen,
+  onToggle,
+}: {
+  text: string;
+  defaultOpen: boolean;
+  onToggle?: (element: HTMLElement | null) => void;
+}) => {
   const [open, setOpen] = React.useState(defaultOpen);
+  const rootRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => setOpen(defaultOpen), [defaultOpen]);
   return (
-    <div className="flex max-w-[85%] flex-col self-start">
+    <div ref={rootRef} className="flex max-w-[85%] flex-col self-start">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          // Expanding can push the block out of view; let the transcript nudge it back minimally.
+          if (next) onToggle?.(rootRef.current);
+        }}
         aria-expanded={open}
         className="flex items-center gap-2 rounded-md px-1 py-0.5 text-left text-[11.5px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
@@ -626,7 +640,8 @@ const renderBlock = (
   message: ChatMessage,
   block: Block,
   reasoningExpanded: boolean,
-  overlay?: React.ReactNode
+  overlay?: React.ReactNode,
+  onReasoningToggle?: (element: HTMLElement | null) => void
 ) => {
   const mine = message.role === 'user';
   if (block.type === 'text') {
@@ -667,7 +682,7 @@ const renderBlock = (
       {block.type === 'tools' ? (
         <ToolGroupRow tool={block.tool} calls={block.calls} />
       ) : block.type === 'reasoning' ? (
-        <ReasoningRow text={block.text} defaultOpen={reasoningExpanded} />
+        <ReasoningRow text={block.text} defaultOpen={reasoningExpanded} onToggle={onReasoningToggle} />
       ) : (
         <FileBlock file={block.file} mine={mine} />
       )}
@@ -690,6 +705,7 @@ type MessageRowProps = {
   mood: BallMood;
   onTogglePin: (message: ChatMessage) => void;
   onReply: (message: ChatMessage) => void;
+  onReasoningToggle: (element: HTMLElement | null) => void;
   registerNode: (id: string, node: HTMLDivElement | null) => void;
 };
 
@@ -711,6 +727,7 @@ const MessageRow = React.memo(function MessageRow({
   mood,
   onTogglePin,
   onReply,
+  onReasoningToggle,
   registerNode,
 }: MessageRowProps) {
   const blocks = React.useMemo(
@@ -760,7 +777,8 @@ const MessageRow = React.memo(function MessageRow({
             message,
             block,
             reasoningDisplay === 'expanded',
-            index === pinHostIndex ? renderPin('top-1 -right-6') : undefined
+            index === pinHostIndex ? renderPin('top-1 -right-6') : undefined,
+            onReasoningToggle
           );
           // Left-aligned rows (tools, reasoning, files) keep their content on the left, so the blob
           // tucks to the right of the last one rather than covering it.
@@ -827,6 +845,17 @@ export default function Transcript({
   const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
+  // Clicking a thinking block: stop auto-following and nudge the block into view only as far as it
+  // needs, so expanding it never yanks the reader down to the bottom.
+  const ensureReasoningVisible = React.useCallback((element: HTMLElement | null) => {
+    if (!element) return;
+    followRef.current = false;
+    setFollowing(false);
+    window.requestAnimationFrame(() =>
+      element.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    );
   }, []);
 
   const pendingCount = permissions.length + questions.length;
@@ -973,6 +1002,7 @@ export default function Transcript({
                 mood={mood}
                 onTogglePin={togglePin}
                 onReply={reply}
+                onReasoningToggle={ensureReasoningVisible}
                 registerNode={registerNode}
               />
             ))}
