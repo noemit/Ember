@@ -2102,6 +2102,7 @@ export default function App() {
           onHandoff={() => void handleHandoff(session)}
           onMinimize={() => minimizeSession(key)}
           onClose={() => closeSession(key)}
+          onActivate={() => activateSession(key)}
         />
       </div>
     );

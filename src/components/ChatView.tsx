@@ -139,6 +139,8 @@ type Props = {
   onMinimize?: () => void;
   /** Column chrome: close this session's column. */
   onClose?: () => void;
+  /** Called when the user interacts with this column, so the active session follows focus. */
+  onActivate?: () => void;
 };
 
 
@@ -289,6 +291,7 @@ export default function ChatView({
   onHandoff,
   onMinimize,
   onClose,
+  onActivate,
 }: Props) {
   const [text, setText] = React.useState('');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
@@ -681,7 +684,10 @@ export default function ChatView({
   };
 
   return (
-    <main className="relative flex min-w-0 flex-1 overflow-hidden">
+    <main
+      className="relative flex min-w-0 flex-1 overflow-hidden"
+      onPointerDownCapture={onActivate}
+    >
       <div className="flex min-w-0 flex-1 flex-col">
         <AnimatePresence mode="popLayout" initial={false}>
         {session ? (
