@@ -150,6 +150,8 @@ export type ChatMessage = {
   parts: MessagePart[];
   model?: ModelRef;
   tokens?: TokenUsage;
+  /** Provider-reported USD cost for this assistant turn, when the API includes it. */
+  cost?: number;
   error?: string;
   /** The error is a user-initiated stop, not a failure; don't surface it as an error state. */
   aborted?: boolean;

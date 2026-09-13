@@ -656,6 +656,8 @@ const bridge: EmberBridge = {
                 : i <= 1
                   ? { input: 1800, output: 240, reasoning: 0, cache: { read: 0, write: 9200 } }
                   : { input: 400 + i * 60, output: 180, reasoning: 0, cache: { read: 9200 + i * 300, write: 0 } },
+              // A plausible per-turn USD cost so the footer's cost/tok-s fields are exercised.
+              cost: m.open || m.error ? undefined : 0.0123,
             };
         return { info, parts: toParts(m, id) };
       })));

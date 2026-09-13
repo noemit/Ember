@@ -570,6 +570,21 @@ export const cacheSummary = (tokens: TokenUsage | undefined): string | null => {
   return null;
 };
 
+/** Output tokens per second for a finished turn, or null when there's not enough to say. */
+export const tokensPerSecond = (message: ChatMessage): number | null => {
+  if (!message.tokens || message.createdAt === undefined || message.completedAt === undefined) return null;
+  const seconds = (message.completedAt - message.createdAt) / 1000;
+  if (seconds <= 0 || message.tokens.output <= 0) return null;
+  return message.tokens.output / seconds;
+};
+
+/** Compact USD amount: enough precision to distinguish small per-turn costs. */
+export const formatCost = (cost: number): string => {
+  if (!(cost > 0)) return '$0';
+  const decimals = cost < 0.1 ? 4 : cost < 1 ? 3 : 2;
+  return `$${cost.toFixed(decimals)}`;
+};
+
 export const isAssistantTurnEnd = (
   messages: ChatMessage[],
   index: number,
@@ -602,6 +617,8 @@ const MessageFooter = ({
     : null;
   const cache = showMetadata ? cacheSummary(message.tokens) : null;
   const tokens = message.tokens;
+  const tps = showMetadata ? tokensPerSecond(message) : null;
+  const cost = showMetadata && message.cost !== undefined ? message.cost : null;
   if (!model && !duration && !pinned) return null;
 
   return (
@@ -622,6 +639,12 @@ const MessageFooter = ({
           {cache}
         </span>
       ) : null}
+      {tps !== null ? (
+        <span className="flex-none" title="Output tokens per second">
+          · {tps >= 10 ? Math.round(tps) : tps.toFixed(1)} tok/s
+        </span>
+      ) : null}
+      {cost !== null ? <span className="flex-none">{`· ${formatCost(cost)}`}</span> : null}
       {pinned ? (
         <button
           type="button"

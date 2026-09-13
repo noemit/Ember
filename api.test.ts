@@ -26,7 +26,7 @@ import {
   takeQueuedMessage,
 } from './src/api';
 import { shouldOfferSessionReload } from './src/components/ChatView';
-import { cacheSummary, isAssistantTurnEnd } from './src/components/Transcript';
+import { cacheSummary, formatCost, isAssistantTurnEnd, tokensPerSecond } from './src/components/Transcript';
 import type { ChatMessage, ModelOption } from './src/types';
 
 const setRequest = (
@@ -207,6 +207,26 @@ describe('session loading', () => {
     expect(zeros.tokens).toBeUndefined();
     expect(cacheSummary({ input: 500, output: 10, cacheRead: 0, cacheWrite: 12_400 })).toBe('cache written 12k');
     expect(cacheSummary({ input: 500, output: 10, cacheRead: 0, cacheWrite: 0 })).toBeNull();
+  });
+
+  test('computes output tokens/second and formats per-turn cost', () => {
+    const base: ChatMessage = {
+      id: 'm',
+      role: 'assistant',
+      text: '',
+      parts: [],
+      completed: true,
+      tokens: { input: 10, output: 100, cacheRead: 0, cacheWrite: 0 },
+      createdAt: 1000,
+      completedAt: 3000,
+    };
+    expect(tokensPerSecond(base)).toBeCloseTo(50);
+    expect(tokensPerSecond({ ...base, completedAt: 1000 })).toBeNull();
+    expect(tokensPerSecond({ ...base, tokens: undefined })).toBeNull();
+    expect(formatCost(0.0123)).toBe('$0.0123');
+    expect(formatCost(0.5)).toBe('$0.500');
+    expect(formatCost(2.5)).toBe('$2.50');
+    expect(formatCost(0)).toBe('$0');
   });
 
   test('keeps partless assistant errors in the transcript', async () => {

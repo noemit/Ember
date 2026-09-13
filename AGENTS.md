@@ -171,7 +171,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   wants the blob's dominant colour (the transcript's activity dot uses it).
 - `src/components/Transcript.tsx` — message list: text bubbles, expandable tool rows (input/
   output/diff), collapsed reasoning, file parts, permission + question cards, model-named live
-  activity line (suppressed until initial history resolves), pin-to-bottom scrolling (ResizeObserver +
+  activity line (suppressed until initial history resolves), per-message footer (model, duration,
+  cache read/write, output tok/s, and provider cost when the API reports one), pin-to-bottom
+  scrolling (ResizeObserver +
   `scrollend`), and message jump/highlight support. Expanding a thinking block stops auto-follow and
   nudges the block into view with `block: 'nearest'`, so it doesn't yank the reader to the bottom.
   The session blob lives here rather than in the

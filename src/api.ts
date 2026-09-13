@@ -516,7 +516,12 @@ export const loadMessages = async (
       // User messages have no completion timestamp; assistants get one when the turn ends.
       const completed = role === 'user' || completedAt !== undefined || error !== undefined;
       const tokens = role === 'assistant' ? toTokenUsage(info.tokens) : undefined;
-      return { id, role, text, parts, model, tokens, error, aborted, createdAt, completedAt, completed };
+      const rawCost = info.cost ?? item.cost;
+      const cost =
+        role === 'assistant' && typeof rawCost === 'number' && Number.isFinite(rawCost)
+          ? rawCost
+          : undefined;
+      return { id, role, text, parts, model, tokens, cost, error, aborted, createdAt, completedAt, completed };
     })
     .filter((message) => message.parts.length > 0 || message.error);
 };
