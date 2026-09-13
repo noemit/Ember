@@ -17,9 +17,9 @@ describe('event → invalidations', () => {
     ]);
   });
 
-  test('message events refetch the transcript only when it is loaded, else the session list', () => {
+  test('message events refetch the transcript (or its tail) only when it is loaded, else the session list', () => {
     expect(invalidationsFor({ instanceId: 'a', type: 'message.part.updated', sessionId: 'open' }, loaded)).toEqual([
-      { instanceId: 'a', resource: 'messages', sessionId: 'open' },
+      { instanceId: 'a', resource: 'tail', sessionId: 'open' },
     ]);
     expect(invalidationsFor({ instanceId: 'a', type: 'message.part.updated', sessionId: 'other' }, loaded)).toEqual([
       { instanceId: 'a', resource: 'sessions' },

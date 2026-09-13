@@ -30,7 +30,6 @@ import {
   loadAllSessions,
   loadAllSessionStates,
   loadMessages,
-  loadTranscriptTail,
   loadPermissions,
   loadQuestions,
   loadSessionStates,
@@ -1105,28 +1104,6 @@ export default function App() {
     }
   });
 
-  const refreshTail = useStableCallback(async (ref: SessionRef) => {
-    const key = sessionKey(ref);
-    const directory =
-      (sessionsByInstanceRef.current[ref.instanceId] ?? []).find((session) => session.id === ref.sessionId)?.directory;
-    try {
-      const tail = await loadTranscriptTail(ref.instanceId, ref.sessionId, directory);
-      // Merge the tail into the full transcript; this is a placeholder until Phase 3.
-      const current = messageCacheRef.current.get(key) ?? [];
-      const merged = reconcilePolledMessages(current, tail, pendingOptimisticIds.current);
-      releaseReconciledOptimistic(merged);
-      const result = sameMessages(current, merged) ? current : merged;
-      cacheMessages(key, result);
-      setTranscriptFor(key, result, 'ready');
-      const preview = previewOf(tail);
-      if (preview) {
-        setPreviews((prev) => (prev[key] === preview ? prev : { ...prev, [key]: preview }));
-      }
-    } catch (err) {
-      console.error('Failed to load tail', err);
-    }
-  });
-
   const refreshScheduled = useStableCallback(async (instanceIds: string[]) => {
     const projects = projectsByInstanceRef.current;
     const targets = instanceIds.filter((instanceId) => (projects[instanceId] ?? []).length > 0);
@@ -1163,7 +1140,9 @@ export default function App() {
       case 'autoAccept': await refreshAutoAccept([instanceId]); break;
       case 'scheduled': await refreshScheduled([instanceId]); break;
       case 'messages': if (sessionId) await refreshMessages({ instanceId, sessionId }); break;
-      case 'tail': if (sessionId) await refreshTail({ instanceId, sessionId }); break;
+      // PERF-1–3 (bounded tails) is not implemented yet: refetch the full transcript so a token
+      // hint never truncates the visible history.
+      case 'tail': if (sessionId) await refreshMessages({ instanceId, sessionId }); break;
     }
   });
   const invalidationQueue = React.useMemo(() => new InvalidationQueue(refetch), [refetch]);

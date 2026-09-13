@@ -1,7 +1,7 @@
 import type { EmberEvent } from '../types';
 
 /** A REST resource the renderer can refetch. `messages` is per session; the rest are per instance. */
-export type Resource = 'sessions' | 'states' | 'permissions' | 'questions' | 'queues' | 'autoAccept' | 'scheduled' | 'messages';
+export type Resource = 'sessions' | 'states' | 'permissions' | 'questions' | 'queues' | 'autoAccept' | 'scheduled' | 'messages' | 'tail';
 
 export type Invalidation = { instanceId: string; resource: Resource; sessionId?: string };
 
@@ -29,7 +29,7 @@ const OPENCODE_RESOURCES: Record<string, Resource[]> = {
   'session.error': ['states', 'messages'],
   'session.diff': [],
   'message.updated': ['messages'],
-  'message.part.updated': ['messages'],
+  'message.part.updated': ['tail'],
   'message.part.removed': ['messages'],
   'message.removed': ['messages'],
   'permission.updated': ['permissions', 'states'],
@@ -60,7 +60,7 @@ export const invalidationsFor = (
   const resources = OPENCODE_RESOURCES[event.type] ?? OPENCHAMBER_RESOURCES[event.type];
   if (!resources) return [];
   return resources.flatMap((resource): Invalidation[] => {
-    if (resource !== 'messages') return [{ instanceId: event.instanceId, resource }];
+    if (resource !== 'messages' && resource !== 'tail') return [{ instanceId: event.instanceId, resource }];
     if (!event.sessionId) return [];
     // A message landing in a session we aren't showing still moves it in the rail.
     return isLoaded(event.instanceId, event.sessionId)
