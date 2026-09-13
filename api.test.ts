@@ -26,7 +26,7 @@ import {
   takeQueuedMessage,
 } from './src/api';
 import { shouldOfferSessionReload } from './src/components/ChatView';
-import { cacheSummary, formatCost, isAssistantTurnEnd, tokensPerSecond } from './src/components/Transcript';
+import { cacheSummary, formatCost, isAssistantTurnEnd, relativeTimeAgo, tokensPerSecond } from './src/components/Transcript';
 import type { ChatMessage, ModelOption } from './src/types';
 
 const setRequest = (
@@ -227,6 +227,12 @@ describe('session loading', () => {
     expect(formatCost(0.5)).toBe('$0.500');
     expect(formatCost(2.5)).toBe('$2.50');
     expect(formatCost(0)).toBe('$0');
+    const now = 10_000_000;
+    expect(relativeTimeAgo(now - 10_000, now)).toBe('just now');
+    expect(relativeTimeAgo(now - 600_000, now)).toBe('10 min ago');
+    expect(relativeTimeAgo(now - 3_600_000, now)).toBe('1 hour ago');
+    expect(relativeTimeAgo(now - 7_200_000, now)).toBe('2 hours ago');
+    expect(relativeTimeAgo(now - 2 * 86_400_000, now)).toBe('2 days ago');
   });
 
   test('keeps partless assistant errors in the transcript', async () => {

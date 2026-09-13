@@ -585,6 +585,33 @@ export const formatCost = (cost: number): string => {
   return `$${cost.toFixed(decimals)}`;
 };
 
+/** "when was this received", in words ("just now", "10 min ago", "2 hours ago"). */
+export const relativeTimeAgo = (timestamp: number, now: number): string => {
+  const seconds = Math.max(0, Math.round((now - timestamp) / 1000));
+  if (seconds < 45) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+/** Self-ticking so "x min ago" stays honest without re-rendering the whole transcript. */
+const ReceivedTime = ({ timestamp }: { timestamp: number }) => {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return (
+    <span className="flex-none text-muted-foreground/80" title={new Date(timestamp).toLocaleString()}>
+      · {relativeTimeAgo(timestamp, now)}
+    </span>
+  );
+};
+
 export const isAssistantTurnEnd = (
   messages: ChatMessage[],
   index: number,
@@ -619,6 +646,7 @@ const MessageFooter = ({
   const tokens = message.tokens;
   const tps = showMetadata ? tokensPerSecond(message) : null;
   const cost = showMetadata && message.cost !== undefined ? message.cost : null;
+  const received = showMetadata ? message.completedAt ?? message.createdAt : undefined;
   if (!model && !duration && !pinned) return null;
 
   return (
@@ -645,6 +673,7 @@ const MessageFooter = ({
         </span>
       ) : null}
       {cost !== null ? <span className="flex-none">{`· ${formatCost(cost)}`}</span> : null}
+      {received !== undefined ? <ReceivedTime timestamp={received} /> : null}
       {pinned ? (
         <button
           type="button"
