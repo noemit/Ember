@@ -255,7 +255,10 @@ from an event payload.
   appears at once with a loader (`pending`), a failed enqueue keeps it with the error plus
   Retry/Cancel, and `mergePolledQueues` folds those local rows back into each polled snapshot.
 - "Recent" models in the composer are derived from the instance's own sessions (`session.model`
-  from the list endpoint, newest `time.updated` first) — nothing is stored on the Ember side.
+  from the list endpoint, newest `time.updated` first) — nothing is stored on the Ember side. The
+  catalogue itself comes from `loadModels`: it tries `/api/provider` then `/api/config/providers`
+  and parses provider/model collections whether they arrive as arrays or as id→entry maps (a
+  stricter parser silently yields an empty picker when a version uses the other shape).
 - Permissions: `GET /api/permission` lists pending requests; Ember merges the global response with
   directory-scoped responses because OpenCode scopes pending requests by project. The directory hints
   cover the selected session, every open column/tab, and any directory named by a prompt event

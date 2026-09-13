@@ -526,6 +526,15 @@ export const loadMessages = async (
     .filter((message) => message.parts.length > 0 || message.error);
 };
 
+export const loadTranscriptTail = async (
+  instanceId: string,
+  sessionId: string,
+  directory?: string
+): Promise<ChatMessage[]> => {
+  const messages = await loadMessages(instanceId, sessionId, directory);
+  return messages.slice(-10);
+};
+
 const outgoingMessageSignature = (message: ChatMessage): string | null => {
   if (message.role !== 'user') return null;
   const files = message.parts
@@ -979,28 +988,41 @@ export const previewOf = (messages: ChatMessage[]): string => {
   return stripMarkdown(text).replace(/\s+/g, ' ').trim().slice(0, 160);
 };
 
-/** Parses either provider shape: OpenCode's `{ all, connected }` or `{ providers }`. */
+/**
+ * Provider/model collections arrive as arrays *or* as id→entry maps depending on the endpoint and
+ * version. Normalize both into `[key, record]` pairs; the key doubles as a fallback id.
+ */
+const objectEntries = (value: unknown): Array<[string | undefined, Record<string, unknown>]> => {
+  if (Array.isArray(value)) return value.map((entry) => [undefined, asRecord(entry)]);
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, asRecord(entry)]);
+  }
+  return [];
+};
+
+/**
+ * Parses the provider catalogue. Handles OpenCode's `{ all, connected }` and `{ providers }`
+ * shapes, where the collection and each provider's `models` may be an array or a map.
+ */
 const parseModelList = (data: unknown): ModelList => {
   const root = asRecord(data);
-  const rawProviders = Array.isArray(data) ? data : asArray(root.all ?? root.providers);
+  const providerEntries = objectEntries(Array.isArray(data) ? data : root.all ?? root.providers);
+  const providerId = ([key, item]: [string | undefined, Record<string, unknown>]): string =>
+    String(item.id ?? item.providerID ?? key ?? item.name ?? '');
 
-  const connected: string[] = Array.isArray(root.connected)
-    ? root.connected.map(String)
-    : [];
-  const providers = rawProviders.map((provider) => asRecord(provider));
+  const connected: string[] = Array.isArray(root.connected) ? root.connected.map(String) : [];
   const usable = connected.length
-    ? providers.filter((provider) => connected.includes(String(provider.id ?? provider.name ?? '')))
-    : providers;
+    ? providerEntries.filter((entry) => connected.includes(providerId(entry)))
+    : providerEntries;
 
   const models: ModelOption[] = [];
 
-  usable.forEach((item) => {
-    const providerID = String(item.id ?? item.providerID ?? item.name ?? '');
-    const providerName = String(item.name ?? item.id ?? '');
+  usable.forEach(([providerKey, item]) => {
+    const providerID = providerId([providerKey, item]);
+    const providerName = String(item.name ?? item.id ?? providerKey ?? '');
 
-    Object.values(asRecord(item.models)).forEach((model) => {
-      const modelItem = asRecord(model);
-      const modelID = String(modelItem.id ?? modelItem.modelID ?? '');
+    objectEntries(item.models).forEach(([modelKey, modelItem]) => {
+      const modelID = String(modelItem.id ?? modelItem.modelID ?? modelKey ?? '');
       if (!providerID || !modelID) return;
       const name = String(modelItem.name ?? modelID);
       models.push({

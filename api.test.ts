@@ -491,6 +491,35 @@ describe('session creation and model metadata', () => {
     expect(list?.models[0]?.providerID).toBe('deepseek');
     expect(list?.models[0]?.modelID).toBe('deepseek-v4');
   });
+
+  test('parses providers and models whether they arrive as arrays or id maps', async () => {
+    // Providers as an id map, each provider's models as an array.
+    setRequest(async () => ({
+      ok: true,
+      status: 200,
+      data: {
+        all: {
+          anthropic: { name: 'Anthropic', models: [{ id: 'claude-sonnet', name: 'Claude Sonnet' }] },
+        },
+        connected: ['anthropic'],
+      },
+    }));
+    expect((await loadModels('local'))?.models[0]).toMatchObject({
+      providerID: 'anthropic',
+      modelID: 'claude-sonnet',
+    });
+
+    // Providers as an array, each provider's models as an id map with no explicit id.
+    setRequest(async () => ({
+      ok: true,
+      status: 200,
+      data: { providers: [{ id: 'openai', name: 'OpenAI', models: { 'gpt-5': { name: 'GPT-5' } } }] },
+    }));
+    expect((await loadModels('local'))?.models[0]).toMatchObject({
+      providerID: 'openai',
+      modelID: 'gpt-5',
+    });
+  });
 });
 
 describe('scheduled task identity', () => {

@@ -319,7 +319,9 @@ export default function ModelPicker({
 
               {groups.length === 0 ? (
                 <div className="px-3 py-10 text-center text-[12px] text-muted-foreground">
-                  No models match “{query.trim()}”.
+                  {models.length === 0
+                    ? 'No models available from this instance.'
+                    : `No models match “${query.trim()}”.`}
                 </div>
               ) : null}
             </div>
