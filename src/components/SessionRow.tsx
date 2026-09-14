@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { motion } from 'motion/react';
-import { Archive, ArchiveRestore, Loader2, Palette, Play, Plus, RefreshCw, Sparkles } from 'lucide-react';
+import { Archive, ArchiveRestore, Loader2, Palette, Pin, Play, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { normalizeDirectory } from '../blob/seed';
 import { cn } from '@/lib/utils';
@@ -52,6 +52,8 @@ export type SessionRowProps = {
   mood: BallMood;
   reloading: boolean;
   archiving: boolean;
+  /** How many messages are pinned, shown as a small badge on the blob. */
+  pinnedCount?: number;
   markerColor: number | undefined;
   identity: AvatarIdentity | undefined;
   blobStyle: BlobStyle;
@@ -147,6 +149,7 @@ const SessionRow = React.memo(function SessionRow({
   mood,
   reloading,
   archiving,
+  pinnedCount,
   markerColor,
   identity,
   blobStyle,
@@ -193,10 +196,19 @@ const SessionRow = React.memo(function SessionRow({
               selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
             )}
           >
-            <div className="mt-[7px]">
+            <div className="relative mt-[7px]">
               {/* Project/task/session identity is resolved once in App so every surface stays aligned,
                   including across instances that reuse session ids. */}
               <Blob style={blobStyle} seed={key} identity={identity} size={55} mood={mood} />
+              {pinnedCount ? (
+                <span
+                  className="pointer-events-none absolute -bottom-0.5 -left-0.5 flex size-4 items-center justify-center rounded-full bg-background text-highlight ring-1 ring-border"
+                  title={`${pinnedCount} pinned message${pinnedCount === 1 ? '' : 's'}`}
+                  aria-label={`${pinnedCount} pinned`}
+                >
+                  <Pin className="size-2.5" />
+                </span>
+              ) : null}
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">

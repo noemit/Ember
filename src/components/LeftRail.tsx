@@ -41,6 +41,8 @@ type Props = {
   mobileOpen: boolean;
   reloadingKeys: Set<string>;
   archivingKeys: Set<string>;
+  /** Session key → how many messages are pinned, so rows/blobs can flag it. */
+  pinnedCounts: Record<string, number>;
   /** The currently open session, if any. Pinned to the rail when filters hide it. */
   selectedSession: Session | null;
   /** Human label for the recency window ("Last 2 days"), or null when everything is shown. */
@@ -84,6 +86,7 @@ export default function LeftRail({
   mobileOpen,
   reloadingKeys,
   archivingKeys,
+  pinnedCounts,
   selectedSession,
   windowLabel,
   showScheduled,
@@ -253,6 +256,7 @@ export default function LeftRail({
         mood={moods[key] ?? 'idle'}
         reloading={reloadingKeys.has(key)}
         archiving={archivingKeys.has(key)}
+        pinnedCount={pinnedCounts[key] ?? 0}
         markerColor={instanceDefaults[session.instanceId]?.markerColor}
         identity={avatarIdentities[key]}
         blobStyle={blobStyle}
@@ -290,6 +294,7 @@ export default function LeftRail({
           mood={moods[key] ?? 'idle'}
           reloading={reloadingKeys.has(key)}
           archiving={archivingKeys.has(key)}
+          pinnedCount={pinnedCounts[key] ?? 0}
           markerColor={instanceDefaults[entry.instanceId]?.markerColor}
           identity={avatarIdentities[key]}
           blobStyle={blobStyle}
@@ -315,6 +320,7 @@ export default function LeftRail({
         blobStyle={blobStyle}
         reloadingKeys={reloadingKeys}
         archivingKeys={archivingKeys}
+        pinnedCounts={pinnedCounts}
         onOpenProject={openProject}
         onNewAgent={newAgent}
         onReload={reloadSession}
@@ -340,6 +346,7 @@ export default function LeftRail({
         mood={moods[key] ?? 'idle'}
         reloading={reloadingKeys.has(key)}
         archiving={archivingKeys.has(key)}
+        pinnedCount={pinnedCounts[key] ?? 0}
         markerColor={instanceDefaults[session.instanceId]?.markerColor}
         identity={avatarIdentities[key]}
         blobStyle={blobStyle}

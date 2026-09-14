@@ -118,14 +118,16 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   the project); the blobs aren't individually clickable. Right-clicking the `+N` chip opens a tidy-up
   menu ("Archive N inactive" plus "older than 1 day / 3 days / 1 week / 2 weeks / 1 month" with
   counts), driven by `src/lib/bulkArchive.ts`. Bulk actions never touch a busy/thinking/needs-input
-  session and share one Undo notice (`handleArchiveMany`).
+  session and share one Undo notice (`handleArchiveMany`). A session with pinned messages shows a
+  small pin badge at its blob's bottom-left (`pinnedCounts`, from `src/lib/pins.ts`).
 - `src/components/SessionRow.tsx` — the shared full session row (55px blob, title, preview,
   instance/project line, archive button, context menu) used by the rail and the archive screen.
   Optional `titleOverride`/`topMeta`/`onNewAgent` turn it into the one-session project row (project
   name as the title, instance above it); the rail passes a `topMeta` header
   (`project/folder · instance`) so every entry is labelled like a project card. Memoized; the
   timestamp is a self-ticking `RelativeTime`. Archive/restore is decided per row from
-  `session.archived`. When the row is the latest run of a scheduled task it also gets a hover play
+  `session.archived`; a row whose session has pins gets a small pin badge on its blob. When the row
+  is the latest run of a scheduled task it also gets a hover play
   button and menu entries to run the task now or change its model and run: App resolves the task
   through `scheduledSessionBindings`/`scheduledTasksByKey`, `runScheduledTask` re-runs it server-side
   and `updateScheduledTaskModel` replays the task's own JSON with a patched `execution`.

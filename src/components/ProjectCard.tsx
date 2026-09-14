@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { motion } from 'motion/react';
-import { Archive, Box, Plus } from 'lucide-react';
+import { Archive, Box, Pin, Plus } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobStripLayout } from '@/lib/projectGroups';
 import { ARCHIVE_AGE_OPTIONS, bulkArchiveTargets } from '@/lib/bulkArchive';
@@ -33,6 +33,8 @@ type Props = {
   blobStyle: BlobStyle;
   reloadingKeys: Set<string>;
   archivingKeys: Set<string>;
+  /** Session key → pinned-message count, for the blob badges. */
+  pinnedCounts: Record<string, number>;
   /** Opens every session in this project (most recent as columns, the rest as tabs). */
   onOpenProject: () => void;
   onNewAgent: (instanceId: string, directory?: string) => void;
@@ -63,6 +65,7 @@ export default function ProjectCard({
   blobStyle,
   reloadingKeys,
   archivingKeys,
+  pinnedCounts,
   onOpenProject,
   onNewAgent,
   onReload,
@@ -142,7 +145,7 @@ export default function ProjectCard({
                   <ContextMenuTrigger asChild>
                     <span
                       className={cn(
-                        'flex-none rounded-full',
+                        'relative flex-none rounded-full',
                         selected ? 'ring-2 ring-highlight ring-offset-1 ring-offset-card' : undefined
                       )}
                       aria-label={title}
@@ -154,6 +157,15 @@ export default function ProjectCard({
                         size={layout.size}
                         mood={moods[key] ?? 'idle'}
                       />
+                      {pinnedCounts[key] ? (
+                        <span
+                          className="pointer-events-none absolute -bottom-0.5 -left-0.5 flex size-3 items-center justify-center rounded-full bg-background text-highlight ring-1 ring-border"
+                          title={`${pinnedCounts[key]} pinned message${pinnedCounts[key] === 1 ? '' : 's'}`}
+                          aria-label={`${pinnedCounts[key]} pinned`}
+                        >
+                          <Pin className="size-1.5" />
+                        </span>
+                      ) : null}
                     </span>
                   </ContextMenuTrigger>
                 </TooltipTrigger>

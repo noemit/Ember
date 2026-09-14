@@ -66,6 +66,7 @@ import { mergePolledQueues, useMessageQueue, type QueueTarget } from './hooks/us
 import { usePoll } from './hooks/usePoll';
 import { newSessionDirectoryPrefill, newSessionModelPrefill } from './lib/newSessionDefaults';
 import { notesKeyForSession } from './lib/projectGroups';
+import { countPinsBySession } from './lib/pins';
 import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
 import {
   MAX_OPEN_SESSIONS,
@@ -736,6 +737,13 @@ export default function App() {
         .map((key) => key.slice(prefix.length))
     );
   };
+
+  // How many pinned messages each session has, so the rail can flag them. A pin key is
+  // `instance::session::messageId`; the last `::` separates the message id.
+  const pinnedCountsBySession = React.useMemo(
+    () => countPinsBySession(settings.pinnedMessages),
+    [settings.pinnedMessages]
+  );
 
   // Sync the ref every render so the poller always sees the current directory.
   selectedSessionRef.current = selectedSession;
@@ -2610,6 +2618,7 @@ export default function App() {
               mobileOpen={mobileRailOpen}
               reloadingKeys={reloadingKeys}
               archivingKeys={archivingKeys}
+              pinnedCounts={pinnedCountsBySession}
               windowLabel={
                 SESSION_WINDOWS.find((option) => option.hours === sessionWindowHours && option.hours > 0)
                   ?.label ?? null
