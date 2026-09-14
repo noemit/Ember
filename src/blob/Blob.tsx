@@ -28,19 +28,32 @@ export default function Blob({ style, ...rest }: Props) {
   const mood = rest.mood ?? moodFrom(rest.state ?? 'idle', undefined, false);
   const state = rest.state ?? stateFromMood(mood);
   const props = { ...rest, identity, mood, state };
-  if (style === 'buddy') return <BuddyBlob {...props} />;
   const size = rest.size ?? 30;
+  const rendered =
+    style === 'buddy' ? (
+      <BuddyBlob {...props} />
+    ) : (
+      <React.Suspense
+        fallback={
+          <span
+            aria-hidden="true"
+            className="inline-block flex-none rounded-full bg-muted"
+            style={{ width: size, height: size }}
+          />
+        }
+      >
+        <GlyphBlob {...props} />
+      </React.Suspense>
+    );
+  if (mood !== 'unread') return rendered;
+  // An unread turn gets a small highlight dot, style-agnostic so Buddy and Glyph both show it.
   return (
-    <React.Suspense
-      fallback={
-        <span
-          aria-hidden="true"
-          className="inline-block flex-none rounded-full bg-muted"
-          style={{ width: size, height: size }}
-        />
-      }
-    >
-      <GlyphBlob {...props} />
-    </React.Suspense>
+    <span className="relative inline-flex flex-none" style={{ width: size, height: size }}>
+      {rendered}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-highlight ring-2 ring-background"
+      />
+    </span>
   );
 }

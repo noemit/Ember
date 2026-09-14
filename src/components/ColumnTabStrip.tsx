@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Archive, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -15,8 +15,6 @@ export type WorkspaceTab = {
   /** 1-based position in the open list; columns and tabs share this numbering. */
   number: number;
   active: boolean;
-  /** True when the session is currently shown as a column rather than only a tab. */
-  visible: boolean;
   minimized: boolean;
   archiving: boolean;
 };
@@ -27,13 +25,14 @@ type Props = {
   onActivate: (key: string) => void;
   onMinimize: (key: string) => void;
   onRestore: (key: string) => void;
+  onArchive: (key: string) => void;
   onClose: (key: string) => void;
 };
 
 /**
- * The numbered open-session strip under the top bar. Visible columns and overflow/minimized
- * sessions share one numbering, so `Cmd/Ctrl+1–9` is stable. A tab click activates (and restores);
- * the chevron minimizes or restores; the × closes the session.
+ * The numbered strip of open sessions that aren't currently columns (overflow + minimized).
+ * Columns and tabs share one numbering, so `Cmd/Ctrl+1–9` is stable. A tab click loads it into
+ * the rightmost panel; the chevron minimizes/restores; the archive button archives; × closes.
  */
 export default function ColumnTabStrip({
   tabs,
@@ -41,6 +40,7 @@ export default function ColumnTabStrip({
   onActivate,
   onMinimize,
   onRestore,
+  onArchive,
   onClose,
 }: Props) {
   if (tabs.length === 0) return null;
@@ -79,14 +79,6 @@ export default function ColumnTabStrip({
               mood={tab.mood}
             />
             <span className="max-w-[150px] truncate text-[11.5px] font-medium">{tab.title}</span>
-            {tab.visible && !tab.minimized ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="size-1.5 flex-none rounded-full bg-highlight/70" aria-label="Shown as a column" />
-                </TooltipTrigger>
-                <TooltipContent>Shown as a column</TooltipContent>
-              </Tooltip>
-            ) : null}
           </button>
 
           {tab.minimized ? (
@@ -118,6 +110,21 @@ export default function ColumnTabStrip({
               <TooltipContent>Minimize to a tab</TooltipContent>
             </Tooltip>
           )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onArchive(tab.key)}
+                disabled={tab.archiving}
+                className="flex size-5 flex-none items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-background hover:text-foreground disabled:opacity-50"
+                aria-label={`Archive ${tab.title}`}
+              >
+                {tab.archiving ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Archive session</TooltipContent>
+          </Tooltip>
 
           <button
             type="button"

@@ -4,12 +4,13 @@ import type { BallMood, BallState, ChatMessage } from '../types';
 export const moodFrom = (
   state: BallState,
   prompt: 'input' | 'question' | undefined,
-  thinking: boolean
+  thinking: boolean,
+  unread = false
 ): BallMood => {
   if (state === 'error') return 'error';
   if (state === 'needs-input') return prompt === 'question' ? 'question' : 'input';
   if (state === 'active') return thinking ? 'thinking' : 'busy';
-  return 'idle';
+  return unread ? 'unread' : 'idle';
 };
 
 /** Collapses a mood back to the ball state, for surfaces that only understand the coarse state. */

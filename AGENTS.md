@@ -129,11 +129,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/components/ArchiveDialog.tsx` — the rail's archive screen (`archivedSessions`): every
   archived session as an individual row, newest first, with restore. Opened from the rail toolbar's
   archive button.
-- `src/components/ColumnTabStrip.tsx` — the numbered open-session strip above the columns (to the
-  right of the rail, aligned with the session header). Columns
-  and overflow/minimized sessions share one numbering (1-based `openSessions` order); a tab click
-  activates/restores, the chevron minimizes/restores (sticky across restarts), and the × closes.
-  Renders nothing when no sessions are open.
+- `src/components/ColumnTabStrip.tsx` — the numbered strip above the columns (right of the rail) of
+  the open sessions that aren't currently columns (overflow + minimized). Columns and tabs share one
+  numbering (1-based `openSessions` order, so `Cmd/Ctrl+1–9` is stable); a tab click loads it into
+  the **rightmost** column, the chevron minimizes/restores (sticky across restarts), the archive
+  button archives, and × closes. Renders nothing when everything fits. App remembers each project's
+  exact columns/tabs/active (`projectLayoutsRef`) so leaving and returning restores that layout.
 - `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.
@@ -145,9 +146,11 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   hops with a per-blob occasional somersault (`blob-hop`/`blob-flip` in `blob.css`); the eyes
   counter-scale 75% of the hop so they mostly keep their shape (`blob-hop-eyes`). Visuals key off
   a `BallMood` (`blob/mood.ts`): `busy` = hop+flip, `thinking` = breathe + a soft arc, `input` =
-  wobble + padlock badge, `question` = tilt + "?" badge, `error` = wobble + warning triangle. App
-  derives the mood from the ball state plus the prompt kind (permission vs question) and whether the
-  last assistant turn is reasoning (`isThinkingMessages`). `buddy.ts` holds
+  wobble + padlock badge, `question` = tilt + "?" badge, `error` = wobble + warning triangle,
+  `unread` = a highlight dot. App derives the mood from the ball state plus the prompt kind
+  (permission vs question), whether the last assistant turn is reasoning (`isThinkingMessages`), and
+  whether an idle session has a response the user hasn't opened (per-session `lastReadAt`; the active
+  column is marked read). `buddy.ts` holds
   the 16 hand-drawn silhouettes (the original 8 plus teddy, sprout, puff, cat, ghost, cloud, egg and
   mushroom) plus 11 generated ones (radial harmonics + top/bottom squash, reviewed
   in `buddy-arena/`; `bun run buddy-arena`). `blob/seed.ts`

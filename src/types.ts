@@ -78,7 +78,7 @@ export type BallState = 'idle' | 'active' | 'needs-input' | 'error';
  * session can be in: `busy` (tools running) vs `thinking` (reasoning), and `input` (permission)
  * vs `question` (the agent asked something).
  */
-export type BallMood = 'idle' | 'busy' | 'thinking' | 'input' | 'question' | 'error';
+export type BallMood = 'idle' | 'busy' | 'thinking' | 'input' | 'question' | 'error' | 'unread';
 
 /** Where the open session's transcript is: first fetch in flight, failed (poll keeps retrying), or loaded. */
 export type MessagesStatus = 'loading' | 'error' | 'ready';

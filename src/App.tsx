@@ -224,6 +224,9 @@ export default function App() {
     Record<string, MessageQueueSession[]>
   >({});
   const [summaries, setSummaries] = React.useState<Record<string, SessionMessageSummary>>({});
+  // Last `session.updated` the user has seen per session, for the unread mood. In-memory: a fresh
+  // launch seeds every session as read so the rail doesn't open fully "unread".
+  const [lastReadAt, setLastReadAt] = React.useState<Record<string, number>>({});
   const [openSessions, setOpenSessions] = React.useState<string[]>([]);
   const [activeSession, setActiveSession] = React.useState<string | null>(null);
   const [minimizedSessions, setMinimizedSessions] = React.useState<Set<string>>(() => new Set());
@@ -304,6 +307,9 @@ export default function App() {
   const activeKeyRef = React.useRef<string | null>(null);
   const openSessionsRef = React.useRef<string[]>([]);
   const minimizedKeysRef = React.useRef<Set<string>>(new Set());
+  // Per-project workspace memory: leaving a project saves its columns/tabs/active so returning
+  // restores the exact layout instead of re-opening every session.
+  const projectLayoutsRef = React.useRef<Map<string, Workspace>>(new Map());
   const workspaceHydratedRef = React.useRef(false);
   const workspaceRef = React.useRef<HTMLDivElement | null>(null);
   const sessionsByInstanceRef = React.useRef<Record<string, Session[]>>({});
@@ -541,16 +547,55 @@ export default function App() {
     });
     return keys;
   }, [states, summaries]);
+  // Seed newly-seen sessions as read, so a fresh launch doesn't flag the whole rail as unread.
+  React.useEffect(() => {
+    setLastReadAt((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      Object.values(sessionsByInstance)
+        .flat()
+        .forEach((session) => {
+          const key = sessionKey(session);
+          if (next[key] === undefined) {
+            next[key] = session.updated ?? 0;
+            changed = true;
+          }
+        });
+      return changed ? next : prev;
+    });
+  }, [sessionsByInstance]);
+
+  // A finished turn on a session that isn't the active column is unread; busy/error/needs-input
+  // moods take priority over it.
+  const unreadKeys = React.useMemo(() => {
+    const keys = new Set<string>();
+    Object.entries(sessionsByInstance).forEach(([, list]) =>
+      list.forEach((session) => {
+        if (session.archived) return;
+        const key = sessionKey(session);
+        if ((states[key] ?? 'idle') !== 'idle') return;
+        const updated = session.updated ?? 0;
+        if (updated > (lastReadAt[key] ?? updated)) keys.add(key);
+      })
+    );
+    return keys;
+  }, [sessionsByInstance, states, lastReadAt]);
+
   const moods = React.useMemo(() => {
     const map: Record<string, BallMood> = {};
     Object.entries(sessionsByInstance).forEach(([, list]) =>
       list.forEach((session) => {
         const key = sessionKey(session);
-        map[key] = moodFrom(states[key] ?? 'idle', promptKinds[key], thinkingKeys.has(key));
+        map[key] = moodFrom(
+          states[key] ?? 'idle',
+          promptKinds[key],
+          thinkingKeys.has(key),
+          unreadKeys.has(key)
+        );
       })
     );
     return map;
-  }, [sessionsByInstance, states, promptKinds, thinkingKeys]);
+  }, [sessionsByInstance, states, promptKinds, thinkingKeys, unreadKeys]);
   // A retry belongs to the session it failed on; the banner text may still apply.
   React.useEffect(() => {
     clearActionErrorRetry();
@@ -568,6 +613,15 @@ export default function App() {
   const selectedSession = selected
     ? (sessionsByInstance[selected.instanceId] ?? []).find((s) => s.id === selected.sessionId) ?? null
     : null;
+  // The active column counts as read: viewing it (or a response landing while it's active) clears
+  // the unread mood.
+  React.useEffect(() => {
+    if (!selectedKey) return;
+    const updated = selectedSession?.updated ?? 0;
+    setLastReadAt((prev) =>
+      (prev[selectedKey] ?? 0) >= updated ? prev : { ...prev, [selectedKey]: updated }
+    );
+  }, [selectedKey, selectedSession]);
   const selectedInstance = selected
     ? instances.find((instance) => instance.id === selected.instanceId) ?? null
     : null;
@@ -766,6 +820,29 @@ export default function App() {
   // The helpers below are the only writers of workspace state; `activeSession` is the single
   // source of truth for `selected`, so existing selection-driven code keeps working unchanged.
 
+  /** The project identity the current open group belongs to, or a standalone bucket. */
+  const currentContextKey = React.useCallback((): string | null => {
+    const first = openSessionsRef.current[0];
+    if (!first) return null;
+    const ref = parseSessionKey(first);
+    if (!ref) return null;
+    const session = (sessionsByInstanceRef.current[ref.instanceId] ?? []).find((s) => s.id === ref.sessionId);
+    const project = session
+      ? projectForSession(session, projectsByInstanceRef.current[ref.instanceId] ?? [])
+      : null;
+    return project ? projectIdentityKey(ref.instanceId, project.id) : `standalone:${ref.instanceId}`;
+  }, []);
+  /** Remember the current workspace under its project before switching away. */
+  const saveCurrentLayout = React.useCallback(() => {
+    const contextKey = currentContextKey();
+    if (!contextKey) return;
+    projectLayoutsRef.current.set(contextKey, {
+      open: [...openSessionsRef.current],
+      active: activeKeyRef.current,
+      minimized: [...minimizedKeysRef.current],
+    });
+  }, [currentContextKey]);
+
   /**
    * Open a session. Sessions from the same configured project stay together as one group;
    * opening anything outside the current project starts a fresh workspace (Ember doesn't mix
@@ -804,6 +881,8 @@ export default function App() {
         return next.length > MAX_OPEN_SESSIONS ? next.slice(next.length - MAX_OPEN_SESSIONS) : next;
       });
     } else {
+      // Switching to another project: stash the current layout so returning restores it.
+      saveCurrentLayout();
       setOpenSessions([key]);
     }
     setMinimizedSessions((prev) => {
@@ -816,21 +895,44 @@ export default function App() {
     setActiveSession(key);
     setNewSessionInstanceId(null);
     setNewSessionDirectory(null);
-  }, []);
+  }, [saveCurrentLayout]);
 
   /**
    * Open a project. `projectSessions` is exactly what the project's card showed, so opening it
-   * never pulls in out-of-window or archived sessions that share the directory. Most recent first
-   * (the columns that fit show the newest), the rest as tabs. An empty set opens a draft instead.
+   * never pulls in out-of-window or archived sessions that share the directory. If it was open
+   * before, restore the exact columns/tabs/active it had; otherwise open the most recent sessions.
+   * An empty set opens a draft instead.
    */
   const openProject = React.useCallback((instanceId: string, project: Project, projectSessions: Session[]) => {
     showActionError(null);
     const owned = projectSessions.filter((session) => !session.archived && !session.parentId);
+    const validKeys = new Set(owned.map(sessionKey));
+    const projectKey = projectIdentityKey(instanceId, project.id);
+    saveCurrentLayout();
     if (owned.length === 0) {
+      projectLayoutsRef.current.delete(projectKey);
       setActiveSession(null);
       setNewSessionInstanceId(instanceId);
       setNewSessionDirectory(project.path ?? null);
       return;
+    }
+    // Restore exactly what this project looked like when it was last open.
+    const saved = projectLayoutsRef.current.get(projectKey);
+    if (saved) {
+      const open = saved.open.filter((key) => validKeys.has(key)).slice(0, MAX_OPEN_SESSIONS);
+      if (open.length > 0) {
+        const minimized = new Set(saved.minimized.filter((key) => open.includes(key)));
+        setOpenSessions(open);
+        setMinimizedSessions(minimized);
+        setActiveSession(
+          saved.active && open.includes(saved.active) && !minimized.has(saved.active)
+            ? saved.active
+            : open.find((key) => !minimized.has(key)) ?? open[0]
+        );
+        setNewSessionInstanceId(null);
+        setNewSessionDirectory(null);
+        return;
+      }
     }
     const keys = [...owned]
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
@@ -842,7 +944,7 @@ export default function App() {
     setActiveSession(keys[0] ?? null);
     setNewSessionInstanceId(null);
     setNewSessionDirectory(null);
-  }, [showActionError]);
+  }, [showActionError, saveCurrentLayout]);
 
   const activateSession = React.useCallback((key: string) => {
     setActiveSession(key);
@@ -916,7 +1018,7 @@ export default function App() {
       !minimizedSessions.has(activeSession) &&
       !base.includes(activeSession)
     ) {
-      return [activeSession, ...base.slice(0, Math.max(1, base.length) - 1)];
+      return [...base.slice(0, Math.max(0, base.length - 1)), activeSession];
     }
     return base;
   }, [openSessions, minimizedSessions, workspaceWidth, activeSession]);
@@ -2193,9 +2295,12 @@ export default function App() {
     return columns.find((key) => (states[key] ?? 'idle') !== 'idle') ?? columns[0] ?? null;
   }, [activeSession, columns, sessionByKey, states]);
 
+  // The strip lists only sessions that are NOT already shown as columns (overflow + minimized),
+  // so it's empty when everything fits on screen.
   const workspaceTabs: WorkspaceTab[] = React.useMemo(
     () =>
       openSessions.flatMap((key, index) => {
+        if (columnKeySet.has(key)) return [];
         const session = sessionByKey.get(key);
         if (!session) return [];
         const ref = parseSessionKey(key);
@@ -2210,7 +2315,6 @@ export default function App() {
             mood: moods[key] ?? 'idle',
             number: index + 1,
             active: key === activeSession,
-            visible: columnKeySet.has(key),
             minimized: minimizedSessions.has(key),
             archiving: archivingKeys.has(key),
           } satisfies WorkspaceTab,
@@ -2247,9 +2351,6 @@ export default function App() {
         style={{ flexGrow: key === featuredKey ? 1.12 : 1 }}
         className="flex min-h-0 min-w-0 flex-1 basis-0 border-r transition-[flex-grow] duration-200 ease-out last:border-r-0"
         onWheelCapture={() => {
-          if (key !== activeSession) activateSession(key);
-        }}
-        onFocusCapture={() => {
           if (key !== activeSession) activateSession(key);
         }}
       >
@@ -2502,6 +2603,14 @@ export default function App() {
                 onActivate={activateSession}
                 onMinimize={minimizeSession}
                 onRestore={restoreSession}
+                onArchive={(key) => {
+                  const ref = parseSessionKey(key);
+                  if (!ref) return;
+                  const session = (sessionsByInstance[ref.instanceId] ?? []).find(
+                    (entry) => entry.id === ref.sessionId
+                  );
+                  if (session) void handleArchive(session, true);
+                }}
                 onClose={closeSession}
               />
               <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
