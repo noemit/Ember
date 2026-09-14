@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { motion } from 'motion/react';
-import { Archive, ArchiveRestore, Loader2, Palette, Plus, RefreshCw } from 'lucide-react';
+import { Archive, ArchiveRestore, Loader2, Palette, Play, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { normalizeDirectory } from '../blob/seed';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/context-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { sessionKey } from '../types';
+import type { ScheduledTask } from '../api';
 import type { AvatarIdentity, BallMood, BlobStyle, Session } from '../types';
 
 const relativeTime = (timestamp: number | undefined, now: number): string => {
@@ -60,6 +61,11 @@ export type SessionRowProps = {
   topMeta?: React.ReactNode;
   /** When set, renders a `+` that starts a new session in the row's project. */
   onNewAgent?: () => void;
+  /** The scheduled task this session is the latest run of, when the row is in the scheduled view. */
+  scheduledTask?: ScheduledTask;
+  scheduledRunning?: boolean;
+  onRunScheduledTask?: (task: ScheduledTask) => void;
+  onChangeScheduledTaskModel?: (task: ScheduledTask) => void;
   onSelect: (session: Session) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
@@ -70,6 +76,10 @@ type SessionMenuProps = {
   session: Session;
   reloading: boolean;
   archiving: boolean;
+  scheduledTask?: ScheduledTask;
+  scheduledRunning?: boolean;
+  onRunScheduledTask?: (task: ScheduledTask) => void;
+  onChangeScheduledTaskModel?: (task: ScheduledTask) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
   onCustomizeAppearance: (session: Session) => void;
@@ -80,6 +90,10 @@ export const SessionContextMenuContent = ({
   session,
   reloading,
   archiving,
+  scheduledTask,
+  scheduledRunning,
+  onRunScheduledTask,
+  onChangeScheduledTaskModel,
   onReload,
   onArchive,
   onCustomizeAppearance,
@@ -98,6 +112,22 @@ export const SessionContextMenuContent = ({
         <Palette />
         Customize appearance…
       </ContextMenuItem>
+      {scheduledTask ? (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            disabled={scheduledRunning}
+            onSelect={() => onRunScheduledTask?.(scheduledTask)}
+          >
+            {scheduledRunning ? <Loader2 className="animate-spin" /> : <Play />}
+            {scheduledRunning ? 'Starting…' : 'Run scheduled task now'}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => onChangeScheduledTaskModel?.(scheduledTask)}>
+            <Sparkles />
+            Change model &amp; run…
+          </ContextMenuItem>
+        </>
+      ) : null}
       <ContextMenuSeparator />
       <ContextMenuItem disabled={archiving} onSelect={() => onArchive(session, !archived)}>
         {archiving ? <Loader2 className="animate-spin" /> : <ArchiveIcon />}
@@ -123,6 +153,10 @@ const SessionRow = React.memo(function SessionRow({
   titleOverride,
   topMeta,
   onNewAgent,
+  scheduledTask,
+  scheduledRunning,
+  onRunScheduledTask,
+  onChangeScheduledTaskModel,
   onSelect,
   onReload,
   onArchive,
@@ -223,54 +257,83 @@ const SessionRow = React.memo(function SessionRow({
           session={session}
           reloading={reloading}
           archiving={archiving}
+          scheduledTask={scheduledTask}
+          scheduledRunning={scheduledRunning}
+          onRunScheduledTask={onRunScheduledTask}
+          onChangeScheduledTaskModel={onChangeScheduledTaskModel}
           onReload={onReload}
           onArchive={onArchive}
           onCustomizeAppearance={onCustomizeAppearance}
         />
       </ContextMenu>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            disabled={archiving}
-            aria-label={archiving ? archiveBusyLabel : archiveLabel}
-            onClick={(event) => {
-              event.stopPropagation();
-              onArchive(session, !archived);
-            }}
-            className={cn(
-              'absolute top-1.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100',
-              onNewAgent ? 'right-9' : 'right-2',
-              archiving ? 'opacity-100' : 'opacity-0'
-            )}
-          >
-            {archiving ? <Loader2 className="animate-spin" /> : <ArchiveIcon />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">{archiving ? archiveBusyLabel : archiveLabel}</TooltipContent>
-      </Tooltip>
+      <div
+        className={cn(
+          'absolute top-1.5 right-2 flex items-center gap-0.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100',
+          archiving || scheduledRunning ? 'opacity-100' : 'opacity-0'
+        )}
+      >
+        {onNewAgent ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`New session in ${titleOverride ?? 'project'}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onNewAgent();
+                }}
+                className="text-muted-foreground"
+              >
+                <Plus />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">New session in {titleOverride ?? 'project'}</TooltipContent>
+          </Tooltip>
+        ) : null}
 
-      {onNewAgent ? (
+        {scheduledTask ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                disabled={scheduledRunning}
+                aria-label={scheduledRunning ? 'Starting scheduled task…' : 'Run scheduled task now'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRunScheduledTask?.(scheduledTask);
+                }}
+                className="text-muted-foreground"
+              >
+                {scheduledRunning ? <Loader2 className="animate-spin" /> : <Play />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              {scheduledRunning ? 'Starting…' : `Run ${scheduledTask.name} now`}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label={`New session in ${titleOverride ?? 'project'}`}
+              disabled={archiving}
+              aria-label={archiving ? archiveBusyLabel : archiveLabel}
               onClick={(event) => {
                 event.stopPropagation();
-                onNewAgent();
+                onArchive(session, !archived);
               }}
-              className="absolute top-1.5 right-2 text-muted-foreground"
             >
-              <Plus />
+              {archiving ? <Loader2 className="animate-spin" /> : <ArchiveIcon />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="left">New session in {titleOverride ?? 'project'}</TooltipContent>
+          <TooltipContent side="left">{archiving ? archiveBusyLabel : archiveLabel}</TooltipContent>
         </Tooltip>
-      ) : null}
+      </div>
     </motion.div>
   );
 });

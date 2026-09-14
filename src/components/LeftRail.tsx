@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import ProjectCard from './ProjectCard';
 import SessionRow from './SessionRow';
 import { sessionKey } from '../types';
+import type { ScheduledTask } from '../api';
 import type { AvatarIdentity, BallMood, BlobStyle, Instance, InstanceDefaults, Project, Session } from '../types';
 
 type Props = {
@@ -46,6 +47,11 @@ type Props = {
   windowLabel: string | null;
   showScheduled: boolean;
   onShowScheduled: (value: boolean) => void;
+  /** Session key → scheduled task, for the run/model actions on scheduled rows. */
+  scheduledTaskBySession: Record<string, ScheduledTask>;
+  runningScheduledKeys: Set<string>;
+  onRunScheduledTask: (task: ScheduledTask) => void;
+  onChangeScheduledTaskModel: (task: ScheduledTask) => void;
   /** Archived sessions across instances; opens the archive screen. */
   onOpenArchive: () => void;
   onSelectSession: (session: Session) => void;
@@ -80,6 +86,10 @@ export default function LeftRail({
   windowLabel,
   showScheduled,
   onShowScheduled,
+  scheduledTaskBySession,
+  runningScheduledKeys,
+  onRunScheduledTask,
+  onChangeScheduledTaskModel,
   onOpenArchive,
   onSelectSession,
   onOpenProject,
@@ -191,6 +201,8 @@ export default function LeftRail({
   const archiveSession = useStableCallback(onArchive);
   const customizeAppearance = useStableCallback(onCustomizeAppearance);
   const newAgent = useStableCallback(onNewAgent);
+  const runScheduledTask = useStableCallback(onRunScheduledTask);
+  const changeScheduledTaskModel = useStableCallback(onChangeScheduledTaskModel);
 
   // The header line shown above a row's title: project/folder then instance, so every rail entry
   // is labelled the same way grouped project cards are.
@@ -224,6 +236,7 @@ export default function LeftRail({
   const renderSession = (session: Session) => {
     const key = sessionKey(session);
     const instance = instanceById[session.instanceId];
+    const scheduledTask = scheduledTaskBySession[key];
     return (
       <SessionRow
         key={key}
@@ -239,6 +252,10 @@ export default function LeftRail({
         markerColor={instanceDefaults[session.instanceId]?.markerColor}
         identity={avatarIdentities[key]}
         blobStyle={blobStyle}
+        scheduledTask={scheduledTask}
+        scheduledRunning={scheduledTask ? runningScheduledKeys.has(scheduledTask.key) : false}
+        onRunScheduledTask={runScheduledTask}
+        onChangeScheduledTaskModel={changeScheduledTaskModel}
         onSelect={selectSession}
         onReload={reloadSession}
         onArchive={archiveSession}

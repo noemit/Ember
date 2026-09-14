@@ -345,13 +345,77 @@ export const loadAllProjects = async (
   );
 };
 
+export type ScheduledTaskState = {
+  lastSessionId?: string;
+  lastStatus?: string;
+  lastError?: string;
+  lastRunAt?: number;
+  nextRunAt?: number;
+};
+
+/**
+ * A task as OpenChamber stores it. `raw` is the instance's own JSON, replayed verbatim on update
+ * so fields Ember doesn't model (schedule, goal, auto-accept, loop provenance) survive a write.
+ */
+export type ScheduledTask = {
+  key: string;
+  instanceId: string;
+  projectId: string;
+  projectName?: string;
+  id: string;
+  name: string;
+  enabled: boolean;
+  model?: ModelRef;
+  state: ScheduledTaskState;
+  raw: Record<string, unknown>;
+};
+
 export type ScheduledIdentityData = {
   bindings: Record<string, string>;
   taskNames: Record<string, string>;
+  tasks: ScheduledTask[];
 };
 
 export const scheduledTaskKey = (instanceId: string, projectId: string, taskId: string): string =>
   `task:${instanceId}::${projectId}::${taskId}`;
+
+const toScheduledTask = (
+  instanceId: string,
+  projectId: string,
+  projectName: string | undefined,
+  entry: unknown
+): ScheduledTask | null => {
+  const task = asRecord(entry);
+  const id = optionalString(task.id);
+  if (!id) return null;
+  const execution = asRecord(task.execution);
+  const state = asRecord(task.state);
+  const providerID = optionalString(execution.providerID);
+  const modelID = optionalString(execution.modelID);
+  const variant = optionalString(execution.variant);
+  const lastRunAt = state.lastRunAt;
+  const nextRunAt = state.nextRunAt;
+  const model: ModelRef | undefined =
+    providerID && modelID ? { providerID, modelID, ...(variant ? { variant } : {}) } : undefined;
+  return {
+    key: scheduledTaskKey(instanceId, projectId, id),
+    instanceId,
+    projectId,
+    projectName,
+    id,
+    name: optionalString(task.name) ?? id,
+    enabled: task.enabled !== false,
+    model,
+    state: {
+      lastSessionId: optionalString(state.lastSessionId),
+      lastStatus: optionalString(state.lastStatus),
+      lastError: optionalString(state.lastError),
+      lastRunAt: typeof lastRunAt === 'number' ? lastRunAt : undefined,
+      nextRunAt: typeof nextRunAt === 'number' ? nextRunAt : undefined,
+    },
+    raw: task,
+  };
+};
 
 export const loadScheduledIdentityData = async (
   instanceId: string,
@@ -366,30 +430,69 @@ export const loadScheduledIdentityData = async (
       );
       if (!response.ok) return [];
       const root = asRecord(response.data);
-      return asArray(root.tasks ?? response.data).map((entry) => {
-        const task = asRecord(entry);
-        const state = asRecord(task.state);
-        const id = optionalString(task.id);
-        if (!id) return null;
-        const key = scheduledTaskKey(instanceId, project.id, id);
-        return {
-          key,
-          name: optionalString(task.name) ?? id,
-          sessionId: optionalString(state.lastSessionId),
-        };
-      });
+      return asArray(root.tasks ?? response.data)
+        .map((entry) => toScheduledTask(instanceId, project.id, project.name, entry))
+        .filter((task): task is ScheduledTask => Boolean(task));
     })
   );
   const bindings: Record<string, string> = {};
   const taskNames: Record<string, string> = {};
-  results.flat().forEach((entry) => {
-    if (!entry) return;
-    taskNames[entry.key] = entry.name;
-    if (entry.sessionId) {
-      bindings[sessionKey({ instanceId, sessionId: entry.sessionId })] = entry.key;
+  const tasks = results.flat();
+  tasks.forEach((task) => {
+    taskNames[task.key] = task.name;
+    if (task.state.lastSessionId) {
+      bindings[sessionKey({ instanceId, sessionId: task.state.lastSessionId })] = task.key;
     }
   });
-  return { bindings, taskNames };
+  return { bindings, taskNames, tasks };
+};
+
+/**
+ * Start a task immediately (`POST …/scheduled-tasks/:id/run`). The server creates a fresh session
+ * with the task's prompt and model, so this is the only way to "rerun" a scheduled task.
+ */
+export const runScheduledTask = async (
+  instanceId: string,
+  task: ScheduledTask
+): Promise<{ ok: boolean; sessionId?: string; error?: string }> => {
+  const response = await window.ember.request(
+    instanceId,
+    'POST',
+    `/api/projects/${encodeURIComponent(task.projectId)}/scheduled-tasks/${encodeURIComponent(task.id)}/run`
+  );
+  if (!response.ok) {
+    return { ok: false, error: errorMessageOf(response.data) ?? 'Could not run the scheduled task.' };
+  }
+  return { ok: true, sessionId: optionalString(asRecord(response.data).sessionId) };
+};
+
+/**
+ * Change a task's model (and reasoning variant) by replaying its own JSON with a patched
+ * `execution`. Returns the task the server stored, or an error message to surface.
+ */
+export const updateScheduledTaskModel = async (
+  instanceId: string,
+  task: ScheduledTask,
+  model: ModelRef
+): Promise<{ ok: boolean; task?: ScheduledTask; error?: string }> => {
+  const execution: Record<string, unknown> = {
+    ...asRecord(task.raw.execution),
+    providerID: model.providerID,
+    modelID: model.modelID,
+  };
+  if (model.variant) execution.variant = model.variant;
+  else delete execution.variant;
+  const response = await window.ember.request(
+    instanceId,
+    'PUT',
+    `/api/projects/${encodeURIComponent(task.projectId)}/scheduled-tasks`,
+    { task: { ...task.raw, execution } }
+  );
+  if (!response.ok) {
+    return { ok: false, error: errorMessageOf(response.data) ?? 'Could not update the scheduled task.' };
+  }
+  const updated = toScheduledTask(instanceId, task.projectId, task.projectName, asRecord(response.data).task);
+  return { ok: true, task: updated ?? undefined };
 };
 
 export const createSession = async (

@@ -21,10 +21,13 @@ import {
   reorderQueuedMessages,
   replyPermission,
   replyQuestion,
+  runScheduledTask,
   sendPrompt,
   setAutoAccept,
   takeQueuedMessage,
+  updateScheduledTaskModel,
 } from './src/api';
+import type { ScheduledTask } from './src/api';
 import { shouldOfferSessionReload } from './src/components/ChatView';
 import { cacheSummary, formatCost, isAssistantTurnEnd, relativeTimeAgo, tokensPerSecond } from './src/components/Transcript';
 import type { ChatMessage, ModelOption } from './src/types';
@@ -562,6 +565,26 @@ describe('session creation and model metadata', () => {
 });
 
 describe('scheduled task identity', () => {
+  const makeScheduledTask = (): ScheduledTask => ({
+    key: 'task:local::project-1::daily-review',
+    instanceId: 'local',
+    projectId: 'project-1',
+    projectName: 'Project One',
+    id: 'daily-review',
+    name: 'Daily review',
+    enabled: true,
+    model: { providerID: 'anthropic', modelID: 'claude-sonnet' },
+    state: { lastSessionId: 'ses_latest' },
+    raw: {
+      id: 'daily-review',
+      name: 'Daily review',
+      enabled: true,
+      schedule: { kind: 'daily', times: ['09:00'] },
+      execution: { prompt: 'Review the day', providerID: 'anthropic', modelID: 'claude-sonnet', agent: 'build' },
+      state: { lastSessionId: 'ses_latest' },
+    },
+  });
+
   test('binds the latest scheduled session to its stable project task key', async () => {
     setRequest(async (_instanceId, _method, path) =>
       path.includes('supported')
@@ -572,7 +595,9 @@ describe('scheduled task identity', () => {
               tasks: [{
                 id: 'daily-review',
                 name: 'Daily review',
-                state: { lastSessionId: 'ses_latest' },
+                enabled: true,
+                execution: { prompt: 'Review the day', providerID: 'anthropic', modelID: 'claude-sonnet' },
+                state: { lastSessionId: 'ses_latest', lastStatus: 'error', lastError: 'timed out' },
               }],
             },
           }
@@ -589,13 +614,80 @@ describe('scheduled task identity', () => {
     expect(result.taskNames).toEqual({
       'task:local::supported::daily-review': 'Daily review',
     });
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0]).toMatchObject({
+      key: 'task:local::supported::daily-review',
+      instanceId: 'local',
+      projectId: 'supported',
+      projectName: 'Supported',
+      id: 'daily-review',
+      name: 'Daily review',
+      enabled: true,
+      model: { providerID: 'anthropic', modelID: 'claude-sonnet' },
+      state: { lastSessionId: 'ses_latest', lastStatus: 'error', lastError: 'timed out' },
+    });
   });
 
   test('falls back cleanly when scheduled-task routes are unavailable', async () => {
     setRequest(async () => ({ ok: false, status: 404, data: null }));
     expect(await loadScheduledIdentityData('legacy', [
       { id: 'project', name: 'Project', path: '/workspace/project' },
-    ])).toEqual({ bindings: {}, taskNames: {} });
+    ])).toEqual({ bindings: {}, taskNames: {}, tasks: [] });
+  });
+
+  test('runs a task and reports the created session', async () => {
+    const calls: Array<{ method: string; path: string }> = [];
+    setRequest(async (_instanceId, method, path) => {
+      calls.push({ method, path });
+      return { ok: true, status: 200, data: { ok: true, sessionId: 'ses_new' } };
+    });
+    const task = makeScheduledTask();
+    expect(await runScheduledTask('local', task)).toEqual({ ok: true, sessionId: 'ses_new' });
+    expect(calls).toEqual([
+      {
+        method: 'POST',
+        path: '/api/projects/project-1/scheduled-tasks/daily-review/run',
+      },
+    ]);
+  });
+
+  test('surfaces the server error when a run is rejected', async () => {
+    setRequest(async () => ({ ok: false, status: 409, data: { error: 'Task already running' } }));
+    const result = await runScheduledTask('local', makeScheduledTask());
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('Task already running');
+  });
+
+  test('updates only execution model when saving a new model', async () => {
+    let sent: { task?: Record<string, unknown> } | undefined;
+    setRequest(async (_instanceId, method, path, body) => {
+      if (method !== 'PUT') return { ok: false, status: 404, data: null };
+      sent = body as { task?: Record<string, unknown> };
+      return {
+        ok: true,
+        status: 200,
+        data: { task: { ...(sent?.task ?? {}), id: 'daily-review', name: 'Daily review' } },
+      };
+    });
+    const task = makeScheduledTask();
+    const result = await updateScheduledTaskModel('local', task, {
+      providerID: 'openai',
+      modelID: 'gpt-5',
+      variant: 'high',
+    });
+    expect(result.ok).toBe(true);
+    expect(sent?.task).toMatchObject({
+      id: 'daily-review',
+      name: 'Daily review',
+      schedule: { kind: 'daily', times: ['09:00'] },
+      execution: {
+        prompt: 'Review the day',
+        providerID: 'openai',
+        modelID: 'gpt-5',
+        agent: 'build',
+        variant: 'high',
+      },
+    });
   });
 });
 

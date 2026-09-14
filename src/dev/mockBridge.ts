@@ -186,7 +186,14 @@ const projects: Record<string, unknown[]> = {
 };
 
 const scheduledTasks: Record<string, unknown[]> = {
-  p1: [{ id: 'daily-channel-brief', name: 'Daily channel brief', state: { lastSessionId: 'ses_a1' } }],
+  p1: [{
+    id: 'daily-channel-brief',
+    name: 'Daily channel brief',
+    enabled: true,
+    schedule: { kind: 'daily', times: ['09:00'] },
+    execution: { prompt: 'Run the scheduled morning channel brief.', providerID: 'openai', modelID: 'gpt-5' },
+    state: { lastSessionId: 'ses_a1', lastStatus: 'error', lastError: 'Provider timed out' },
+  }],
 };
 
 const permissions: Record<string, MockPermission[]> = {
@@ -534,6 +541,23 @@ const bridge: EmberBridge = {
     const scheduledMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/scheduled-tasks$/);
     if (scheduledMatch && method === 'GET') {
       return delay(ok({ tasks: scheduledTasks[decodeURIComponent(scheduledMatch[1])] ?? [] }));
+    }
+    if (scheduledMatch && method === 'PUT') {
+      const projectId = decodeURIComponent(scheduledMatch[1]);
+      const task = (body as { task?: Record<string, unknown> })?.task;
+      if (!task || typeof task.id !== 'string') return { ok: false, status: 400, data: { error: 'task is required' } };
+      const tasks = scheduledTasks[projectId] ?? (scheduledTasks[projectId] = []);
+      const index = tasks.findIndex((entry) => (entry as { id?: string }).id === task.id);
+      if (index === -1) tasks.push(task);
+      else tasks[index] = task;
+      return delay(ok({ tasks, task, created: index === -1 }));
+    }
+    const scheduledRunMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/scheduled-tasks\/([^/]+)\/run$/);
+    if (scheduledRunMatch && method === 'POST') {
+      const tasks = scheduledTasks[decodeURIComponent(scheduledRunMatch[1])] ?? [];
+      const task = tasks.find((entry) => (entry as { id?: string }).id === decodeURIComponent(scheduledRunMatch[2]));
+      if (!task) return { ok: false, status: 404, data: { error: 'Task not found or disabled' } };
+      return delay(ok({ ok: true, sessionId: 'ses_a1' }));
     }
     if (url.pathname === '/api/experimental/session' && method === 'GET') {
       const includeArchived = url.searchParams.get('archived') === 'true';

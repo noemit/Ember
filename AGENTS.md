@@ -107,7 +107,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `SessionRow`s. Cards and rows interleave by most-recent activity. Clicking a project body opens the
   whole project — see App's `openProject`; the blobs are display-only (their right-click menu still
   reloads/archives that session). The toolbar is New agent + search + the scheduled toggle + the
-  archive button. Search is scoped to the current view by default; when it comes up empty it offers
+  archive button. The scheduled view lists the latest run of each scheduled task; those rows also
+  carry the task's run/model actions (see SessionRow), so an errored task can be retried after
+  switching its model. Search is scoped to the current view by default; when it comes up empty it offers
   "Search all time" and "Search archived sessions", the latter listing archived hits as individual
   rows under an Archived heading (clearing the box resets the scope). The
   selected session is pinned into the list even when filters hide it.
@@ -120,7 +122,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   name as the title, instance above it); the rail passes a `topMeta` header
   (`project/folder · instance`) so every entry is labelled like a project card. Memoized; the
   timestamp is a self-ticking `RelativeTime`. Archive/restore is decided per row from
-  `session.archived`.
+  `session.archived`. When the row is the latest run of a scheduled task it also gets a hover play
+  button and menu entries to run the task now or change its model and run: App resolves the task
+  through `scheduledSessionBindings`/`scheduledTasksByKey`, `runScheduledTask` re-runs it server-side
+  and `updateScheduledTaskModel` replays the task's own JSON with a patched `execution`.
 - `src/components/ArchiveDialog.tsx` — the rail's archive screen (`archivedSessions`): every
   archived session as an individual row, newest first, with restore. Opened from the rail toolbar's
   archive button.
