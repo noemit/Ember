@@ -1917,9 +1917,58 @@ export default function App() {
     }
   };
 
+  /** Bulk archive/restore from a project card's `+N` menu, with one undo notice for the batch. */
+  const handleArchiveMany = async (sessions: Session[], archived = true) => {
+    const targets = sessions.filter((session) => Boolean(session.archived) !== archived);
+    if (targets.length === 0) return;
+    showActionError(null);
+    setActionNotice(null);
+    setArchivingKeys((current) => {
+      const next = new Set(current);
+      targets.forEach((session) => next.add(sessionKey(session)));
+      return next;
+    });
+    const results = await Promise.all(
+      targets.map(async (session) => ({
+        session,
+        ok: await setSessionArchived(session, archived).catch(() => false),
+      }))
+    );
+    const succeeded = results.filter((result) => result.ok).map((result) => result.session);
+    const failed = results.length - succeeded.length;
+    if (succeeded.length > 0) {
+      setSessionsByInstance((prev) => {
+        const next = { ...prev };
+        succeeded.forEach((session) => {
+          next[session.instanceId] = (next[session.instanceId] ?? []).map((entry) =>
+            entry.id === session.id ? { ...entry, archived: archived ? Date.now() : undefined } : entry
+          );
+        });
+        return next;
+      });
+      if (archived) succeeded.forEach((session) => closeSession(sessionKey(session)));
+    }
+    setArchivingKeys((current) => {
+      const next = new Set(current);
+      targets.forEach((session) => next.delete(sessionKey(session)));
+      return next;
+    });
+    if (failed > 0) {
+      showActionError(
+        `${failed} of ${targets.length} sessions could not be ${archived ? 'archived' : 'restored'}.`
+      );
+    }
+    if (succeeded.length > 0) {
+      setActionNotice({
+        message: `${archived ? 'Archived' : 'Restored'} ${succeeded.length} session${succeeded.length === 1 ? '' : 's'}.`,
+        actionLabel: 'Undo',
+        action: () => void handleArchiveMany(succeeded, !archived),
+      });
+    }
+  };
+
   /** From the archive screen: restore, then open the session as a column. */
-  const handleRestoreAndOpen = async (session: Session) => {
-    await handleArchive(session, false);
+  const handleRestoreAndOpen = async (session: Session) => {    await handleArchive(session, false);
     openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
     setArchiveOpen(false);
   };
@@ -2582,6 +2631,7 @@ export default function App() {
               }}
               onReload={(session) => void handleReloadSession(session)}
               onArchive={(session, archived) => void handleArchive(session, archived)}
+              onArchiveMany={(sessions) => void handleArchiveMany(sessions, true)}
               onCustomizeAppearance={setAvatarPickerSession}
               onNewAgent={(instanceId, directory) => {
                 beginNewAgent(instanceId, directory);

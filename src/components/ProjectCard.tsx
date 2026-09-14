@@ -1,10 +1,18 @@
 import * as React from 'react';
 import { motion } from 'motion/react';
-import { Box, Plus } from 'lucide-react';
+import { Archive, Box, Plus } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobStripLayout } from '@/lib/projectGroups';
+import { ARCHIVE_AGE_OPTIONS, bulkArchiveTargets } from '@/lib/bulkArchive';
 import { cn } from '@/lib/utils';
-import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SessionContextMenuContent } from './SessionRow';
 import { sessionKey } from '../types';
@@ -30,6 +38,8 @@ type Props = {
   onNewAgent: (instanceId: string, directory?: string) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
+  /** Bulk archive from the `+N` menu; one notice/undo covers the whole batch. */
+  onArchiveMany: (sessions: Session[]) => void;
   onCustomizeAppearance: (session: Session) => void;
 };
 
@@ -57,10 +67,13 @@ export default function ProjectCard({
   onNewAgent,
   onReload,
   onArchive,
+  onArchiveMany,
   onCustomizeAppearance,
 }: Props) {
   const layout = blobStripLayout(sessions.length, STRIP_WIDTH, 48, 30);
   const visible = sessions.slice(0, layout.visible);
+  // Recomputed per render so the menu's counts stay current with the session list.
+  const inactiveTargets = bulkArchiveTargets(sessions, moods, { now: Date.now() });
 
   return (
     <motion.div
@@ -159,12 +172,47 @@ export default function ProjectCard({
         })}
 
         {layout.overflow > 0 ? (
-          <span
-            className="flex-none text-[12px] tabular-nums text-muted-foreground"
-            title={`${layout.overflow} more`}
-          >
-            +{layout.overflow}
-          </span>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <span
+                className="flex-none cursor-context-menu text-[12px] tabular-nums text-muted-foreground"
+                title={`${layout.overflow} more — right-click to tidy up`}
+                aria-label={`${layout.overflow} more sessions`}
+              >
+                +{layout.overflow}
+              </span>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuLabel className="text-[11px] text-muted-foreground">
+                Tidy up {project.name}
+              </ContextMenuLabel>
+              <ContextMenuItem
+                disabled={inactiveTargets.length === 0}
+                onSelect={() => onArchiveMany(inactiveTargets)}
+              >
+                <Archive />
+                Archive {inactiveTargets.length} inactive
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuLabel className="text-[11px] text-muted-foreground">Older than…</ContextMenuLabel>
+              {ARCHIVE_AGE_OPTIONS.map((option) => {
+                const targets = bulkArchiveTargets(sessions, moods, {
+                  olderThanHours: option.hours,
+                  now: Date.now(),
+                });
+                return (
+                  <ContextMenuItem
+                    key={option.label}
+                    disabled={targets.length === 0}
+                    onSelect={() => onArchiveMany(targets)}
+                  >
+                    <span>{option.label}</span>
+                    <span className="ml-auto pl-3 tabular-nums text-muted-foreground">{targets.length}</span>
+                  </ContextMenuItem>
+                );
+              })}
+            </ContextMenuContent>
+          </ContextMenu>
         ) : null}
 
         {sessions.length === 0 ? (

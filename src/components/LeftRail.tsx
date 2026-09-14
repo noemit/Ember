@@ -59,6 +59,8 @@ type Props = {
   onOpenProject: (instanceId: string, project: Project, sessions: Session[]) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
+  /** Bulk archive a project's sessions from the card's `+N` menu. */
+  onArchiveMany: (sessions: Session[]) => void;
   onCustomizeAppearance: (session: Session) => void;
   onNewAgent: (instanceId: string, directory?: string) => void;
   onOpenSettings: () => void;
@@ -95,6 +97,7 @@ export default function LeftRail({
   onOpenProject,
   onReload,
   onArchive,
+  onArchiveMany,
   onCustomizeAppearance,
   onNewAgent,
   onOpenSettings,
@@ -199,6 +202,7 @@ export default function LeftRail({
   const selectSession = useStableCallback(onSelectSession);
   const reloadSession = useStableCallback(onReload);
   const archiveSession = useStableCallback(onArchive);
+  const archiveMany = useStableCallback(onArchiveMany);
   const customizeAppearance = useStableCallback(onCustomizeAppearance);
   const newAgent = useStableCallback(onNewAgent);
   const runScheduledTask = useStableCallback(onRunScheduledTask);
@@ -315,6 +319,7 @@ export default function LeftRail({
         onNewAgent={newAgent}
         onReload={reloadSession}
         onArchive={archiveSession}
+        onArchiveMany={archiveMany}
         onCustomizeAppearance={customizeAppearance}
       />
     );

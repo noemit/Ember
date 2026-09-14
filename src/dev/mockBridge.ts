@@ -138,6 +138,17 @@ const sessions: Record<string, MockSession[]> = {
       { role: 'user', text: 'Run the scheduled morning channel brief.' },
       { role: 'assistant', text: 'Yesterday’s brief is complete: views were up 18%, subscriber conversion held steady, and two comments were flagged for a reply.' },
     ] },
+    // Extra channels sessions so a project card overflows into a `+N` chip, for testing the
+    // bulk-archive menu (two older than a day, one recent).
+    { id: 'ses_c1', title: 'Old thumbnail notes', directory: '/workspace/channels', updated: minutes(2000), status: 'idle', messages: [
+      { role: 'assistant', text: 'Thumbnail notes from last week.' },
+    ] },
+    { id: 'ses_c2', title: 'Old sponsor shortlist', directory: '/workspace/channels', updated: minutes(2800), status: 'idle', messages: [
+      { role: 'assistant', text: 'An old sponsor shortlist.' },
+    ] },
+    { id: 'ses_c3', title: 'Recent collab idea', directory: '/workspace/channels', updated: minutes(20), status: 'idle', messages: [
+      { role: 'assistant', text: 'A recent collaboration idea.' },
+    ] },
     // Trailing tool-only turns plus a streaming final message, for exercising bounded tails and
     // the progressive preview's tool-only skip: the final turn has no text yet, so a preview must
     // walk back to an older turn.
