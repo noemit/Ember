@@ -4,7 +4,9 @@ import {
   MAX_OPEN_SESSIONS,
   numberShortcutSlot,
   parseSessionKey,
+  pruneTranscripts,
   pruneWorkspace,
+  transcriptKeysToKeep,
   visibleColumns,
 } from './src/lib/workspace';
 
@@ -116,5 +118,25 @@ describe('number shortcuts', () => {
     expect(numberShortcutSlot(event({ metaKey: true, key: '0' }))).toBeNull();
     expect(numberShortcutSlot(event({ metaKey: true, key: 'a' }))).toBeNull();
     expect(numberShortcutSlot(event({ metaKey: true, key: 'Enter' }))).toBeNull();
+  });
+});
+
+describe('transcript pruning', () => {
+  test('keeps open sessions, cached keys and the active session', () => {
+    const keep = transcriptKeysToKeep(['a', 'b'], ['b', 'c'], 'd');
+    expect([...keep].sort()).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  test('tolerates a null active session and duplicate keys', () => {
+    const keep = transcriptKeysToKeep(['a', 'a'], ['a'], null);
+    expect([...keep]).toEqual(['a']);
+  });
+
+  test('drops unkept entries and returns the input unchanged when nothing would drop', () => {
+    const transcripts = { a: 1, b: 2, c: 3 };
+    expect(pruneTranscripts(transcripts, new Set(['a', 'b', 'c']))).toBe(transcripts);
+    const pruned = pruneTranscripts(transcripts, new Set(['b']));
+    expect(pruned).toEqual({ b: 2 });
+    expect(pruned).not.toBe(transcripts);
   });
 });

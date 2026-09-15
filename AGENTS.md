@@ -35,9 +35,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/App.tsx` — owns the data state: instances, per-instance sessions/states/models/queues,
   selection, pollers, and the send/reload/archive/permission handlers. Sessions are keyed by
   `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances. A bounded in-memory
-  message cache (`MESSAGE_CACHE_LIMIT`, ≥ `PREVIEW_COUNT`) is warmed by sidebar preview loads;
-  transcript state is keyed by session so switching renders the cached transcript before the first
-  paint while the fresh fetch runs. Session polls merge per id with the newer `updated` winning
+  message cache (`MESSAGE_CACHE_LIMIT`, the open-session cap plus a small margin) holds full
+  transcripts; sidebar previews warm only the compact summary map (`summaries`), never the cache.
+  Transcript state is keyed by session so switching renders the cached transcript before the first
+  paint while the fresh fetch runs, and it is pruned to the open sessions plus whatever the cache
+  still holds, so it can't grow with every session ever shown. Session polls merge per id with the
+  newer `updated` winning
   (`mergePolledSessions`), and an optimistic user bubble keeps its id registered until a poll shows
   the server's copy (`releaseReconciledOptimistic`), so neither can flicker out. The workspace is
   `openSessions` (ordered keys) plus `activeSession`; `selected` is derived from `activeSession`, and

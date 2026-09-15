@@ -78,6 +78,40 @@ export const pruneWorkspace = (
   return { open, active, minimized };
 };
 
+/**
+ * Transcript keys worth keeping in memory: every open session (so a column or tab paints from cache
+ * before its refresh lands), every key the bounded message cache still holds, and the active
+ * session. Everything else can be refetched, so dropping it keeps `transcripts` from growing with
+ * every session ever shown.
+ */
+export const transcriptKeysToKeep = (
+  open: readonly string[],
+  cached: readonly string[],
+  active: string | null
+): Set<string> => {
+  const keep = new Set(open);
+  cached.forEach((key) => keep.add(key));
+  if (active) keep.add(active);
+  return keep;
+};
+
+/**
+ * Drop transcript entries whose key isn't in `keep`. Returns the same object when nothing would
+ * change, so a state setter can bail without a re-render.
+ */
+export const pruneTranscripts = <T>(
+  transcripts: Record<string, T>,
+  keep: ReadonlySet<string>
+): Record<string, T> => {
+  const keys = Object.keys(transcripts);
+  if (keys.every((key) => keep.has(key))) return transcripts;
+  const next: Record<string, T> = {};
+  keys.forEach((key) => {
+    if (keep.has(key)) next[key] = transcripts[key];
+  });
+  return next;
+};
+
 /** Structural equality for workspace snapshots, so state setters can bail when nothing changed. */
 export const sameWorkspace = (a: Workspace, b: Workspace): boolean =>
   a.active === b.active &&

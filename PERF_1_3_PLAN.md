@@ -198,7 +198,8 @@ The preview effect may keep `PREVIEW_COUNT = 24` and `PREVIEW_CONCURRENCY = 4`. 
 
 After this change, lower `MESSAGE_CACHE_LIMIT` from 32 to a workspace-oriented value such as `MAX_OPEN_SESSIONS + 4`. Preview count must no longer determine transcript cache capacity.
 
-Pruning the separate `transcripts` state is PERF-4 and is out of scope for this batch.
+Pruning the separate `transcripts` state is PERF-4; it now runs in `App.tsx` via
+`transcriptKeysToKeep`/`pruneTranscripts` (keep open sessions + cache keys + active).
 
 ### 5. Streaming-aware invalidation
 

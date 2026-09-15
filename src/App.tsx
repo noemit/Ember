@@ -73,8 +73,10 @@ import {
   MIN_COLUMN_WIDTH,
   numberShortcutSlot,
   parseSessionKey,
+  pruneTranscripts,
   pruneWorkspace,
   sameWorkspace,
+  transcriptKeysToKeep,
   visibleColumns,
   type Workspace,
 } from './lib/workspace';
@@ -382,6 +384,19 @@ export default function App() {
       return { ...prev, [key]: { messages: messagesForSession, status } };
     });
   };
+
+  // PERF-4: the LRU message cache is bounded, but `transcripts` is not — it would otherwise retain
+  // every transcript a column ever loaded. Keep only the open sessions, whatever the cache still
+  // holds, and the active session; anything else is a fetch away. Reading the cache ref is safe
+  // here because every cache write is paired with a transcript write, so this effect re-runs.
+  React.useEffect(() => {
+    setTranscripts((prev) =>
+      pruneTranscripts(
+        prev,
+        transcriptKeysToKeep(openSessions, [...messageCacheRef.current.keys()], activeSession)
+      )
+    );
+  }, [transcripts, openSessions, activeSession]);
 
   const commitSummary = React.useCallback(
     (key: string, messagesForSession: ChatMessage[], complete: boolean, version?: number) => {
