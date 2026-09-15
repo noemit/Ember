@@ -31,23 +31,24 @@ describe('new agent folder prefill', () => {
 });
 
 describe('new agent model prefill', () => {
-  test('last used model and its variant come first', () => {
-    const sessions = [
-      session({ id: 'a', updated: 1, model: { providerID: 'p', modelID: 'old' } }),
-      session({ id: 'b', updated: 2, model: { providerID: 'p', modelID: 'new', variant: 'high' } }),
-      session({ id: 'c', updated: 3 }),
-    ];
-    expect(newSessionModelPrefill(sessions, { model: { providerID: 'p', modelID: 'setting' } })).toEqual({
-      key: 'p/new',
+  test('uses the per-instance default when set', () => {
+    expect(newSessionModelPrefill({ model: { providerID: 'p', modelID: 'setting' } })).toEqual({
+      key: 'p/setting',
+      variant: '',
+    });
+  });
+
+  test('carries the setting variant, then the model variant', () => {
+    expect(
+      newSessionModelPrefill({ model: { providerID: 'p', modelID: 'setting', variant: 'high' }, variant: 'low' })
+    ).toEqual({ key: 'p/setting', variant: 'low' });
+    expect(newSessionModelPrefill({ model: { providerID: 'p', modelID: 'setting', variant: 'high' } })).toEqual({
+      key: 'p/setting',
       variant: 'high',
     });
   });
 
-  test('per-instance setting when no session has a model; server default otherwise', () => {
-    expect(newSessionModelPrefill([], { model: { providerID: 'p', modelID: 'setting' }, variant: 'low' })).toEqual({
-      key: 'p/setting',
-      variant: 'low',
-    });
-    expect(newSessionModelPrefill([session({ id: 'a' })], {})).toBeNull();
+  test('null when unset so the composer uses the server default', () => {
+    expect(newSessionModelPrefill({})).toBeNull();
   });
 });

@@ -2266,7 +2266,7 @@ export default function App() {
       directory:
         newSessionDirectory ??
         newSessionDirectoryPrefill(sessions, projectsByInstance[newSessionInstanceId] ?? [], defaults),
-      model: newSessionModelPrefill(sessions, defaults),
+      model: newSessionModelPrefill(defaults),
       bypass: defaults.bypass === true,
     };
   }, [newSessionInstanceId, newSessionDirectory, newSessionInstanceDefaults, sessionsByInstance, projectsByInstance]);

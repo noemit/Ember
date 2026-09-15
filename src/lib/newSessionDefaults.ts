@@ -25,14 +25,15 @@ export const newSessionDirectoryPrefill = (
 export type ModelPrefill = { key: string; variant: string };
 
 /**
- * Model for a new agent: whatever the instance's most recent session used (with its reasoning
- * variant), then the per-instance default setting. `null` means the server default.
+ * Model for a new agent: the per-instance default setting when set, otherwise `null` so the
+ * composer falls back to the server default. The most recent session's model is deliberately
+ * *not* used — a recent one-off (an image model, say) would otherwise silently hijack every new
+ * agent, which reads as the model changing at random.
  */
-export const newSessionModelPrefill = (sessions: Session[], defaults: InstanceDefaults): ModelPrefill | null => {
-  const recent = [...sessions].filter((session) => session.model).sort(byRecency)[0]?.model;
-  if (recent) return { key: modelRefKey(recent), variant: recent.variant ?? '' };
-  if (defaults.model) {
-    return { key: modelRefKey(defaults.model), variant: defaults.variant ?? defaults.model.variant ?? '' };
-  }
-  return null;
+export const newSessionModelPrefill = (defaults: InstanceDefaults): ModelPrefill | null => {
+  if (!defaults.model) return null;
+  return {
+    key: modelRefKey(defaults.model),
+    variant: defaults.variant ?? defaults.model.variant ?? '',
+  };
 };

@@ -79,8 +79,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   `newSessionInstanceId` set and no session selected, the composer is live under key
   `new::<instanceId>` with an instance/project/folder row above it, and the first send calls
   `onCreateAndSend` (create session → send). Folder, model/variant and YOLO are prefilled from
-  `src/lib/newSessionDefaults.ts` (saved default → last-used on that instance → last-opened
-  project / server default) until the user edits them; switching instance re-seeds. The draft's
+  `src/lib/newSessionDefaults.ts` (folder: saved default → last-used on that instance → last-opened
+  project; model/variant: saved default → server default — the last session's model is deliberately
+  ignored, so a one-off image model can't hijack every new agent) until the user edits them;
+  switching instance re-seeds. The draft's
   centre blob resolves through `resolveDraftIdentity`, so it previews the destination project's
   colour/override and follows the folder picker before the session exists. The header's
   wrench toggle flips the global `hideToolCalls` setting, which drops tool-call rows from every
