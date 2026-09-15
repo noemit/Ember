@@ -139,7 +139,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   numbering (1-based `openSessions` order, so `Cmd/Ctrl+1–9` is stable); a tab click loads it into
   the **rightmost** column, the chevron minimizes/restores (sticky across restarts), the archive
   button archives, and × closes. Renders nothing when everything fits. App remembers each project's
-  exact columns/tabs/active (`projectLayoutsRef`) so leaving and returning restores that layout.
+  column order, minimized set and active session (`projectLayoutsRef`) so leaving and returning
+  restores the arrangement; reopening a project always reopens *all* its sessions, so closing one
+  isn't a dead end.
 - `src/components/CommandPalette.tsx` — `Cmd/Ctrl+K` session/note search plus new-agent commands.
 - `src/components/ui/` — shadcn/ui primitives (Tailwind v4, `radix-ui`). Add more with
   `bunx --bun shadcn@latest add <name>`.

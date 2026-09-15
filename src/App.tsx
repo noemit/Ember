@@ -907,14 +907,13 @@ export default function App() {
 
   /**
    * Open a project. `projectSessions` is exactly what the project's card showed, so opening it
-   * never pulls in out-of-window or archived sessions that share the directory. If it was open
-   * before, restore the exact columns/tabs/active it had; otherwise open the most recent sessions.
-   * An empty set opens a draft instead.
+   * never pulls in out-of-window or archived sessions that share the directory. Every session in
+   * the project is (re)opened, so closing one isn't a dead end; the remembered layout only decides
+   * the column order, which sessions stay minimized, and which is active. An empty set opens a draft.
    */
   const openProject = React.useCallback((instanceId: string, project: Project, projectSessions: Session[]) => {
     showActionError(null);
     const owned = projectSessions.filter((session) => !session.archived && !session.parentId);
-    const validKeys = new Set(owned.map(sessionKey));
     const projectKey = projectIdentityKey(instanceId, project.id);
     saveCurrentLayout();
     if (owned.length === 0) {
@@ -924,32 +923,24 @@ export default function App() {
       setNewSessionDirectory(project.path ?? null);
       return;
     }
-    // Restore exactly what this project looked like when it was last open.
-    const saved = projectLayoutsRef.current.get(projectKey);
-    if (saved) {
-      const open = saved.open.filter((key) => validKeys.has(key)).slice(0, MAX_OPEN_SESSIONS);
-      if (open.length > 0) {
-        const minimized = new Set(saved.minimized.filter((key) => open.includes(key)));
-        setOpenSessions(open);
-        setMinimizedSessions(minimized);
-        setActiveSession(
-          saved.active && open.includes(saved.active) && !minimized.has(saved.active)
-            ? saved.active
-            : open.find((key) => !minimized.has(key)) ?? open[0]
-        );
-        setNewSessionInstanceId(null);
-        setNewSessionDirectory(null);
-        return;
-      }
-    }
-    const keys = [...owned]
+    const byRecency = [...owned]
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
-      .map(sessionKey)
-      .slice(0, MAX_OPEN_SESSIONS);
+      .map(sessionKey);
+    // Reopen every session, but keep the remembered order/minimized/active for those still present.
+    const saved = projectLayoutsRef.current.get(projectKey);
+    const savedOrder = saved ? saved.open.filter((key) => byRecency.includes(key)) : [];
+    const keys = [...savedOrder, ...byRecency.filter((key) => !savedOrder.includes(key))].slice(
+      0,
+      MAX_OPEN_SESSIONS
+    );
+    const minimized = new Set((saved?.minimized ?? []).filter((key) => keys.includes(key)));
     setOpenSessions(keys);
-    // Keep sticky minimized flags only for sessions still in this group.
-    setMinimizedSessions((prev) => new Set([...prev].filter((entry) => keys.includes(entry))));
-    setActiveSession(keys[0] ?? null);
+    setMinimizedSessions(minimized);
+    setActiveSession(
+      saved?.active && keys.includes(saved.active) && !minimized.has(saved.active)
+        ? saved.active
+        : keys.find((key) => !minimized.has(key)) ?? keys[0] ?? null
+    );
     setNewSessionInstanceId(null);
     setNewSessionDirectory(null);
   }, [showActionError, saveCurrentLayout]);
