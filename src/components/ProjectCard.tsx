@@ -37,6 +37,8 @@ type Props = {
   pinnedCounts: Record<string, number>;
   /** Opens every session in this project (most recent as columns, the rest as tabs). */
   onOpenProject: () => void;
+  /** Opens just the clicked session, adding it to the current workspace. */
+  onOpenSession: (session: Session) => void;
   onNewAgent: (instanceId: string, directory?: string) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
@@ -49,9 +51,10 @@ const spring = { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 } as con
 
 /**
  * A project with two or more sessions: its name, a `+` that starts a session in that project's
- * directory, and a strip of mood-carrying blobs. Clicking the card opens the project (all its
- * sessions as tabs, the most recent ones as columns); the blobs are display-only, though
- * right-clicking one still offers the per-session menu. One-session projects use a plain row.
+ * directory, and a strip of mood-carrying blobs. Clicking the project name/body opens every
+ * session (most recent as columns, the rest as tabs); clicking an individual blob opens just that
+ * session, adding it to the current workspace. Right-clicking a blob still offers the per-session
+ * menu. One-session projects use a plain row.
  */
 export default function ProjectCard({
   project,
@@ -67,6 +70,7 @@ export default function ProjectCard({
   archivingKeys,
   pinnedCounts,
   onOpenProject,
+  onOpenSession,
   onNewAgent,
   onReload,
   onArchive,
@@ -144,11 +148,24 @@ export default function ProjectCard({
                 <TooltipTrigger asChild>
                   <ContextMenuTrigger asChild>
                     <span
+                      role="button"
+                      tabIndex={0}
                       className={cn(
-                        'relative flex-none rounded-full',
+                        'relative flex-none cursor-pointer rounded-full outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-1 focus-visible:ring-offset-card',
                         selected ? 'ring-2 ring-highlight ring-offset-1 ring-offset-card' : undefined
                       )}
                       aria-label={title}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenSession(session);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.stopPropagation();
+                          event.preventDefault();
+                          onOpenSession(session);
+                        }
+                      }}
                     >
                       <Blob
                         style={blobStyle}

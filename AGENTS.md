@@ -119,12 +119,13 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   rows under an Archived heading (clearing the box resets the scope). The
   selected session is pinned into the list even when filters hide it.
 - `src/components/ProjectCard.tsx` — a multi-session project: name, `+`, and a row of 48px
-  mood-carrying blobs that shrink then overflow to `+N`. The whole card is the click target (opens
-  the project); the blobs aren't individually clickable. Right-clicking the `+N` chip opens a tidy-up
-  menu ("Archive N inactive" plus "older than 1 day / 3 days / 1 week / 2 weeks / 1 month" with
-  counts), driven by `src/lib/bulkArchive.ts`. Bulk actions never touch a busy/thinking/needs-input
-  session and share one Undo notice (`handleArchiveMany`). A session with pinned messages shows a
-  small pin badge at its blob's bottom-left (`pinnedCounts`, from `src/lib/pins.ts`).
+  mood-carrying blobs that shrink then overflow to `+N`. Clicking the project name/body opens the
+  project; clicking a blob opens just that session; right-clicking a blob still offers the per-session
+  menu. Right-clicking the `+N` chip opens a tidy-up menu ("Archive N inactive" plus "older than 1
+  day / 3 days / 1 week / 2 weeks / 1 month" with counts), driven by `src/lib/bulkArchive.ts`. Bulk
+  actions never touch a busy/thinking/needs-input session and share one Undo notice
+  (`handleArchiveMany`). A session with pinned messages shows a small pin badge at its blob's
+  bottom-left (`pinnedCounts`, from `src/lib/pins.ts`).
 - `src/components/SessionRow.tsx` — the shared full session row (55px blob, title, preview,
   instance/project line, archive button, context menu) used by the rail and the archive screen.
   Optional `titleOverride`/`topMeta`/`onNewAgent` turn it into the one-session project row (project

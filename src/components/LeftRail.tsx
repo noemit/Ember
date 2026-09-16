@@ -59,6 +59,7 @@ type Props = {
   onSelectSession: (session: Session) => void;
   /** Opens a project's sessions (those shown on its card) as the open list. */
   onOpenProject: (instanceId: string, project: Project, sessions: Session[]) => void;
+  onOpenSession: (session: Session) => void;
   onReload: (session: Session) => void;
   onArchive: (session: Session, archived: boolean) => void;
   /** Bulk archive a project's sessions from the card's `+N` menu. */
@@ -98,6 +99,7 @@ export default function LeftRail({
   onOpenArchive,
   onSelectSession,
   onOpenProject,
+  onOpenSession,
   onReload,
   onArchive,
   onArchiveMany,
@@ -203,6 +205,7 @@ export default function LeftRail({
 
   // App passes inline lambdas; pin their identity so the memoized rows actually hold.
   const selectSession = useStableCallback(onSelectSession);
+  const openSession = useStableCallback(onOpenSession);
   const reloadSession = useStableCallback(onReload);
   const archiveSession = useStableCallback(onArchive);
   const archiveMany = useStableCallback(onArchiveMany);
@@ -298,7 +301,7 @@ export default function LeftRail({
           markerColor={instanceDefaults[entry.instanceId]?.markerColor}
           identity={avatarIdentities[key]}
           blobStyle={blobStyle}
-          onSelect={openProject}
+          onSelect={openSession}
           onNewAgent={() => newAgent(entry.instanceId, entry.project.path)}
           onReload={reloadSession}
           onArchive={archiveSession}
@@ -322,6 +325,7 @@ export default function LeftRail({
         archivingKeys={archivingKeys}
         pinnedCounts={pinnedCounts}
         onOpenProject={openProject}
+        onOpenSession={openSession}
         onNewAgent={newAgent}
         onReload={reloadSession}
         onArchive={archiveSession}

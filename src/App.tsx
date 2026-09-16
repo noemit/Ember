@@ -922,13 +922,15 @@ export default function App() {
 
   /**
    * Open a project. `projectSessions` is exactly what the project's card showed, so opening it
-   * never pulls in out-of-window or archived sessions that share the directory. Every session in
-   * the project is (re)opened, so closing one isn't a dead end; the remembered layout only decides
-   * the column order, which sessions stay minimized, and which is active. An empty set opens a draft.
+   * never pulls in out-of-window or archived sessions that share the directory. If some of the
+   * project's sessions are already open, only the missing ones are added (preserving the current
+   * layout). If none are open, the remembered layout is restored; otherwise every session opens in
+   * recency order. An empty set opens a draft.
    */
   const openProject = React.useCallback((instanceId: string, project: Project, projectSessions: Session[]) => {
     showActionError(null);
     const owned = projectSessions.filter((session) => !session.archived && !session.parentId);
+    const ownedKeys = new Set(owned.map(sessionKey));
     const projectKey = projectIdentityKey(instanceId, project.id);
     saveCurrentLayout();
     if (owned.length === 0) {
@@ -941,9 +943,31 @@ export default function App() {
     const byRecency = [...owned]
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
       .map(sessionKey);
-    // Reopen every session, but keep the remembered order/minimized/active for those still present.
+
+    const currentOpen = openSessionsRef.current.filter((key) => ownedKeys.has(key));
+    if (currentOpen.length > 0) {
+      // Project is already represented in the workspace: keep its current arrangement and just
+      // append any sessions that aren't open yet.
+      const currentSet = new Set(currentOpen);
+      const missing = byRecency.filter((key) => !currentSet.has(key));
+      const keys = [...currentOpen, ...missing].slice(0, MAX_OPEN_SESSIONS);
+      const minimized = new Set([...minimizedKeysRef.current].filter((key) => keys.includes(key)));
+      setOpenSessions(keys);
+      setMinimizedSessions(minimized);
+      setActiveSession(
+        (current) =>
+          (current && keys.includes(current) && !minimized.has(current)
+            ? current
+            : keys.find((key) => !minimized.has(key)) ?? keys[0] ?? null)
+      );
+      setNewSessionInstanceId(null);
+      setNewSessionDirectory(null);
+      return;
+    }
+
+    // Project not currently open: restore the saved layout if we have one, else open all by recency.
     const saved = projectLayoutsRef.current.get(projectKey);
-    const savedOrder = saved ? saved.open.filter((key) => byRecency.includes(key)) : [];
+    const savedOrder = saved ? saved.open.filter((key) => ownedKeys.has(key)) : [];
     const keys = [...savedOrder, ...byRecency.filter((key) => !savedOrder.includes(key))].slice(
       0,
       MAX_OPEN_SESSIONS
@@ -2642,6 +2666,10 @@ export default function App() {
               }}
               onOpenProject={(instanceId, project, projectSessions) => {
                 openProject(instanceId, project, projectSessions);
+                setMobileRailOpen(false);
+              }}
+              onOpenSession={(session) => {
+                openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
                 setMobileRailOpen(false);
               }}
               onReload={(session) => void handleReloadSession(session)}
