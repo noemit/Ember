@@ -116,8 +116,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   carry the task's run/model actions (see SessionRow), so an errored task can be retried after
   switching its model. Search is scoped to the current view by default; when it comes up empty it offers
   "Search all time" and "Search archived sessions", the latter listing archived hits as individual
-  rows under an Archived heading (clearing the box resets the scope). The
-  selected session is pinned into the list even when filters hide it.
+  rows under an Archived heading (clearing the box resets the scope). Empty configured projects also
+  appear in search results when their name or path matches, listed after projects that have sessions.
+  The selected session is pinned into the list even when filters hide it.
 - `src/components/ProjectCard.tsx` — a multi-session project: name, `+`, and a row of 48px
   mood-carrying blobs that shrink then overflow to `+N`. Clicking the project name/body opens the
   project; clicking a blob opens just that session; right-clicking a blob still offers the per-session

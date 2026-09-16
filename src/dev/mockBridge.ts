@@ -189,6 +189,7 @@ const projects: Record<string, unknown[]> = {
     { id: 'p1', path: '/workspace/channels', label: 'Creator Studio' },
     { id: 'p2', path: '/workspace/habit', label: 'Habit' },
     { id: 'p3', path: '/workspace/ember', label: 'Ember' },
+    { id: 'p6', path: '/workspace/vacant', label: 'Vacant' },
   ],
   studio: [
     { id: 'p4', path: '/workspace/habit', label: 'Habit' },

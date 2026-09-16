@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { AnimatePresence, LayoutGroup } from 'motion/react';
 import { Archive, Box, ChevronDown, Clock3, Plus, Search, Settings, X } from 'lucide-react';
-import { normalizeDirectory, projectForSession } from '../blob/seed';
+import { normalizeDirectory, projectForSession, projectIdentityKey } from '../blob/seed';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
-import { buildRailEntries, type RailEntry } from '@/lib/projectGroups';
+import { buildRailEntries, type ProjectEntry, type RailEntry } from '@/lib/projectGroups';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -181,10 +181,33 @@ export default function LeftRail({
     return archivedEverywhere.filter(matchesSession);
   }, [needle, searchArchived, archivedEverywhere, matchesSession]);
 
-  const railEntries = React.useMemo(
-    () => (needle ? buildRailEntries(activeMatches, projectsByInstance) : entries),
-    [needle, entries, activeMatches, projectsByInstance]
-  );
+  const railEntries = React.useMemo(() => {
+    if (!needle) return entries;
+    const withSessions = buildRailEntries(activeMatches, projectsByInstance);
+    const represented = new Set(
+      withSessions
+        .filter((entry): entry is ProjectEntry => entry.kind === 'project')
+        .map((entry) => entry.id)
+    );
+    const emptyProjects: ProjectEntry[] = [];
+    Object.entries(projectsByInstance).forEach(([instanceId, projects]) => {
+      projects.forEach((project) => {
+        const id = projectIdentityKey(instanceId, project.id);
+        if (represented.has(id)) return;
+        if (!matchesQuery([project.name, project.path], needle)) return;
+        emptyProjects.push({
+          kind: 'project',
+          id,
+          instanceId,
+          project,
+          sessions: [],
+          updated: 0,
+        });
+      });
+    });
+    emptyProjects.sort((a, b) => a.project.name.localeCompare(b.project.name) || a.id.localeCompare(b.id));
+    return [...withSessions, ...emptyProjects];
+  }, [needle, entries, activeMatches, projectsByInstance]);
 
   const scheduledSessions = React.useMemo(
     () => (needle ? itemSessions.filter(matchesSession) : itemSessions),
