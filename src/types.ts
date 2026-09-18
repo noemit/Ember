@@ -1,6 +1,6 @@
 export type InstanceKind = 'local' | 'remote' | 'ssh' | 'relay';
 
-export type InstanceStatus = 'ready' | 'unreachable' | 'unsupported';
+export type InstanceStatus = 'checking' | 'ready' | 'unreachable' | 'unsupported';
 
 export type Instance = {
   id: string;
@@ -327,6 +327,7 @@ export type EmberSettings = {
 };
 
 export type EmberSettingsPatch = Partial<EmberSettings> & {
+  composerDraftChanges?: Record<string, StoredComposerDraft | null>;
   /** Plaintext is accepted only transiently and is hashed by Electron before persistence. */
   remotePassword?: string | null;
 };
@@ -354,7 +355,12 @@ export type EmberEvent = {
 };
 
 export type EmberBridge = {
-  listInstances(): Promise<unknown>;
+  getModelStats?(): Promise<import('./lib/modelStats').ModelObservation[]>;
+  observeModels?(observations: import('./lib/modelStats').ModelObservation[]): Promise<import('./lib/modelStats').ModelObservation[]>;
+  rateModel?(id: string, rating: 'helpful' | 'unhelpful' | null): Promise<void>;
+  clearModelStats?(): Promise<void>;
+  capabilities?: { dockIcon: boolean };
+  listInstances(refresh?: boolean): Promise<unknown>;
   getSettings(): Promise<EmberSettings>;
   setSettings(patch: EmberSettingsPatch): Promise<EmberSettings>;
   /** Open an http(s) URL in the default browser or reveal a local path in Finder. */

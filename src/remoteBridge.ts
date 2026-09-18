@@ -7,8 +7,22 @@ const request = async (
   init?: RequestInit
 ): Promise<Response> => fetch(path, { ...init, credentials: 'same-origin' });
 
+const statsRequest = async (path: string, method = 'GET', body?: unknown) => {
+  const response = await request(path, {
+    method, headers: { 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!response.ok || response.redirected) throw new Error('Could not save model experience. Check your remote connection.');
+  return response.json();
+};
+
 const bridge: EmberBridge = {
-  listInstances: async () => (await request('/remote/instances')).json(),
+  getModelStats: () => statsRequest('/remote/model-stats'),
+  observeModels: (observations) => statsRequest('/remote/model-stats', 'POST', observations),
+  rateModel: async (id, rating) => { await statsRequest('/remote/model-rating', 'POST', { id, rating }); },
+  clearModelStats: async () => { await statsRequest('/remote/model-stats', 'DELETE'); },
+  capabilities: { dockIcon: false },
+  listInstances: async (refresh = true) => (await request(`/remote/instances?refresh=${refresh}`)).json(),
   getSettings: async () => (await request('/remote/settings')).json() as Promise<EmberSettings>,
   setSettings: async (patch: EmberSettingsPatch) =>
     (await request('/remote/settings', {

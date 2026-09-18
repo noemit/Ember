@@ -170,7 +170,12 @@ export class InvalidationQueue {
     }
     const pending = this.pending.get(key);
     if (pending) {
+      const previousMode = pending.invalidation.messageMode;
       pending.invalidation = mergeInvalidation(pending.invalidation, invalidation);
+      if (previousMode !== 'full' && pending.invalidation.messageMode === 'full') {
+        clearTimeout(pending.timer);
+        this.schedule(key, pending.invalidation);
+      }
       return;
     }
     this.schedule(key, invalidation);
@@ -189,6 +194,10 @@ export class InvalidationQueue {
     if (!entry) return;
     this.pending.delete(key);
     this.lastRunAt.set(key, Date.now());
+    if (this.lastRunAt.size > 2000) {
+      const cutoff = Date.now() - 60_000;
+      this.lastRunAt.forEach((at, oldKey) => { if (at < cutoff) this.lastRunAt.delete(oldKey); });
+    }
     this.inFlight.set(key, { invalidation: entry.invalidation, followUp: null });
     try {
       await this.refetch(entry.invalidation);
@@ -205,6 +214,7 @@ export class InvalidationQueue {
   clear(): void {
     this.pending.forEach((entry) => clearTimeout(entry.timer));
     this.pending.clear();
+    this.lastRunAt.clear();
     // Dropping in-flight entries makes their completion skip the follow-up.
     this.inFlight.clear();
   }

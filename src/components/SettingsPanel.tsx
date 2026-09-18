@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Check, ChevronRight, KeyRound, ShieldCheck } from 'lucide-react';
 import Blob from '../blob/Blob';
 import ModelPicker from './ModelPicker';
+import { ModelExperienceSettings } from './ModelScorecard';
 import { INSTANCE_MARKER_COLORS } from '../blob/contrast';
 import { THEME_GROUPS, THEMES } from '../themes';
 import { cn } from '@/lib/utils';
@@ -288,6 +289,7 @@ export default function SettingsPanel({
 
           <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
             <TabsContent value="general" className="mt-0 flex flex-col gap-5">
+              <ModelExperienceSettings />
               <Card>
                 <CardHeader className="p-3 pb-0">
                   <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

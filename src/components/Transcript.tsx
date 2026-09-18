@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import {
   ArrowDown,
   Brain,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import Linkify from './Linkify';
 import Blob from '../blob/Blob';
+import ModelRating from './ModelRating';
 import { cn } from '@/lib/utils';
 import { useStableCallback } from '@/lib/useStableCallback';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -50,6 +52,7 @@ const MarkdownFallback = ({ text }: { text: string }) => (
 );
 
 type Props = {
+  findRequest?: number;
   messages: ChatMessage[];
   messagesStatus: MessagesStatus;
   permissions: PermissionRequest[];
@@ -177,8 +180,20 @@ const DiffView = ({ diff }: { diff: string }) => (
   </pre>
 );
 
+const ExpansionContext = React.createContext<Map<string, boolean> | null>(null);
+const useExpansion = (key: string, initial: boolean) => {
+  const saved = React.useContext(ExpansionContext);
+  const [open, setOpen] = React.useState(() => saved?.get(key) ?? initial);
+  const set = (value: boolean | ((previous: boolean) => boolean)) => setOpen((previous) => {
+    const next = typeof value === 'function' ? value(previous) : value;
+    saved?.set(key, next);
+    return next;
+  });
+  return [open, set] as const;
+};
+
 const ToolRow = ({ call }: { call: ToolCall }) => {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useExpansion(`tool:${call.id}`, false);
   const hasDetail = Boolean(call.input || call.output || call.diff || call.error);
 
   return (
@@ -231,7 +246,7 @@ const groupedToolTitle = (tool: string, count: number): string => {
 };
 
 const ToolGroupRow = ({ tool, calls }: { tool: string; calls: ToolCall[] }) => {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useExpansion(`group:${calls[0]?.id}`, false);
   if (calls.length === 1) return <ToolRow call={calls[0]} />;
   const status = calls.some((call) => call.status === 'error')
     ? 'error'
@@ -273,16 +288,23 @@ const ToolGroupRow = ({ tool, calls }: { tool: string; calls: ToolCall[] }) => {
 
 const ReasoningRow = ({
   text,
+  storageKey,
   defaultOpen,
   onToggle,
 }: {
   text: string;
+  storageKey: string;
   defaultOpen: boolean;
   onToggle?: (element: HTMLElement | null) => void;
 }) => {
-  const [open, setOpen] = React.useState(defaultOpen);
+  const [open, updateOpen] = useExpansion(storageKey, defaultOpen);
+  const setOpen = useStableCallback(updateOpen);
   const rootRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => setOpen(defaultOpen), [defaultOpen]);
+  const previousDefault = React.useRef(defaultOpen);
+  React.useEffect(() => {
+    if (previousDefault.current !== defaultOpen) setOpen(defaultOpen);
+    previousDefault.current = defaultOpen;
+  }, [defaultOpen, setOpen]);
   return (
     <div ref={rootRef} className="flex max-w-[85%] flex-col self-start">
       <button
@@ -624,11 +646,13 @@ export const isAssistantTurnEnd = (
 
 const MessageFooter = ({
   message,
+  sessionKey,
   showMetadata,
   pinned,
   onReply,
 }: {
   message: ChatMessage;
+  sessionKey: string;
   showMetadata: boolean;
   pinned: boolean;
   onReply: () => void;
@@ -674,6 +698,7 @@ const MessageFooter = ({
       ) : null}
       {cost !== null ? <span className="flex-none">{`· ${formatCost(cost)}`}</span> : null}
       {received !== undefined ? <ReceivedTime timestamp={received} /> : null}
+      {showMetadata ? <ModelRating message={message} sessionKey={sessionKey} /> : null}
       {pinned ? (
         <button
           type="button"
@@ -700,8 +725,8 @@ const renderBlock = (
     return (
       <motion.div
         key={block.id}
-        layout="position"
-        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+        layout={false}
+        initial={false}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={spring}
         className={cn(
@@ -725,8 +750,8 @@ const renderBlock = (
   return (
     <motion.div
       key={block.id}
-      layout="position"
-      initial={{ opacity: 0, y: 6 }}
+      layout={false}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={spring}
       className="flex flex-col"
@@ -734,7 +759,7 @@ const renderBlock = (
       {block.type === 'tools' ? (
         <ToolGroupRow tool={block.tool} calls={block.calls} />
       ) : block.type === 'reasoning' ? (
-        <ReasoningRow text={block.text} defaultOpen={reasoningExpanded} onToggle={onReasoningToggle} />
+        <ReasoningRow storageKey={`reasoning:${message.id}:${block.id}`} text={block.text} defaultOpen={reasoningExpanded} onToggle={onReasoningToggle} />
       ) : (
         <FileBlock file={block.file} mine={mine} />
       )}
@@ -817,7 +842,7 @@ const MessageRow = React.memo(function MessageRow({
   return (
     <motion.div
       ref={ref}
-      layout="position"
+      layout={false}
       className={cn(
         'group/message relative flex w-full flex-col gap-1.5 rounded-xl px-5 transition-[background-color,box-shadow] sm:px-7',
         highlighted && 'bg-highlight/10 ring-2 ring-highlight/30'
@@ -847,6 +872,7 @@ const MessageRow = React.memo(function MessageRow({
         {message.error ? <MessageError error={message.error} /> : null}
         <MessageFooter
           message={message}
+          sessionKey={seed}
           showMetadata={showMetadata}
           pinned={pinned}
           onReply={() => onReply(message)}
@@ -864,7 +890,17 @@ const MessageRow = React.memo(function MessageRow({
   );
 });
 
-export default function Transcript({
+const ActivityLabel = ({ label, since }: { label: string; since?: number }) => {
+  const [now, setNow] = React.useState(Date.now);
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <span>{label}{since ? ` · ${formatElapsed(now - since)}` : ''}</span>;
+};
+
+function Transcript({
+  findRequest = 0,
   messages,
   messagesStatus,
   permissions,
@@ -893,6 +929,61 @@ export default function Transcript({
   const [following, setFollowing] = React.useState(true);
   const [highlightedMessageId, setHighlightedMessageId] = React.useState<string | null>(null);
   const previousPendingCountRef = React.useRef(0);
+  const expansion = React.useRef(new Map<string, boolean>());
+  const [find, setFind] = React.useState<string | null>(null);
+  const [findIndex, setFindIndex] = React.useState(0);
+  const findInput = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (!findRequest) return;
+    setFind('');
+    const frame = requestAnimationFrame(() => { findInput.current?.focus(); findInput.current?.select(); });
+    return () => cancelAnimationFrame(frame);
+  }, [findRequest]);
+  const items = React.useMemo(() => messages.map((message, index) => ({ message, index })).filter(({ message }) =>
+    message.error || message.parts.some((part) => part.type === 'text' || part.type === 'file' ||
+      (part.type === 'tool' && !hideToolCalls) || (part.type === 'reasoning' && reasoningDisplay !== 'hidden'))
+  ), [messages, hideToolCalls, reasoningDisplay]);
+  const [readAll, setReadAll] = React.useState(false);
+  const [focusedId, setFocusedId] = React.useState<string | null>(null);
+  const focusedIndex = items.findIndex(({ message }) => message.id === focusedId);
+  const virtualized = items.length > 80 && !readAll;
+  const previousItemKeys = React.useRef<string[]>([]);
+  const itemKeys = React.useMemo(() => {
+    const keys = items.map(({ message }) => message.id);
+    if (keys.length === previousItemKeys.current.length && keys.every((key, index) => key === previousItemKeys.current[index])) return previousItemKeys.current;
+    previousItemKeys.current = keys;
+    return keys;
+  }, [items]);
+  const itemKey = React.useCallback((index: number) => itemKeys[index], [itemKeys]);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 110,
+    getItemKey: itemKey,
+    overscan: 8,
+    rangeExtractor: React.useCallback((range: Parameters<typeof defaultRangeExtractor>[0]) => {
+      const indices = defaultRangeExtractor(range);
+      return focusedIndex < 0 ? indices : [...new Set([...indices, focusedIndex])].sort((a, b) => a - b);
+    }, [focusedIndex]),
+    enabled: virtualized,
+  });
+  const findMatches = React.useMemo(() => find?.trim() ? items.flatMap(({ message }, index) =>
+    `${message.text}\n${message.parts.filter((part) => part.type === 'reasoning').map((part) => part.text).join('\n')}`.toLowerCase().includes(find.toLowerCase()) ? [index] : []
+  ) : [], [find, items]);
+  const jumpToIndex = useStableCallback((index: number) => {
+    if (!items[index]) return;
+    followRef.current = false;
+    setFollowing(false);
+    if (virtualized) virtualizer.scrollToIndex(index, { align: 'center' });
+    else messageRefs.current.get(items[index].message.id)?.scrollIntoView({ block: 'center' });
+    setHighlightedMessageId(items[index].message.id);
+  });
+  const findSignature = findMatches.join(',');
+  const jumpToMatch = useStableCallback(() => {
+    if (findMatches.length) jumpToIndex(findMatches[findIndex % findMatches.length]);
+    else setHighlightedMessageId(null);
+  });
+  React.useEffect(() => { jumpToMatch(); }, [find, findSignature, findIndex, jumpToMatch]);
 
   const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current;
@@ -920,17 +1011,16 @@ export default function Transcript({
     previousPendingCountRef.current = pendingCount;
   }, [pendingCount, scrollToBottom]);
 
+  const focusById = useStableCallback((id: string) => {
+    const index = items.findIndex(({ message }) => message.id === id);
+    if (index >= 0) jumpToIndex(index);
+  });
   React.useEffect(() => {
     if (!focusMessageId || focusRequest === 0) return;
-    const message = messageRefs.current.get(focusMessageId);
-    if (!message) return;
-    followRef.current = false;
-    setFollowing(false);
-    setHighlightedMessageId(focusMessageId);
-    message.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    focusById(focusMessageId);
     const timer = window.setTimeout(() => setHighlightedMessageId(null), 1800);
     return () => window.clearTimeout(timer);
-  }, [focusMessageId, focusRequest]);
+  }, [focusMessageId, focusRequest, focusById]);
 
   // Stay pinned while the user is at the bottom; growth from streaming text, tool rows
   // or enter animations all land here via the ResizeObserver rather than per-update effects.
@@ -966,7 +1056,7 @@ export default function Transcript({
   const jumpToLatest = () => {
     followRef.current = true;
     setFollowing(true);
-    scrollToBottom('smooth');
+    scrollToBottom(virtualized ? 'auto' : 'smooth');
   };
 
   const last = messages[messages.length - 1];
@@ -989,15 +1079,7 @@ export default function Transcript({
     }
     return null;
   }, [messages, hideToolCalls, reasoningDisplay]);
-  const [activityNow, setActivityNow] = React.useState(() => Date.now());
   const activeSince = last?.createdAt ?? last?.completedAt;
-
-  React.useEffect(() => {
-    if (!turnPending) return;
-    setActivityNow(Date.now());
-    const timer = window.setInterval(() => setActivityNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [turnPending, last?.id]);
 
   // The running tool row above already shows the command; this line just says what phase we're in.
   const activityLabel = blocked
@@ -1015,7 +1097,7 @@ export default function Transcript({
             : 'Thinking';
   const waitingOnHistory = messages.length === 0 && messagesStatus !== 'ready';
   const activity = activityLabel && !waitingOnHistory
-    ? `${activityLabel}${activeSince ? ` · ${formatElapsed(activityNow - activeSince)}` : ''}`
+    ? activityLabel
     : null;
 
   const registerNode = React.useCallback((id: string, node: HTMLDivElement | null) => {
@@ -1026,19 +1108,38 @@ export default function Transcript({
   const reply = useStableCallback(onReply);
 
   return (
-    <div className="relative min-h-0 flex-1">
-      <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
+    <ExpansionContext.Provider value={expansion.current}>
+    <div className="relative flex min-h-0 flex-1 flex-col" onKeyDown={(event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); setFind(''); }
+    }}>
+      {items.length > 80 ? <button type="button" className={readAll ? 'p-2 text-left text-xs text-muted-foreground' : 'sr-only focus:not-sr-only focus:p-2'} onClick={() => setReadAll((value) => !value)}>
+        {readAll ? 'Return to windowed history' : 'Read all messages without virtualization'}
+      </button> : null}
+      {find !== null ? <div className="flex items-center gap-2 border-b p-2">
+        <Input ref={findInput} autoFocus aria-label="Find in conversation" value={find} onChange={(event) => { setFind(event.target.value); setFindIndex(0); }} onKeyDown={(event) => {
+          if (event.key === 'Escape') { setFind(null); setHighlightedMessageId(null); }
+          if (event.key === 'Enter') setFindIndex((index) => index + (event.shiftKey ? Math.max(1, findMatches.length - 1) : 1));
+        }} />
+        <span className="whitespace-nowrap text-xs">{findMatches.length ? (findIndex % findMatches.length) + 1 : 0}/{findMatches.length}</span>
+        <Button size="xs" variant="ghost" onClick={() => { setFind(null); setHighlightedMessageId(null); }}>Close</Button>
+      </div> : null}
+      <div ref={scrollRef} tabIndex={0} aria-label="Conversation history" onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
         <div
           ref={contentRef}
           role="log"
           aria-label="Conversation"
-          aria-live="polite"
+          aria-live={virtualized || readAll ? 'off' : 'polite'}
           aria-relevant="additions text"
           aria-busy={busy && !blocked}
           className="flex w-full flex-col gap-2.5"
         >
           <AnimatePresence initial={false}>
-            {messages.map((message, index) => (
+            <div key="history" style={virtualized ? { height: virtualizer.getTotalSize(), position: 'relative' } : undefined}>
+            {(virtualized ? virtualizer.getVirtualItems() : items.map((_, index) => ({ index, start: 0 }))).map((row) => {
+              const { message, index } = items[row.index];
+              return <div key={message.id} role="article" aria-label={`${message.role} message ${index + 1} of ${messages.length}`} data-index={row.index} ref={virtualized ? virtualizer.measureElement : undefined}
+                onFocusCapture={() => setFocusedId(message.id)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedId(null); }}
+                className="pb-2.5" style={virtualized ? { position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${row.start}px)` } : undefined}>
               <MessageRow
                 key={message.id}
                 message={message}
@@ -1051,13 +1152,15 @@ export default function Transcript({
                 blobStyle={blobStyle}
                 seed={seed}
                 identity={identity}
-                mood={mood}
+                mood={!turnPending && message.id === lastAssistantId ? mood : 'idle'}
                 onTogglePin={togglePin}
                 onReply={reply}
                 onReasoningToggle={ensureReasoningVisible}
                 registerNode={registerNode}
               />
-            ))}
+              </div>;
+            })}
+            </div>
 
             {permissions.map((request) => (
               <PermissionCard
@@ -1089,7 +1192,7 @@ export default function Transcript({
                   <Blob style={blobStyle} seed={seed} identity={identity} size={30} mood={mood} />
                 </div>
                 {runningTool ? <Wrench className="size-3 flex-none" /> : null}
-                <span>{activity}</span>
+                <ActivityLabel label={activity} since={activeSince} />
                 <span className="animate-pulse">…</span>
               </motion.div>
             ) : null}
@@ -1139,5 +1242,8 @@ export default function Transcript({
         ) : null}
       </AnimatePresence>
     </div>
+    </ExpansionContext.Provider>
   );
 }
+
+export default React.memo(Transcript);

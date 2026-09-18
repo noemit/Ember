@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { ChevronDown, Menu, RefreshCw, Search, Settings, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { shortcutLabel } from '@/lib/shortcuts';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -36,12 +38,14 @@ const kindLabel: Record<Instance['kind'], string> = {
 };
 
 const statusLabel: Record<InstanceStatus, string> = {
+  checking: 'checking connection…',
   ready: 'connected',
   unreachable: 'not connected — open it in OpenChamber',
   unsupported: 'needs OpenChamber',
 };
 
 const statusDot: Record<InstanceStatus, string> = {
+  checking: 'bg-muted-foreground/50 animate-pulse',
   ready: 'bg-emerald-400',
   unreachable: 'bg-muted-foreground/50',
   unsupported: 'bg-muted-foreground/30',
@@ -81,17 +85,17 @@ export default function InstanceBar({
         <Menu className="size-4" />
       </button>
       <span className="mr-1 text-[13px] font-semibold tracking-wide text-highlight">Ember</span>
-      <button
+      <Tooltip><TooltipTrigger asChild><button
         type="button"
         onClick={onOpenCommandPalette}
         className="no-drag flex h-7 items-center gap-1.5 rounded-full border bg-muted/50 px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         aria-label="Open command palette"
-        title="Open command palette"
+        aria-keyshortcuts="Meta+K Control+K"
       >
         <Search className="size-3.5" />
         <span className="hidden sm:inline">Search</span>
-        <kbd className="hidden rounded bg-background px-1 text-[10px] sm:inline">⌘K</kbd>
-      </button>
+        <kbd className="hidden rounded bg-background px-1 text-[10px] sm:inline">{shortcutLabel('Mod+K')}</kbd>
+      </button></TooltipTrigger><TooltipContent>{shortcutLabel('Search sessions and notes · Mod+K')}</TooltipContent></Tooltip>
 
       {banner ? (
         <div className="no-drag flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">

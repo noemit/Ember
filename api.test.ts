@@ -130,6 +130,15 @@ describe('session loading', () => {
     expect(paths[1]).toContain('cursor=801');
   });
 
+  test('partial page refreshes preserve older sessions', async () => {
+    setRequest(async () => ({ ok: true, status: 200, data: Array.from({ length: 200 }, (_, index) => ({ id: `new-${index}`, time: { updated: 1000 - index } })) }));
+    const partial = await loadAllSessions(['local'], {}, 1);
+    const old = { id: 'older', instanceId: 'local', updated: 1 };
+    const merged = mergePolledSessions({ local: [old] }, partial, []);
+    expect(merged.local).toHaveLength(201);
+    expect(merged.local.find((session) => session.id === 'older')).toBe(old);
+  });
+
   test('distinguishes a failed message load from a successful empty transcript', async () => {
     setRequest(async () => ({ ok: false, status: 503, data: null }));
     await expect(loadMessages('local', 'session')).rejects.toThrow();

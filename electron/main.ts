@@ -24,6 +24,7 @@ import {
 import { startRemoteServer } from './remoteServer';
 import { EventStreamManager, type EmberEvent, type StreamStatus } from './eventStream';
 import { hashRemotePassword, verifyRemotePassword } from './remoteAuth';
+import { ModelStatsStore } from './modelStats';
 
 type StoredHost = {
   id?: string;
@@ -43,7 +44,7 @@ type StoredSshInstance = {
   sshParsed?: { destination?: string };
 };
 
-type InstanceStatus = 'ready' | 'unreachable' | 'unsupported';
+type InstanceStatus = 'checking' | 'ready' | 'unreachable' | 'unsupported';
 
 type Instance = {
   id: string;
@@ -103,6 +104,7 @@ const openchamberSettingsPath = (): string =>
     : path.join(os.homedir(), '.config', 'openchamber', 'settings.json');
 
 const emberSettingsPath = (): string => path.join(os.homedir(), '.config', 'ember', 'settings.json');
+const modelStats = new ModelStatsStore(path.join(os.homedir(), '.config', 'ember', 'model-stats.json'));
 
 const readJson = (file: string): Record<string, unknown> => {
   try {
@@ -132,14 +134,14 @@ const readOpenchamberSettings = (): Record<string, unknown> => {
   return root;
 };
 
-const writeJson = (file: string, data: unknown): void => {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+const writeJson = async (file: string, data: unknown): Promise<void> => {
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
   try {
-    fs.writeFileSync(temporary, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
-    fs.renameSync(temporary, file);
+    await fs.promises.writeFile(temporary, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+    await fs.promises.rename(temporary, file);
   } finally {
-    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+    await fs.promises.unlink(temporary).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
   }
 };
 
@@ -228,7 +230,11 @@ const probeHealth = async (url: string, headers: Record<string, string>): Promis
   }
 };
 
-const loadInstances = async (): Promise<Instance[]> => {
+let instanceSnapshot: Instance[] = [];
+let probeGeneration = 0;
+const loadInstances = async (refresh = true): Promise<Instance[]> => {
+  if (!refresh) return instanceSnapshot;
+  const generation = ++probeGeneration;
   const root = readOpenchamberSettings();
   const hosts = Array.isArray(root.desktopHosts) ? (root.desktopHosts as StoredHost[]) : [];
   const sshInstances = Array.isArray(root.desktopSshInstances)
@@ -246,7 +252,7 @@ const loadInstances = async (): Promise<Instance[]> => {
         label: 'Local',
         kind: 'local',
         url: local.url,
-        status: 'unreachable',
+        status: 'checking',
         attachable: false,
       },
       headers: hostHeaders(local, root),
@@ -274,7 +280,7 @@ const loadInstances = async (): Promise<Instance[]> => {
         label: host.label || (isRelay ? rawUrl : url) || id,
         kind,
         url: usable ? url : undefined,
-        status: usable ? 'unreachable' : 'unsupported',
+        status: usable ? 'checking' : 'unsupported',
         attachable: false,
       },
       headers: hostHeaders(host, root),
@@ -297,17 +303,26 @@ const loadInstances = async (): Promise<Instance[]> => {
     });
   });
 
+  const previous = new Map(instanceSnapshot.map((instance) => [instance.id, instance]));
+  instanceSnapshot = candidates.map(({ instance }) => {
+    if (instance.status === 'checking') instance.attachable = previous.get(instance.id)?.attachable ?? false;
+    return instance;
+  });
+  broadcast({ instanceId: '*', type: 'ember:instances-updated' });
   await Promise.all(
     candidates.map(async (candidate) => {
       const url = candidate.instance.url;
       if (!url || candidate.instance.status === 'unsupported') return;
       const reachable = await probeHealth(url, candidate.headers);
+      if (generation !== probeGeneration) return;
       candidate.instance.status = reachable ? 'ready' : 'unreachable';
       candidate.instance.attachable = reachable;
+      eventStreams.sync(instanceSnapshot.filter((instance) => instance.attachable).map((instance) => instance.id));
+      broadcast({ instanceId: '*', type: 'ember:instances-updated' });
     })
   );
 
-  const instances = candidates.map((candidate) => candidate.instance);
+  const instances = instanceSnapshot;
   // Every probe re-syncs the event streams, so an instance that comes online starts streaming
   // and one that's removed from OpenChamber stops.
   eventStreams.sync(instances.filter((instance) => instance.attachable).map((instance) => instance.id));
@@ -352,7 +367,7 @@ const instanceTarget = (instanceId: string): { url: string; headers: Record<stri
  * Event hints fan out to every renderer window and to remote web clients. Bodies never
  * cross this boundary; the renderer refetches over REST.
  */
-type EventListener = (event: EmberEvent | { instanceId: string; type: 'ember:stream-status'; connected: boolean }) => void;
+type EventListener = (event: EmberEvent | { instanceId: string; type: 'ember:stream-status'; connected: boolean } | { instanceId: string; type: 'ember:instances-updated' }) => void;
 const eventListeners = new Set<EventListener>();
 const subscribeEvents = (listener: EventListener): (() => void) => {
   eventListeners.add(listener);
@@ -452,9 +467,9 @@ const readResponseText = async (response: Response): Promise<string> => {
   return Buffer.concat(chunks, total).toString('utf8');
 };
 
-ipcMain.handle('ember:instances', (event) => {
+ipcMain.handle('ember:instances', (event, refresh?: unknown) => {
   assertTrustedSender(event);
-  return loadInstances();
+  return loadInstances(refresh !== false);
 });
 
 ipcMain.handle('ember:settings:get', (event) => {
@@ -462,11 +477,16 @@ ipcMain.handle('ember:settings:get', (event) => {
   return readEmberSettings();
 });
 
+ipcMain.handle('ember:models:stats', (event) => { assertTrustedSender(event); return modelStats.list(); });
+ipcMain.handle('ember:models:observe', (event, values: unknown) => { assertTrustedSender(event); return modelStats.observe(values); });
+ipcMain.handle('ember:models:rate', (event, id: unknown, rating: unknown) => { assertTrustedSender(event); return modelStats.rate(id, rating); });
+ipcMain.handle('ember:models:clear', (event) => { assertTrustedSender(event); return modelStats.clear(); });
+
 let refreshRemoteServer: () => void = () => {};
 
-const updateSettings = (patch: unknown): EmberSettings => {
+const applySettingsPatch = async (patch: unknown): Promise<EmberSettings> => {
   const value = patch && typeof patch === 'object'
-    ? (patch as Partial<EmberSettings> & { remotePassword?: unknown })
+    ? (patch as Partial<EmberSettings> & { remotePassword?: unknown; composerDraftChanges?: unknown })
     : {};
   const root = readJson(emberSettingsPath());
   const settings = readEmberSettings();
@@ -486,6 +506,12 @@ const updateSettings = (patch: unknown): EmberSettings => {
   }
   if (value.sessionNotes !== undefined) settings.sessionNotes = parseSessionNotes(value.sessionNotes);
   if (value.composerDrafts !== undefined) settings.composerDrafts = parseComposerDrafts(value.composerDrafts);
+  if (value.composerDraftChanges && typeof value.composerDraftChanges === 'object') {
+    const changes = value.composerDraftChanges as Record<string, unknown>;
+    const next = { ...settings.composerDrafts, ...parseComposerDrafts(changes) };
+    for (const [key, draft] of Object.entries(changes)) if (draft === null) delete next[key];
+    settings.composerDrafts = parseComposerDrafts(next);
+  }
   if (value.scheduledSessionBindings !== undefined) settings.scheduledSessionBindings = parseStringRecord(value.scheduledSessionBindings);
   if (value.avatarOverrides !== undefined) settings.avatarOverrides = parseAvatarOverrides(value.avatarOverrides);
   if (value.projectColorAssignments !== undefined) settings.projectColorAssignments = parseColorAssignments(value.projectColorAssignments);
@@ -519,12 +545,19 @@ const updateSettings = (patch: unknown): EmberSettings => {
   }
   settings.remotePasswordConfigured = Boolean(remotePasswordHash);
   if (!remotePasswordHash) settings.remoteAccessEnabled = false;
-  writeJson(emberSettingsPath(), { ...settings, ...(remotePasswordHash ? { remotePasswordHash } : {}) });
+  await writeJson(emberSettingsPath(), { ...settings, ...(remotePasswordHash ? { remotePasswordHash } : {}) });
   if (
     settings.remoteAccessEnabled !== previousRemoteAccessEnabled ||
     remotePasswordHash !== previousRemotePasswordHash
   ) refreshRemoteServer();
   return settings;
+};
+
+let settingsWrites: Promise<unknown> = Promise.resolve();
+const updateSettings = (patch: unknown): Promise<EmberSettings> => {
+  const result = settingsWrites.catch(() => {}).then(() => applySettingsPatch(patch));
+  settingsWrites = result;
+  return result;
 };
 
 ipcMain.handle('ember:settings:set', (event, patch: unknown) => {
@@ -649,6 +682,7 @@ refreshRemoteServer = () => {
   if (!settings.remoteAccessEnabled || !settings.remotePasswordConfigured) return;
   remoteServer = startRemoteServer(path.dirname(rendererFile()), {
     listInstances: loadInstances,
+    modelStats,
     getSettings: readEmberSettings,
     setSettings: updateSettings,
     request: proxyApiRequest,

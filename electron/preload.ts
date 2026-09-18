@@ -4,7 +4,12 @@ import type { EmberSettings } from './transport';
 type ApiResponse = { ok: boolean; status: number; data: unknown };
 
 const ember = {
-  listInstances: (): Promise<unknown> => ipcRenderer.invoke('ember:instances'),
+  getModelStats: () => ipcRenderer.invoke('ember:models:stats'),
+  observeModels: (observations: unknown) => ipcRenderer.invoke('ember:models:observe', observations),
+  rateModel: (id: string, rating: 'helpful' | 'unhelpful' | null) => ipcRenderer.invoke('ember:models:rate', id, rating),
+  clearModelStats: () => ipcRenderer.invoke('ember:models:clear'),
+  capabilities: { dockIcon: process.platform === 'darwin' },
+  listInstances: (refresh = true): Promise<unknown> => ipcRenderer.invoke('ember:instances', refresh),
   getSettings: (): Promise<EmberSettings> => ipcRenderer.invoke('ember:settings:get'),
   setSettings: (patch: Partial<EmberSettings>): Promise<EmberSettings> =>
     ipcRenderer.invoke('ember:settings:set', patch),

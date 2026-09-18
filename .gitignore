@@ -10,6 +10,8 @@ pnpm-lock.yaml
 dist/
 dist-electron/
 release/
+test-results/
+playwright-report/
 
 # logs
 *.log

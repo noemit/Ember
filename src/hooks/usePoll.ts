@@ -22,7 +22,7 @@ export const usePoll = (task: () => Promise<void>, intervalMs: number, enabled: 
       try {
         await run();
       } finally {
-        if (!cancelled) timer = window.setTimeout(() => void loop(), intervalMs);
+        if (!cancelled) timer = window.setTimeout(() => void loop(), document.hidden ? Math.max(intervalMs, 60_000) : intervalMs);
       }
     };
 

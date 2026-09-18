@@ -2,6 +2,7 @@ import * as React from 'react';
 import { motion } from 'motion/react';
 import { Archive, ArchiveRestore, Loader2, Palette, Pin, Play, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import Blob from '../blob/Blob';
+import ProjectCleanupMenu from './ProjectCleanupMenu';
 import { normalizeDirectory } from '../blob/seed';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,7 @@ const spring = { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 } as con
 
 export type SessionRowProps = {
   session: Session;
+  onArchiveMany?: (sessions: Session[]) => void;
   instanceLabel: string | undefined;
   projectName: string | undefined;
   preview: string | undefined;
@@ -142,6 +144,7 @@ export const SessionContextMenuContent = ({
 /** One rail row. Memoized: the rail re-renders on every poll, most rows don't change. */
 const SessionRow = React.memo(function SessionRow({
   session,
+  onArchiveMany,
   instanceLabel,
   projectName,
   preview,
@@ -282,9 +285,10 @@ const SessionRow = React.memo(function SessionRow({
       <div
         className={cn(
           'absolute top-1.5 right-2 flex items-center gap-0.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100',
-          archiving || scheduledRunning ? 'opacity-100' : 'opacity-0'
+          archiving || scheduledRunning || onArchiveMany ? 'opacity-100' : 'opacity-0'
         )}
       >
+        {onArchiveMany ? <ProjectCleanupMenu name={title} sessions={[session]} moods={{ [key]: mood }} onArchiveMany={onArchiveMany} /> : null}
         {onNewAgent ? (
           <Tooltip>
             <TooltipTrigger asChild>

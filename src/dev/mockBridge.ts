@@ -3,6 +3,7 @@
  * plain `vite` in a browser. Loaded from main.tsx only when `window.ember` is absent.
  */
 import type { EmberBridge, EmberSettings, EmberSettingsPatch } from '../types';
+import type { ModelObservation } from '../lib/modelStats';
 
 type MockTool = {
   tool: string;
@@ -448,7 +449,66 @@ const watchForChanges = () => {
   }, 400);
 };
 
+const performanceFixture = new URLSearchParams(window.location.search).get('fixture') === 'performance';
+if (performanceFixture) {
+  sessions.local = Array.from({ length: 85 }, (_, index) => ({
+    id: `perf-${index}`, title: `Performance session ${index}`, directory: '/workspace/habit',
+    updated: Date.now() - index * 1000, status: 'idle', model: { id: 'claude-sonnet', providerID: 'anthropic' },
+    messages: Array.from({ length: index === 0 ? 10_000 : 2 }, (_, message) => ({
+      role: message % 2 ? 'assistant' as const : 'user' as const,
+      text: `Synthetic message ${message}`,
+    })),
+  }));
+  permissions.local = [];
+  questions.local = [];
+  settings = { ...settings, openSessions: ['local::perf-0', 'local::perf-1'], activeSession: 'local::perf-0', minimizedSessions: [] };
+  const saved = sessionStorage.getItem('ember-performance-settings');
+  if (saved) settings = { ...settings, ...JSON.parse(saved) };
+}
+
+const slowInstanceFixture = new URLSearchParams(window.location.search).has('slowInstance');
+let instanceSnapshot = slowInstanceFixture ? instances.map((instance) => instance.id === 'studio' ? { ...instance, status: 'checking', attachable: false } : instance) : instances;
+let releaseSlow = () => {};
+const slowInstanceReady = new Promise<void>((resolve) => { releaseSlow = resolve; });
+export const releaseSlowInstance = () => {
+  instanceSnapshot = instances;
+  emit({ instanceId: '*', type: 'ember:instances-updated' });
+  releaseSlow();
+};
+
+export const appendFixtureMessage = (text: string) => {
+  if (!performanceFixture) return;
+  sessions.local[0].messages.push({ role: 'assistant', text });
+  emit({ instanceId: 'local', type: 'message.part.updated', sessionId: 'perf-0' });
+};
+
+let modelObservations: ModelObservation[] = JSON.parse(sessionStorage.getItem('ember-mock-model-stats') ?? '[]');
+let modelStatsClearedAt = Number(sessionStorage.getItem('ember-mock-model-stats-cleared') ?? 0);
+const saveModelObservations = () => sessionStorage.setItem('ember-mock-model-stats', JSON.stringify(modelObservations));
 const bridge: EmberBridge = {
+  getModelStats: async () => modelObservations,
+  observeModels: async (observations) => {
+    const merged = new Map(modelObservations.map((record) => [record.id, record]));
+    for (const record of observations) {
+      if (record.completedAt <= modelStatsClearedAt) continue;
+      merged.set(record.id, { ...record, rating: merged.get(record.id)?.rating });
+    }
+    modelObservations = [...merged.values()].sort((a, b) => b.completedAt - a.completedAt).slice(0, 10_000);
+    saveModelObservations();
+    const retained = new Map(modelObservations.map((record) => [record.id, record]));
+    return [...new Set(observations.map((record) => record.id))].flatMap((id) => retained.has(id) ? [retained.get(id)!] : []);
+  },
+  rateModel: async (id, rating) => {
+    modelObservations = modelObservations.map((record) => record.id === id ? { ...record, rating: rating ?? undefined } : record);
+    saveModelObservations();
+  },
+  clearModelStats: async () => {
+    modelObservations = [];
+    modelStatsClearedAt = Date.now();
+    sessionStorage.setItem('ember-mock-model-stats-cleared', String(modelStatsClearedAt));
+    saveModelObservations();
+  },
+  capabilities: { dockIcon: !new URLSearchParams(window.location.search).has('noDock') },
   onEvent: (listener) => {
     eventListeners.add(listener);
     if (watcher === undefined) watchForChanges();
@@ -461,17 +521,31 @@ const bridge: EmberBridge = {
   },
   eventStatus: async () =>
     Object.fromEntries(instances.map((instance) => [instance.id, STREAMING_INSTANCES.has(instance.id)])),
-  listInstances: () => delay(instances, 300),
+  listInstances: (refresh = true) => {
+    if (!refresh) return Promise.resolve(instanceSnapshot);
+    if (slowInstanceFixture) {
+      window.setTimeout(() => emit({ instanceId: '*', type: 'ember:instances-updated' }), 30);
+      return slowInstanceReady.then(() => instances);
+    }
+    return delay(instances, 300);
+  },
   getSettings: () => delay(settings),
   setSettings: (patch: EmberSettingsPatch) => {
-    const { remotePassword, ...safePatch } = patch;
+    const { remotePassword, composerDraftChanges, ...safePatch } = patch;
+    const drafts = { ...settings.composerDrafts };
+    for (const [key, draft] of Object.entries(composerDraftChanges ?? {})) {
+      if (draft === null) delete drafts[key];
+      else drafts[key] = draft;
+    }
     settings = {
       ...settings,
       ...safePatch,
+      ...(composerDraftChanges ? { composerDrafts: drafts } : {}),
       ...(remotePassword !== undefined
         ? { remotePasswordConfigured: typeof remotePassword === 'string' && remotePassword.length >= 8 }
         : {}),
     };
+    if (performanceFixture) sessionStorage.setItem('ember-performance-settings', JSON.stringify(settings));
     return delay(settings);
   },
   openExternal: async (target) => {
@@ -817,4 +891,10 @@ const bridge: EmberBridge = {
   },
 };
 
+declare global {
+  interface Window {
+    emberFixture?: { releaseSlowInstance: () => void; appendMessage: (text: string) => void };
+  }
+}
+if (performanceFixture) window.emberFixture = { releaseSlowInstance, appendMessage: appendFixtureMessage };
 window.ember = bridge;

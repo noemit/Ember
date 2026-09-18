@@ -22,6 +22,7 @@ import {
   createSession,
   errorMessageOf,
   listInstances,
+  isPartialSessionList,
   loadAllAutoAcceptPolicies,
   loadAllMessageQueues,
   loadAllPermissions,
@@ -55,6 +56,11 @@ import {
 } from './api';
 import { useStableCallback } from '@/lib/useStableCallback';
 import { copyText } from '@/lib/clipboard';
+import { mergeDraftChanges, type DraftChanges } from '@/lib/composerDrafts';
+import { ReadCoordinator } from '@/lib/readCoordinator';
+import { shareValue } from '@/lib/structuralSharing';
+import { TranscriptCache } from '@/lib/transcriptCache';
+import { observationsFor, observeModels } from '@/lib/modelStats';
 import { summarizeMessages, type SessionMessageSummary } from '@/lib/messageSummary';
 import {
   reconcileFullTranscript,
@@ -265,6 +271,14 @@ export default function App() {
   const [showScheduled, setShowScheduled] = React.useState(false);
   const [mobileRailOpen, setMobileRailOpen] = React.useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
+  const instanceSnapshotRevision = React.useRef(0);
+  const readInstances = useStableCallback(async (refresh: boolean = true) => {
+    const revision = ++instanceSnapshotRevision.current;
+    const list = await listInstances(refresh);
+    if (revision !== instanceSnapshotRevision.current) return;
+    setInstances((previous) => shareValue(previous, list));
+    setInstancesLoaded(true);
+  });
 
   const {
     actionError,
@@ -346,7 +360,11 @@ export default function App() {
     if (pending.size === 0) pendingOptimisticIds.current.delete(key);
   };
   const bypassReplyIds = React.useRef(new Set<string>());
-  const messageCacheRef = React.useRef(new Map<string, ChatMessage[]>());
+  const protectedTranscriptKeys = React.useRef(new Set<string>());
+  const messageCacheRef = React.useRef(new TranscriptCache(() => new Set([
+    ...protectedTranscriptKeys.current,
+    ...[...pendingOptimisticIds.current].filter(([, ids]) => ids.size > 0).map(([key]) => key),
+  ]), undefined, MESSAGE_CACHE_LIMIT));
   // A rendered transcript can outlive its LRU cache entry; read it through a ref so a tail still
   // merges against what is on screen rather than treating the column as empty.
   const transcriptsRef = React.useRef(transcripts);
@@ -366,11 +384,7 @@ export default function App() {
     const cache = messageCacheRef.current;
     cache.delete(key);
     cache.set(key, messagesForSession);
-    while (cache.size > MESSAGE_CACHE_LIMIT) {
-      const oldest = cache.keys().next().value;
-      if (oldest === undefined) break;
-      cache.delete(oldest);
-    }
+    cache.prune();
   };
 
   const setTranscriptFor = (
@@ -390,13 +404,14 @@ export default function App() {
   // holds, and the active session; anything else is a fetch away. Reading the cache ref is safe
   // here because every cache write is paired with a transcript write, so this effect re-runs.
   React.useEffect(() => {
+    messageCacheRef.current.prune();
     setTranscripts((prev) =>
       pruneTranscripts(
         prev,
-        transcriptKeysToKeep(openSessions, [...messageCacheRef.current.keys()], activeSession)
+        transcriptKeysToKeep([...protectedTranscriptKeys.current], [...messageCacheRef.current.keys()], activeSession)
       )
     );
-  }, [transcripts, openSessions, activeSession]);
+  }, [transcripts, openSessions, activeSession, minimizedSessions, workspaceWidth]);
 
   const commitSummary = React.useCallback(
     (key: string, messagesForSession: ChatMessage[], complete: boolean, version?: number) => {
@@ -779,14 +794,14 @@ export default function App() {
   const selectedState: BallState = selectedKey ? states[selectedKey] ?? 'idle' : 'idle';
   const selectedMood: BallMood = selectedKey ? moods[selectedKey] ?? 'idle' : 'idle';
   React.useEffect(() => {
-    if (!selectedKey) return;
+    if (!selectedKey || !window.ember.capabilities?.dockIcon) return;
     let cancelled = false;
     void import('./blob/dockIcon')
       .then(({ renderDockIcon }) =>
-        renderDockIcon(settings.blobStyle, selectedIdentity, selectedMood)
+        cancelled ? undefined : renderDockIcon(settings.blobStyle, selectedIdentity, selectedMood)
       )
       .then((dataUrl) => {
-        if (!cancelled) return window.ember.setDockIcon(dataUrl);
+        if (!cancelled && dataUrl) return window.ember.setDockIcon(dataUrl);
       })
       .catch((err) => console.warn('Dock icon render failed', err));
     return () => {
@@ -798,7 +813,7 @@ export default function App() {
     setRefreshing(true);
     showActionError(null);
     try {
-      setInstances(await listInstances());
+      await readInstances();
     } catch (err) {
       showActionError(
         err instanceof Error ? err.message : 'Could not reprobe instances.',
@@ -807,23 +822,24 @@ export default function App() {
     } finally {
       setRefreshing(false);
     }
-  }, [showActionError]);
+  }, [showActionError, readInstances]);
 
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const [stored, list] = await Promise.all([window.ember.getSettings(), listInstances()]);
+        const instanceRequest = readInstances();
+        void instanceRequest.catch(() => {});
+        const stored = await window.ember.getSettings();
         if (cancelled) return;
         hydrateSettings(stored);
-        setInstances(list);
-        setInstancesLoaded(true);
         // Restore the workspace before the persistence effect can fire, so the first open
         // session list isn't overwritten with the empty defaults.
         setOpenSessions(stored.openSessions ?? []);
         setActiveSession(stored.activeSession ?? null);
         setMinimizedSessions(new Set(stored.minimizedSessions ?? []));
         workspaceHydratedRef.current = true;
+        await instanceRequest;
       } catch (err) {
         if (cancelled) return;
         markSettingsLoaded();
@@ -837,7 +853,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [hydrateSettings, markSettingsLoaded, showActionError]);
+  }, [hydrateSettings, markSettingsLoaded, showActionError, readInstances]);
 
   // ---- Workspace: open columns, the active one, and sticky minimized sessions. ----
   // The helpers below are the only writers of workspace state; `activeSession` is the single
@@ -1063,6 +1079,7 @@ export default function App() {
   const columnsRef = React.useRef<string[]>([]);
   columnsRef.current = columns;
   const columnKeySet = React.useMemo(() => new Set(columns), [columns]);
+  protectedTranscriptKeys.current = columnKeySet;
 
   // Cmd/Ctrl+1–9 jumps to that slot in the open list (columns and tabs share the numbering).
   // `activateSession` also clears the sticky minimized flag, so a tab restores on jump.
@@ -1152,18 +1169,12 @@ export default function App() {
 
     void (async () => {
       try {
-        const [projects, modelLists] = await Promise.all([
-          loadAllProjects(readyIds),
-          Promise.all(readyIds.map(async (id) => [id, await loadModels(id)] as const)),
-        ]);
-        if (cancelled) return;
-        // An instance that failed to answer is absent from these maps; keep its previous data.
-        setProjectsByInstance((prev) => ({ ...prev, ...projects }));
-        setModelsByInstance((prev) => ({
-          ...prev,
-          ...Object.fromEntries(
-            modelLists.filter((entry): entry is readonly [string, ModelList] => entry[1] !== null)
-          ),
+        await Promise.all(readyIds.map(async (id) => {
+          const [projects, models] = await Promise.all([loadAllProjects([id]), loadModels(id)]);
+          if (cancelled) return;
+          // An instance that failed to answer is absent from these maps; keep its previous data.
+          setProjectsByInstance((prev) => ({ ...prev, ...projects }));
+          if (models) setModelsByInstance((prev) => ({ ...prev, [id]: models }));
         }));
       } catch (err) {
         if (!cancelled) {
@@ -1227,49 +1238,62 @@ export default function App() {
     return hints;
   };
 
-  const refreshSessions = useStableCallback(async (instanceIds: string[]) => {
-    if (instanceIds.length === 0) return;
-    try {
-      const next = await loadAllSessions(instanceIds, directoryHintsFor(instanceIds));
-      const now = Date.now();
-      prunePendingCreated(
-        (pending) =>
-          pending.expiresAt <= now ||
-          Boolean(next[pending.session.instanceId]?.some((session) => session.id === pending.session.id))
-      );
-      const preserved = [
-        ...(selectedSessionRef.current ? [selectedSessionRef.current] : []),
-        ...[...pendingCreatedSessions.current.values()].map((pending) => pending.session),
-      ];
-      setSessionsByInstance((prev) => mergePolledSessions(prev, next, preserved));
-      setLoading(false);
-    } catch (err) {
-      console.error('Failed to load sessions', err);
-    }
+  const sessionReads = React.useRef(new ReadCoordinator());
+  const sessionFullReadAt = React.useRef(new Map<string, number>());
+  const [historyIncomplete, setHistoryIncomplete] = React.useState<Record<string, boolean>>({});
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
+  const refreshSessions = useStableCallback(async (instanceIds: string[], deep = false): Promise<void> => {
+    if (instanceIds.length > 1) { await Promise.all(instanceIds.map((id) => refreshSessions([id], deep))); return; }
+    const id = instanceIds[0];
+    if (!id) return;
+    return sessionReads.current.run(id, deep ? 'full' : 'tail', async () => {
+      try {
+        const full = deep || Date.now() - (sessionFullReadAt.current.get(id) ?? 0) > 300_000;
+        const next = await loadAllSessions(instanceIds, directoryHintsFor(instanceIds), deep ? 1000 : full ? 10 : 1);
+        if (next[id] && full) {
+          sessionFullReadAt.current.set(id, Date.now());
+          setHistoryIncomplete((prev) => ({ ...prev, [id]: isPartialSessionList(next[id]) }));
+        }
+        const now = Date.now();
+        prunePendingCreated(
+          (pending) =>
+            pending.expiresAt <= now ||
+            Boolean(next[pending.session.instanceId]?.some((session) => session.id === pending.session.id))
+        );
+        const preserved = [
+          ...(selectedSessionRef.current ? [selectedSessionRef.current] : []),
+          ...[...pendingCreatedSessions.current.values()].map((pending) => pending.session),
+        ];
+        setSessionsByInstance((prev) => mergePolledSessions(prev, next, preserved));
+        setLoading(false);
+      } catch (err) {
+        console.error('Failed to load sessions', err);
+      }
+    });
   });
 
   const refreshAutoAccept = useStableCallback(async (instanceIds: string[]) => {
     if (instanceIds.length === 0) return;
     const policies = await loadAllAutoAcceptPolicies(instanceIds).catch(() => ({}));
-    setAutoAcceptByInstance((prev) => ({ ...prev, ...policies }));
+    setAutoAcceptByInstance((prev) => shareValue(prev, { ...prev, ...policies }));
   });
 
   const refreshStates = useStableCallback(async (instanceIds: string[]) => {
     if (instanceIds.length === 0) return;
     const next = await loadAllSessionStates(instanceIds).catch(() => ({}));
-    setStatesByInstance((prev) => ({ ...prev, ...next }));
+    setStatesByInstance((prev) => shareValue(prev, { ...prev, ...next }));
   });
 
   const refreshPermissions = useStableCallback(async (instanceIds: string[]) => {
     if (instanceIds.length === 0) return;
     const next = await loadAllPermissions(instanceIds, promptHintsFor(instanceIds, permissionsByInstance)).catch(() => ({}));
-    setPermissionsByInstance((prev) => ({ ...prev, ...next }));
+    setPermissionsByInstance((prev) => shareValue(prev, { ...prev, ...next }));
   });
 
   const refreshQuestions = useStableCallback(async (instanceIds: string[]) => {
     if (instanceIds.length === 0) return;
     const next = await loadAllQuestions(instanceIds, promptHintsFor(instanceIds, questionsByInstance)).catch(() => ({}));
-    setQuestionsByInstance((prev) => ({ ...prev, ...next }));
+    setQuestionsByInstance((prev) => shareValue(prev, { ...prev, ...next }));
   });
 
   const refreshQueues = useStableCallback(async (instanceIds: string[]) => {
@@ -1286,13 +1310,25 @@ export default function App() {
     return { directory: session?.directory, updated: session?.updated };
   };
 
-  /** Refetch one transcript in full; authoritative for removals, compaction and terminal events. */
-  const refreshMessages = useStableCallback(async (ref: SessionRef) => {
+  const transcriptReads = React.useRef(new ReadCoordinator());
+  const fullReadAt = React.useRef(new Map<string, number>());
+  const loadAndCommitMessages = useStableCallback((ref: SessionRef, mode: 'tail' | 'full', directory?: string, afterCurrent: boolean = false) => {
     const key = sessionKey(ref);
-    const { directory, updated } = sessionMetaFor(ref);
+    return transcriptReads.current.run(key, mode, async () => {
+      const meta = sessionMetaFor(ref);
+      const fetch = mode === 'full' ? loadMessages : loadMessageTail;
+      const messages = await fetch(ref.instanceId, ref.sessionId, directory ?? meta.directory);
+      commitFetchedTranscript(key, messages, mode, meta.updated);
+      observeModels(observationsFor(ref.instanceId, ref.sessionId, directory ?? meta.directory, messages));
+      if (mode === 'full') fullReadAt.current.set(key, Date.now());
+    }, afterCurrent);
+  });
+
+  /** Refetch one transcript in full; authoritative for removals, compaction and terminal events. */
+  const refreshMessages = useStableCallback(async (ref: SessionRef, afterCurrent: boolean = false) => {
+    const key = sessionKey(ref);
     try {
-      const next = await loadMessages(ref.instanceId, ref.sessionId, directory);
-      commitFetchedTranscript(key, next, 'full', updated);
+      await loadAndCommitMessages(ref, 'full', undefined, afterCurrent);
     } catch (err) {
       console.error('Failed to load messages', err);
       setTranscripts((prev) => {
@@ -1310,11 +1346,8 @@ export default function App() {
 
   /** Bounded tail refresh for a visible column while a turn streams. */
   const refreshMessageTail = useStableCallback(async (ref: SessionRef) => {
-    const key = sessionKey(ref);
-    const { directory, updated } = sessionMetaFor(ref);
     try {
-      const tail = await loadMessageTail(ref.instanceId, ref.sessionId, directory);
-      commitFetchedTranscript(key, tail, 'tail', updated);
+      await loadAndCommitMessages(ref, 'tail');
     } catch (err) {
       console.error('Failed to load message tail', err);
     }
@@ -1452,7 +1485,7 @@ export default function App() {
       case 'scheduled': await refreshScheduled([instanceId]); break;
       case 'messages':
         if (sessionId) {
-          if (messageMode === 'full') await refreshMessages({ instanceId, sessionId });
+          if (messageMode === 'full') await refreshMessages({ instanceId, sessionId }, true);
           else await refreshMessageTail({ instanceId, sessionId });
         }
         break;
@@ -1470,7 +1503,7 @@ export default function App() {
     // A message hint is worth a transcript fetch only for a session shown as a column; other
     // sessions (tabs, minimized) fall back to refreshing the session list.
     const isLoaded = (instanceId: string, sessionId: string) =>
-      columnsRef.current.includes(sessionKey({ instanceId, sessionId }));
+      !document.hidden && columnsRef.current.includes(sessionKey({ instanceId, sessionId }));
 
     const catchUp = (instanceId: string) => {
       // The stream just (re)connected; anything that changed while it was down was missed.
@@ -1492,6 +1525,10 @@ export default function App() {
 
     const unsubscribe = bridge.onEvent((raw) => {
       const event = parseEmberEvent(raw);
+      if (event?.type === 'ember:instances-updated') {
+        void readInstances(false).catch(() => {});
+        return;
+      }
       if (!event || !readySet.has(event.instanceId)) return;
       if (event.type === 'ember:stream-status') {
         const connected = event.connected === true;
@@ -1518,7 +1555,12 @@ export default function App() {
       setLiveInstances(liveInstancesRef.current);
     });
 
+    const resume = () => {
+      if (!document.hidden) readyIds.forEach(catchUp);
+    };
+    document.addEventListener('visibilitychange', resume);
     return () => {
+      document.removeEventListener('visibilitychange', resume);
       unsubscribe();
       invalidationQueue.clear();
     };
@@ -1538,9 +1580,14 @@ export default function App() {
   const refreshListFor = async (ids: string[]) => {
     await Promise.all([refreshSessions(ids), refreshAutoAccept(ids)]);
   };
-  const refreshStateFor = async (ids: string[]) => {
-    await Promise.all([refreshStates(ids), refreshPermissions(ids), refreshQuestions(ids), refreshQueues(ids)]);
-  };
+  const refreshStateFor = useStableCallback(async (ids: string[]) => {
+    await Promise.all(ids.map((id) => Promise.all([
+      refreshStates([id]), refreshPermissions([id]), refreshQuestions([id]), refreshQueues([id]),
+    ])));
+  });
+  React.useEffect(() => {
+    readyIds.forEach((id) => { void refreshSessions([id]); void refreshStateFor([id]); });
+  }, [readyIds, refreshSessions, refreshStateFor]);
   usePoll(() => refreshListFor(deadIdsRef.current), SESSION_POLL_MS, deadIds.length > 0);
   usePoll(() => refreshListFor(liveIdsRef.current), SESSION_POLL_LIVE_MS, liveIds.length > 0);
   usePoll(() => refreshStateFor(deadIdsRef.current), STATE_POLL_MS, deadIds.length > 0);
@@ -1549,6 +1596,7 @@ export default function App() {
   // Preview warming writes only compact summaries; it never inserts a transcript into the message
   // cache. The effect reads summaries through a ref so a poll that lands mid-batch doesn't cancel it.
   React.useEffect(() => {
+    if (document.hidden) return;
     const targets = [...sessions]
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
       .slice(0, PREVIEW_COUNT)
@@ -1563,7 +1611,7 @@ export default function App() {
       const results: Array<readonly [string, SessionMessageSummary]> = [];
       let cursor = 0;
       const loadNext = async (): Promise<void> => {
-        while (cursor < targets.length) {
+        while (!cancelled && cursor < targets.length) {
           const session = targets[cursor];
           cursor += 1;
           const key = sessionKey(session);
@@ -1577,7 +1625,7 @@ export default function App() {
               limit
             ).catch(() => null);
             // A failed request leaves the prior summary in place.
-            if (!tail) break;
+            if (!tail || cancelled) break;
             summary = summarizeMessages(tail, { previous, complete: false, version: session.updated });
             // Stop once a previewable turn is found, or once the transcript is exhausted; otherwise
             // expand through 32 and 128. A tool-only tail at the largest limit retains `previous`.
@@ -1610,10 +1658,23 @@ export default function App() {
 
   // Selecting a column refreshes it immediately; the poll below (and message events) keep it
   // fresh while the agent is working. Cached messages render before the fetch lands.
+  const selectedMetadataKey = selectedSession ? `${sessionKey(selectedSession)}\u0000${selectedSession.directory ?? ''}` : null;
   React.useEffect(() => {
-    if (!selected) return;
-    void refreshMessages(selected);
-  }, [selected, refreshMessages]);
+    if (!selected || !selectedMetadataKey) return;
+    if (Date.now() - (fullReadAt.current.get(sessionKey(selected)) ?? 0) > 20_000) void refreshMessages(selected);
+  }, [selected, selectedMetadataKey, refreshMessages]);
+
+  const previouslyVisible = React.useRef(new Set<string>());
+  React.useEffect(() => {
+    const known = new Set<string>();
+    for (const key of columns) {
+      const ref = parseSessionKey(key);
+      if (!ref || !(sessionsByInstance[ref.instanceId] ?? []).some((session) => session.id === ref.sessionId)) continue;
+      known.add(key);
+      if (!previouslyVisible.current.has(key) && (!messageCacheRef.current.has(key) || Date.now() - (fullReadAt.current.get(key) ?? 0) > 20_000)) void refreshMessages(ref);
+    }
+    previouslyVisible.current = known;
+  }, [columns, sessionsByInstance, refreshMessages]);
 
   // Only the columns actually on screen poll their transcripts; overflow/minimized tabs rely on
   // the preview cache and the session list's `updated`.
@@ -1628,7 +1689,12 @@ export default function App() {
       await Promise.all(
         columnsRef.current.map((key) => {
           const ref = parseSessionKey(key);
-          return ref ? refreshMessages(ref) : Promise.resolve();
+          if (!ref || document.hidden || !(sessionsByInstanceRef.current[ref.instanceId] ?? []).some((session) => session.id === ref.sessionId)) return Promise.resolve();
+          const busy = states[key] === 'active';
+          const repairInterval = busy || !columnsLive ? 60_000 : 5 * 60_000;
+          return Date.now() - (fullReadAt.current.get(key) ?? 0) >= repairInterval
+            ? refreshMessages(ref)
+            : refreshMessageTail(ref);
         })
       );
     },
@@ -1812,9 +1878,8 @@ export default function App() {
             : session
         ),
       }));
-      const loaded = await loadMessages(instanceId, sessionId, directory);
       // The server may not have indexed the user turn yet; reconcile keeps the bubble until it does.
-      commitFetchedTranscript(key, loaded, 'full', updated);
+      await loadAndCommitMessages({ instanceId, sessionId }, 'full', directory, true);
       return true;
     } catch (err) {
       console.error('Send failed', err);
@@ -1864,7 +1929,7 @@ export default function App() {
     const hints = session.directory ? { [session.instanceId]: [session.directory] } : {};
     const results = await Promise.allSettled([
       loadAllSessions([session.instanceId], hints),
-      loadMessages(session.instanceId, session.id, session.directory),
+      loadAndCommitMessages({ instanceId: session.instanceId, sessionId: session.id }, 'full', session.directory, true),
       loadSessionStates(session.instanceId),
       loadPermissions(session.instanceId),
       loadQuestions(session.instanceId, session.directory),
@@ -1876,9 +1941,7 @@ export default function App() {
         mergePolledSessions(current, sessionResult.value, [session])
       );
     }
-    if (messageResult.status === 'fulfilled') {
-      commitFetchedTranscript(key, messageResult.value, 'full', session.updated);
-    } else {
+    if (messageResult.status === 'rejected') {
       setTranscriptFor(key, messageCacheRef.current.get(key) ?? [], 'error');
     }
     if (stateResult.status === 'fulfilled' && stateResult.value) {
@@ -2105,15 +2168,13 @@ export default function App() {
 
   const handleAbort = async (session: Session) => {
     showActionError(null);
-    const key = sessionKey(session);
     try {
       const aborted = await abortSession(session);
       if (!aborted) {
         showActionError('Could not stop this agent.', () => void handleAbort(session));
         return;
       }
-      const next = await loadMessages(session.instanceId, session.id, session.directory);
-      commitFetchedTranscript(key, next, 'full', session.updated);
+      await loadAndCommitMessages({ instanceId: session.instanceId, sessionId: session.id }, 'full', session.directory, true);
     } catch (err) {
       console.error('Abort refresh failed', err);
       showActionError(
@@ -2135,8 +2196,7 @@ export default function App() {
         showActionError('Could not compact this session.', () => void handleCompact(session));
         return;
       }
-      const next = await loadMessages(session.instanceId, session.id, session.directory);
-      commitFetchedTranscript(key, next, 'full', session.updated);
+      await loadAndCommitMessages({ instanceId: session.instanceId, sessionId: session.id }, 'full', session.directory, true);
       setActionNotice({ message: 'Context compacted.' });
     } catch (err) {
       console.error('Compact failed', err);
@@ -2240,7 +2300,8 @@ export default function App() {
     });
   };
 
-  const handleComposerDraftsChange = (drafts: Record<string, StoredComposerDraft>) => {
+  const handleComposerDraftsChange = (changes: DraftChanges) => {
+    const drafts = mergeDraftChanges(settingsRef.current.composerDrafts, changes);
     const composerDrafts = Object.fromEntries(
       Object.entries(drafts)
         .filter(([key, draft]) =>
@@ -2256,8 +2317,8 @@ export default function App() {
           updatedAt: draft.updatedAt || Date.now(),
         }])
     );
-    if (composerDraftSignature(composerDrafts) === composerDraftSignature(settings.composerDrafts)) return;
-    handleSettings({ composerDrafts }, { preserveActionError: true });
+    if (composerDraftSignature(composerDrafts) === composerDraftSignature(settingsRef.current.composerDrafts)) return;
+    handleSettings({ composerDraftChanges: changes }, { preserveActionError: true });
   };
 
   const handleSaveNote = (key: string, text: string) => {
@@ -2661,7 +2722,8 @@ export default function App() {
               onChangeScheduledTaskModel={handleChangeScheduledTaskModel}
               onOpenArchive={() => setArchiveOpen(true)}
               onSelectSession={(session) => {
-                openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
+                if (session.archived) void handleRestoreAndOpen(session);
+                else openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
                 setMobileRailOpen(false);
               }}
               onOpenProject={(instanceId, project, projectSessions) => {
@@ -2780,6 +2842,12 @@ export default function App() {
           <React.Suspense fallback={null}>
             <CommandPalette
               open={commandPaletteOpen}
+              historyIncomplete={Object.values(historyIncomplete).some(Boolean)}
+              loadingHistory={loadingHistory}
+              onLoadHistory={() => {
+                setLoadingHistory(true);
+                void refreshSessions(readyIds, true).finally(() => setLoadingHistory(false));
+              }}
               sessions={allSessions}
               states={states}
               instances={instances}
@@ -2787,7 +2855,8 @@ export default function App() {
               sessionNotes={settings.sessionNotes}
               onOpenChange={setCommandPaletteOpen}
               onSelectSession={(session) => {
-                openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
+                if (session.archived) void handleRestoreAndOpen(session);
+                else openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
                 setMobileRailOpen(false);
               }}
               onNewAgent={(instanceId) => {

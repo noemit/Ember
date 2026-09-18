@@ -19,6 +19,7 @@ import {
 import { cn } from '@/lib/utils';
 import { springTransition } from '@/lib/animation';
 import { notesKeyForSession } from '@/lib/projectGroups';
+import { projectForSession } from '../blob/seed';
 import type { BallState, EmberSettings, Instance, Project, Session } from '../types';
 import { sessionKey } from '../types';
 
@@ -28,6 +29,9 @@ type PaletteItem =
 
 type Props = {
   open: boolean;
+  historyIncomplete?: boolean;
+  loadingHistory?: boolean;
+  onLoadHistory?: () => void;
   sessions: Session[];
   states: Record<string, BallState>;
   instances: Instance[];
@@ -47,6 +51,9 @@ const stateLabel: Record<BallState, string> = {
 
 export default function CommandPalette({
   open,
+  historyIncomplete,
+  loadingHistory,
+  onLoadHistory,
   sessions,
   states,
   instances,
@@ -77,6 +84,7 @@ export default function CommandPalette({
             session.title,
             session.id,
             session.directory,
+            projectForSession(session, projectsByInstance[session.instanceId] ?? [])?.name,
             instance?.label,
             notes,
           ]
@@ -93,11 +101,16 @@ export default function CommandPalette({
         instance,
         searchable: `new agent ${instance.label} ${instance.kind}`.toLowerCase(),
       }));
-    return [...sessionItems, ...agentItems].slice(0, 60);
+    return [...sessionItems, ...agentItems];
   }, [instances, projectsByInstance, sessionNotes, sessions]);
 
-  const sessionItems = items.filter((item): item is PaletteItem & { type: 'session' } => item.type === 'session');
-  const agentItems = items.filter((item): item is PaletteItem & { type: 'new-agent' } => item.type === 'new-agent');
+  const [resultLimit, setResultLimit] = React.useState(60);
+  const needle = query.trim().toLowerCase();
+  const matches = items.filter((item) => needle.split(/\s+/).every((word) => item.searchable.includes(word)));
+  const matchingSessions = matches.filter((item): item is PaletteItem & { type: 'session' } => item.type === 'session');
+  const sessionItems = matchingSessions.slice(0, resultLimit);
+  const agentItems = matches.filter((item): item is PaletteItem & { type: 'new-agent' } => item.type === 'new-agent');
+  React.useEffect(() => setResultLimit(60), [query, open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -123,6 +136,7 @@ export default function CommandPalette({
         </DialogDescription>
 
         <Command
+          shouldFilter={false}
           className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
         >
           <div className="relative border-b px-2.5 py-2.5">
@@ -151,7 +165,7 @@ export default function CommandPalette({
                     {agentItems.map((item) => (
                       <CommandItem
                         key={item.id}
-                        value={item.searchable}
+                        value={item.id}
                         onSelect={() => choose(item)}
                         className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[12.5px] aria-selected:bg-muted aria-selected:text-foreground"
                       >
@@ -186,14 +200,14 @@ export default function CommandPalette({
                       return (
                         <CommandItem
                           key={item.id}
-                          value={item.searchable}
+                          value={item.id}
                           onSelect={() => choose(item)}
                           className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[12.5px] aria-selected:bg-muted aria-selected:text-foreground"
                         >
                           <MessageSquare className="size-4 flex-none text-muted-foreground" />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-foreground">
-                              {item.session.title ?? item.session.id}
+                              {item.session.archived ? 'Restore & open: ' : ''}{item.session.title ?? item.session.id}
                             </span>
                             <span className="block truncate text-[11px]">
                               {instances.find((instance) => instance.id === item.session.instanceId)?.label ??
@@ -222,10 +236,18 @@ export default function CommandPalette({
               ) : null}
             </AnimatePresence>
 
+            {matchingSessions.length > resultLimit ? (
+              <CommandItem value="show-more-results" onSelect={() => setResultLimit((limit) => limit + 60)}>
+                Show more results ({matchingSessions.length - resultLimit} remaining)
+              </CommandItem>
+            ) : null}
             <CommandEmpty className="px-3 py-10 text-center text-[12px] text-muted-foreground">
               No sessions or commands match “{query.trim()}”.
             </CommandEmpty>
           </CommandList>
+          {historyIncomplete ? <button type="button" disabled={loadingHistory} onClick={onLoadHistory} className="border-t px-3 py-2 text-left text-xs text-muted-foreground hover:text-foreground">
+            {loadingHistory ? 'Indexing older sessions…' : 'History is partially indexed — search older sessions'}
+          </button> : null}
         </Command>
       </DialogContent>
     </Dialog>

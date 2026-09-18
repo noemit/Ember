@@ -3,7 +3,10 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { brotliCompress, gzip } from 'node:zlib';
+import { promisify } from 'node:util';
 import type { ApiMethod } from './transport';
+import type { ModelStatsStore } from './modelStats';
 
 const REMOTE_PORT = 57821;
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
@@ -16,7 +19,8 @@ const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 
 type ApiResponse = { ok: boolean; status: number; data: unknown };
 type Handlers = {
-  listInstances: () => Promise<unknown>;
+  modelStats: ModelStatsStore;
+  listInstances: (refresh?: boolean) => Promise<unknown>;
   getSettings: () => unknown;
   setSettings: (patch: unknown) => unknown;
   request: (instanceId: string, method: ApiMethod, apiPath: unknown, body?: unknown) => Promise<ApiResponse>;
@@ -101,17 +105,50 @@ const contentType = (file: string): string => {
   return 'text/html; charset=utf-8';
 };
 
-const serveStatic = (response: http.ServerResponse, pathname: string, root: string): void => {
+const compressBrotli = promisify(brotliCompress);
+const compressGzip = promisify(gzip);
+const assetCache = new Map<string, Buffer>();
+
+export const acceptedEncoding = (header = ''): 'br' | 'gzip' | undefined => {
+  const weights = new Map(header.toLowerCase().split(',').map((entry) => {
+    const [name, ...parameters] = entry.trim().split(';');
+    const q = parameters.find((parameter) => parameter.trim().startsWith('q='));
+    return [name, q ? Number(q.trim().slice(2)) : 1] as const;
+  }));
+  return (['br', 'gzip'] as const).filter((name) => (weights.get(name) ?? weights.get('*') ?? 0) > 0)
+    .sort((a, b) => (weights.get(b) ?? weights.get('*') ?? 0) - (weights.get(a) ?? weights.get('*') ?? 0))[0];
+};
+
+export const serveStatic = async (request: http.IncomingMessage, response: http.ServerResponse, pathname: string, root: string): Promise<void> => {
   const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
   const file = path.resolve(root, relative);
   if (file !== root && !file.startsWith(`${root}${path.sep}`)) return json(response, 404, { error: 'Not found' });
   try {
-    const body = fs.readFileSync(file);
+    const encoding = acceptedEncoding(request.headers['accept-encoding']);
+    const immutable = /[.-][\w-]{8,}\.(js|css)$/.test(file);
+    const key = `${file}:${encoding ?? 'identity'}`;
+    let body = immutable ? assetCache.get(key) : undefined;
+    if (!body) {
+      const raw = await fs.promises.readFile(file);
+      body = encoding === 'br' ? await compressBrotli(raw) : encoding === 'gzip' ? await compressGzip(raw) : raw;
+      if (immutable && body.length <= 8 * 1024 * 1024) {
+        assetCache.set(key, body);
+        let bytes = [...assetCache.values()].reduce((sum, value) => sum + value.length, 0);
+        for (const [oldKey, value] of assetCache) {
+          if (bytes <= 8 * 1024 * 1024) break;
+          assetCache.delete(oldKey);
+          bytes -= value.length;
+        }
+      }
+    }
     response.writeHead(200, {
       'Content-Type': contentType(file),
-      'Cache-Control': file.endsWith('index.html') ? 'no-store' : 'public, max-age=31536000, immutable',
+      'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-store',
+      'Content-Length': body.length,
+      Vary: 'Accept-Encoding',
+      ...(encoding ? { 'Content-Encoding': encoding } : {}),
     });
-    response.end(body);
+    response.end(request.method === 'HEAD' ? undefined : body);
   } catch {
     json(response, 404, { error: 'Not found' });
   }
@@ -176,9 +213,19 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
         response.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
         return json(response, 200, { ok: true });
       }
-      if (url.pathname === '/remote/instances' && request.method === 'GET') return json(response, 200, await handlers.listInstances());
+      if (url.pathname === '/remote/model-stats') {
+        if (request.method === 'GET') return json(response, 200, await handlers.modelStats.list());
+        if (request.method === 'POST') return json(response, 200, await handlers.modelStats.observe(await readBody(request)));
+        if (request.method === 'DELETE') { await handlers.modelStats.clear(); return json(response, 200, { ok: true }); }
+      }
+      if (url.pathname === '/remote/model-rating' && request.method === 'POST') {
+        const body = await readBody(request) as { id?: unknown; rating?: unknown } | null;
+        await handlers.modelStats.rate(body?.id, body?.rating);
+        return json(response, 200, { ok: true });
+      }
+      if (url.pathname === '/remote/instances' && request.method === 'GET') return json(response, 200, await handlers.listInstances(url.searchParams.get('refresh') !== 'false'));
       if (url.pathname === '/remote/settings' && request.method === 'GET') return json(response, 200, handlers.getSettings());
-      if (url.pathname === '/remote/settings' && request.method === 'POST') return json(response, 200, handlers.setSettings(await readBody(request)));
+      if (url.pathname === '/remote/settings' && request.method === 'POST') return json(response, 200, await handlers.setSettings(await readBody(request)));
       if (url.pathname === '/remote/events' && request.method === 'GET') {
         response.writeHead(200, {
           'Content-Type': 'text/event-stream; charset=utf-8',
@@ -209,7 +256,7 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
         return json(response, 200, await handlers.request(String(value.instanceId ?? ''), method as ApiMethod, value.path, value.body));
       }
       if (request.method !== 'GET' && request.method !== 'HEAD') return json(response, 405, { error: 'Method not allowed' });
-      return serveStatic(response, url.pathname, root);
+      return serveStatic(request, response, url.pathname, root);
     } catch (error) {
       json(response, 400, { error: error instanceof Error ? error.message : 'Bad request' });
     }

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/context-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SessionContextMenuContent } from './SessionRow';
+import ProjectCleanupMenu from './ProjectCleanupMenu';
 import { sessionKey } from '../types';
 import type { AvatarIdentity, BallMood, BlobStyle, Project, Session } from '../types';
 
@@ -135,8 +136,8 @@ export default function ProjectCard({
           </TooltipTrigger>
           <TooltipContent side="left">New session in {project.name}</TooltipContent>
         </Tooltip>
+        <ProjectCleanupMenu name={project.name} sessions={sessions} moods={moods} onArchiveMany={onArchiveMany} />
       </div>
-
       <div className="mt-1 flex min-h-[30px] items-center px-1" style={{ gap: 4 }}>
         {visible.map((session) => {
           const key = sessionKey(session);

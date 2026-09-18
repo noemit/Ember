@@ -247,23 +247,31 @@ export default function LeftRail({
   const instanceLabelOf = (session: Session): string | undefined =>
     instanceById[session.instanceId]?.label;
   // Instance name, shown with the same cube glyph as the chat header's instance badge.
-  const instanceMeta = (label: string): React.ReactNode => (
-    <span className="flex min-w-0 items-center gap-0.5">
-      <Box className="size-2.5 flex-none" aria-hidden="true" />
-      <span className="truncate">{label}</span>
-    </span>
-  );
+  const metadataCache = React.useRef(new Map<string, React.ReactNode>());
+  if (metadataCache.current.size > 2000) metadataCache.current.clear();
+  const instanceMeta = (label: string): React.ReactNode => {
+    const key = `instance:${label}`;
+    if (!metadataCache.current.has(key)) metadataCache.current.set(key, (
+      <span className="flex min-w-0 items-center gap-0.5">
+        <Box className="size-2.5 flex-none" aria-hidden="true" />
+        <span className="truncate">{label}</span>
+      </span>
+    ));
+    return metadataCache.current.get(key);
+  };
   const topMetaFor = (session: Session): React.ReactNode => {
     const folder = folderNameOf(session);
     const instance = instanceLabelOf(session);
     if (!folder && !instance) return undefined;
-    return (
+    const key = JSON.stringify([folder, instance]);
+    if (!metadataCache.current.has(key)) metadataCache.current.set(key, (
       <>
         {folder ? <span className="truncate">{folder}</span> : null}
         {folder && instance ? <span aria-hidden>·</span> : null}
         {instance ? instanceMeta(instance) : null}
       </>
-    );
+    ));
+    return metadataCache.current.get(key);
   };
 
   const renderSession = (session: Session) => {
@@ -298,10 +306,13 @@ export default function LeftRail({
     );
   };
 
+  const projectNewAgent = React.useRef(new Map<string, () => void>());
   const renderEntry = (entry: RailEntry) => {
     if (entry.kind === 'session') return renderSession(entry.session);
     const instance = instanceById[entry.instanceId];
     const openProject = () => onOpenProject(entry.instanceId, entry.project, entry.sessions);
+    const newAgentKey = `${entry.instanceId}\u0000${entry.project.path ?? ''}`;
+    if (!projectNewAgent.current.has(newAgentKey)) projectNewAgent.current.set(newAgentKey, () => newAgent(entry.instanceId, entry.project.path));
     // A lone session keeps the familiar full row (big blob, project name as the title); the
     // grouped card is only worth it once a project has several sessions to show off.
     if (entry.sessions.length === 1) {
@@ -314,6 +325,7 @@ export default function LeftRail({
           instanceLabel={multiInstance ? instance?.label : undefined}
           projectName={undefined}
           titleOverride={entry.project.name}
+          onArchiveMany={archiveMany}
           topMeta={instance?.label ? instanceMeta(instance.label) : undefined}
           preview={previews[key]}
           selected={key === selectedKey}
@@ -325,7 +337,7 @@ export default function LeftRail({
           identity={avatarIdentities[key]}
           blobStyle={blobStyle}
           onSelect={openSession}
-          onNewAgent={() => newAgent(entry.instanceId, entry.project.path)}
+          onNewAgent={projectNewAgent.current.get(newAgentKey)}
           onReload={reloadSession}
           onArchive={archiveSession}
           onCustomizeAppearance={customizeAppearance}

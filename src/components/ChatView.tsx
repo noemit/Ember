@@ -9,6 +9,10 @@ import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
 import type { PromptInput } from '../api';
 import { ModelPickerFallback } from './ModelPickerFallback';
 import { cn } from '@/lib/utils';
+import { composerMemory, removedDrafts, type DraftChanges } from '@/lib/composerDrafts';
+import { shortcutLabel } from '@/lib/shortcuts';
+import { useStableProps } from '@/lib/useStableProps';
+import { useStableCallback } from '@/lib/useStableCallback';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
@@ -108,7 +112,7 @@ type Props = {
   notesKey: string;
   savedComposerDrafts: Record<string, StoredComposerDraft>;
   composerDraftsHydrated: boolean;
-  onComposerDraftsChange: (drafts: Record<string, StoredComposerDraft>) => void;
+  onComposerDraftsChange: (drafts: DraftChanges) => void;
   onTogglePin: (message: ChatMessage) => void;
   onSaveNote: (sessionKey: string, text: string) => void;
   onDeleteNote: (sessionKey: string, noteId: string) => void;
@@ -237,7 +241,7 @@ const readAttachment = (file: File): Promise<FileAttachment> =>
     reader.readAsDataURL(file);
   });
 
-export default function ChatView({
+function ChatView({
   session,
   instance,
   instanceMarkerColor,
@@ -318,12 +322,14 @@ export default function ChatView({
   const [queueOpen, setQueueOpen] = React.useState(true);
   const [focusMessageId, setFocusMessageId] = React.useState<string | null>(null);
   const [focusRequest, setFocusRequest] = React.useState(0);
+  const [findRequest, setFindRequest] = React.useState(0);
   const [now, setNow] = React.useState(() => Date.now());
   const fileRef = React.useRef<HTMLInputElement>(null);
   const folderRef = React.useRef<HTMLInputElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const createdModelRef = React.useRef<{ key: string; variant?: string } | null>(null);
-  const composerDraftsRef = React.useRef(new Map<string, ComposerState>());
+  const composerDraftsRef = React.useRef(composerMemory);
+  const pendingDraftChangesRef = React.useRef<DraftChanges>({});
   const touchedComposerChoicesRef = React.useRef(new Set<string>());
   const previousComposerKeyRef = React.useRef<string | null>(null);
   const draftsHydratedRef = React.useRef(false);
@@ -365,7 +371,7 @@ export default function ChatView({
       if (draft.modelId !== undefined || draft.variant) {
         touchedComposerChoicesRef.current.add(key);
       }
-      if (!composerDraftsRef.current.has(key)) {
+      if (!composerDraftsRef.current.has(key) && !removedDrafts.has(key)) {
         composerDraftsRef.current.set(key, composerFromStored(draft));
       }
     });
@@ -379,10 +385,11 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot hydration, guarded by draftsHydratedRef
   }, [composerDraftsHydrated, savedComposerDrafts]);
 
-  const snapshotComposerDrafts = () =>
-    Object.fromEntries(
-      [...composerDraftsRef.current.entries()].map(([key, draft]) => [key, storedFromComposer(draft)])
-    );
+  const snapshotComposerDrafts = () => {
+    const changes = pendingDraftChangesRef.current;
+    pendingDraftChangesRef.current = {};
+    return changes;
+  };
 
   const scheduleDraftPersistence = () => {
     if (!draftsHydratedRef.current) return;
@@ -400,13 +407,22 @@ export default function ChatView({
   }, []);
 
   const updateComposerDraft = (key: string, draft: ComposerState | null) => {
-    if (draft) saveComposerDraft(composerDraftsRef.current, key, draft);
-    else {
+    if (draft) {
+      removedDrafts.delete(key);
+      saveComposerDraft(composerDraftsRef.current, key, draft);
+    } else {
+      removedDrafts.add(key);
       composerDraftsRef.current.delete(key);
       touchedComposerChoicesRef.current.delete(key);
     }
+    pendingDraftChangesRef.current[key] = draft ? storedFromComposer(draft) : null;
     scheduleDraftPersistence();
   };
+
+  React.useEffect(() => {
+    if (!composerKey || (!text && !attachments.length && !replyContext)) return;
+    saveComposerDraft(composerMemory, composerKey, { text, modelId, variant, attachments, replyContext });
+  }, [composerKey, text, modelId, variant, attachments, replyContext]);
 
   const updateComposerChoices = (patch: Partial<Pick<ComposerState, 'modelId' | 'variant'>>) => {
     if (!composerKey) return;
@@ -433,7 +449,12 @@ export default function ChatView({
 
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
-    const accepted = [...files].filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+    let remaining = 18 * 1024 * 1024 - attachments.reduce((sum, file) => sum + Math.ceil(file.url.length * 0.75), 0);
+    const accepted = [...files].filter((file) => {
+      if (file.size > MAX_ATTACHMENT_BYTES || file.size > remaining) return false;
+      remaining -= file.size;
+      return true;
+    });
     const skippedForSize = files.length - accepted.length;
     // One unreadable file (permissions, removed drive) must not drop the whole batch.
     const results = await Promise.allSettled(accepted.map(readAttachment));
@@ -442,7 +463,7 @@ export default function ChatView({
       .map((result) => result.value);
     const unreadable = results.length - read.length;
     const problems = [
-      skippedForSize > 0 ? `${skippedForSize} over 10 MB` : null,
+      skippedForSize > 0 ? `${skippedForSize} exceeding the 10 MB file / 18 MB total limit` : null,
       unreadable > 0 ? `${unreadable} could not be read` : null,
     ].filter((entry): entry is string => entry !== null);
     setAttachmentError(problems.length > 0 ? `Skipped ${problems.join(', ')}.` : null);
@@ -606,6 +627,7 @@ export default function ChatView({
         }
         return;
       }
+      if (submittedKey) updateComposerDraft(submittedKey, submitted);
       setText(submitted.text);
       setModelId(submitted.modelId);
       setVariant(submitted.variant);
@@ -683,9 +705,13 @@ export default function ChatView({
   };
 
   const replyToMessage = (message: ChatMessage) => {
-    setReplyContext(message);
+    setReplyContext({ ...message, text: messageContextText(message), parts: [] });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
+
+  const stableReply = useStableCallback(replyToMessage);
+  const stablePermission = useStableCallback(onPermission);
+  const stableQuestion = useStableCallback(onQuestion);
 
   const jumpToMessage = (messageId: string) => {
     setFocusMessageId(messageId);
@@ -696,6 +722,12 @@ export default function ChatView({
     <main
       className="relative flex min-w-0 flex-1 overflow-hidden"
       onPointerDownCapture={onActivate}
+      onKeyDown={(event) => {
+        if (session && !event.defaultPrevented && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+          event.preventDefault();
+          setFindRequest((request) => request + 1);
+        }
+      }}
     >
       <div className="flex min-w-0 flex-1 flex-col">
         <AnimatePresence mode="popLayout" initial={false}>
@@ -832,6 +864,7 @@ export default function ChatView({
 
             <React.Suspense fallback={<TranscriptFallback />}>
               <Transcript
+                findRequest={findRequest}
                 messages={messages}
                 messagesStatus={messagesStatus}
                 permissions={permissions}
@@ -849,9 +882,9 @@ export default function ChatView({
                 focusMessageId={focusMessageId}
                 focusRequest={focusRequest}
                 onTogglePin={onTogglePin}
-                onReply={replyToMessage}
-                onPermission={onPermission}
-                onQuestion={onQuestion}
+                onReply={stableReply}
+                onPermission={stablePermission}
+                onQuestion={stableQuestion}
               />
             </React.Suspense>
           </motion.div>
@@ -999,6 +1032,7 @@ export default function ChatView({
               ref={textareaRef}
               value={text}
               maxHeight={160}
+              maxLength={200_000}
               placeholder={shouldQueue ? 'Queue a follow-up…' : 'Message the agent…'}
               aria-label={shouldQueue ? 'Queue a follow-up message' : 'Message the agent'}
               onChange={(event) => {
@@ -1105,6 +1139,8 @@ export default function ChatView({
                 <React.Suspense fallback={<ModelPickerFallback />}>
                   <ModelPicker
                     open={pickerOpen}
+                    instanceId={session?.instanceId ?? draftInstanceId ?? undefined}
+                    directory={session?.directory ?? (draftDirectory || undefined)}
                     models={models}
                     recentModels={recentModels}
                     value={modelId}
@@ -1283,30 +1319,41 @@ export default function ChatView({
               </AnimatePresence>
 
               {active && session ? (
+                <Tooltip>
+                <TooltipTrigger asChild>
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  className="size-7 flex-none rounded-full text-muted-foreground"
-                  disabled={!text.trim()}
+                  className="size-7 flex-none rounded-full text-muted-foreground aria-disabled:opacity-50"
+                  aria-disabled={!text.trim()}
                   onClick={saveNote}
                   aria-label="Save as note"
                   aria-keyshortcuts="Meta+Enter Control+Enter"
-                  title="Save as note (⌘/Ctrl+Enter)"
                 >
                   <NotebookPen className="size-3.5" />
                 </Button>
+                </TooltipTrigger>
+                <TooltipContent>{shortcutLabel('Save as note · Mod+Enter')}</TooltipContent>
+                </Tooltip>
               ) : null}
 
+              <Tooltip><TooltipTrigger asChild>
               <Button
                 size="icon-sm"
-                className="size-7 flex-none rounded-full"
-                disabled={!canSend}
+                className="size-7 flex-none rounded-full aria-disabled:opacity-50"
+                aria-disabled={!canSend}
                 onClick={() => submit()}
                 aria-label={shouldQueue ? 'Queue message' : 'Send'}
-                title={shouldQueue ? 'Queue message — Alt/Option+Enter sends now' : 'Send'}
+                aria-keyshortcuts="Enter"
               >
                 <ArrowUp className={cn(sending && 'animate-pulse')} />
               </Button>
+              </TooltipTrigger><TooltipContent>
+                <div>{shouldQueue ? 'Queue message · Enter' : 'Send · Enter'}</div>
+                <div>New line · Shift+Enter</div>
+                {shouldQueue ? <div>{shortcutLabel('Send now · Alt+Enter')}</div> : null}
+                {!text ? <div>Recall last message · ↑</div> : null}
+              </TooltipContent></Tooltip>
             </div>
             </motion.div>
           </div>
@@ -1332,4 +1379,9 @@ export default function ChatView({
       </React.Suspense>
     </main>
   );
+}
+
+const MemoChatView = React.memo(ChatView);
+export default function StableChatView(props: Props) {
+  return <MemoChatView {...useStableProps(props)} />;
 }

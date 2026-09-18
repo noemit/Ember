@@ -1,4 +1,5 @@
 import { sessionKey } from './types';
+import { shareValue } from './lib/structuralSharing';
 import type {
   BallState,
   ChatMessage,
@@ -83,8 +84,8 @@ const baseName = (value: string): string => {
   return trimmed.split('/').pop() || trimmed;
 };
 
-export const listInstances = async (): Promise<Instance[]> =>
-  asArray(await window.ember.listInstances()) as Instance[];
+export const listInstances = async (refresh = true): Promise<Instance[]> =>
+  asArray(await window.ember.listInstances(refresh)) as Instance[];
 
 /** `null` means the request failed; callers keep whatever they already had. */
 export const loadProjects = async (instanceId: string): Promise<Project[] | null> => {
@@ -114,6 +115,8 @@ export const loadProjects = async (instanceId: string): Promise<Project[] | null
 
 const SESSION_PAGE_SIZE = 200;
 const SESSION_MAX_PAGES = 10;
+const partialSessionLists = new WeakSet<Session[]>();
+export const isPartialSessionList = (sessions: Session[]): boolean => partialSessionLists.has(sessions);
 
 const toSession = (instanceId: string, entry: unknown, index: number): Session => {
   const item = asRecord(entry);
@@ -160,13 +163,15 @@ const payloadArray = (value: unknown): unknown[] => {
 
 export const loadSessions = async (
   instanceId: string,
-  directory?: string
+  directory?: string,
+  maxPages = SESSION_MAX_PAGES
 ): Promise<Session[] | null> => {
   const sessions: Session[] = [];
+  let complete = false;
   const seen = new Set<string>();
   let cursor: number | undefined;
 
-  for (let page = 0; page < SESSION_MAX_PAGES; page += 1) {
+  for (let page = 0; page < maxPages; page += 1) {
     const directoryParam = directory ? `&directory=${encodeURIComponent(directory)}` : '';
     const query = `archived=true&limit=${SESSION_PAGE_SIZE}${cursor ? `&cursor=${cursor}` : ''}${directoryParam}`;
     const response = await window.ember.request(
@@ -174,7 +179,11 @@ export const loadSessions = async (
       'GET',
       `/api/experimental/session?${query}`
     );
-    if (!response.ok) return page === 0 ? null : sessions;
+    if (!response.ok) {
+      if (page === 0) return null;
+      partialSessionLists.add(sessions);
+      return sessions;
+    }
 
     const batch = payloadArray(response.data);
     batch.forEach((entry, index) => {
@@ -194,10 +203,12 @@ export const loadSessions = async (
         : typeof lastTime.created === 'number'
           ? lastTime.created
           : undefined;
-    if (batch.length < SESSION_PAGE_SIZE || !nextCursor || nextCursor === cursor) break;
+    if (batch.length < SESSION_PAGE_SIZE) { complete = true; break; }
+    if (!nextCursor || (cursor !== undefined && nextCursor >= cursor)) break;
     cursor = nextCursor;
   }
 
+  if (!complete) partialSessionLists.add(sessions);
   return sessions;
 };
 
@@ -270,14 +281,15 @@ export const forkSession = async (session: Session, prompt: string): Promise<str
  */
 export const loadAllSessions = async (
   instanceIds: string[],
-  directoryHints: Record<string, string[]> = {}
+  directoryHints: Record<string, string[]> = {},
+  maxPages = SESSION_MAX_PAGES
 ): Promise<Record<string, Session[]>> => {
   const results = await Promise.all(
     instanceIds.map(async (instanceId) => {
       const directories = directoryHints[instanceId] ?? [];
       const lists = await Promise.all([
-        loadSessions(instanceId),
-        ...directories.map((directory) => loadSessions(instanceId, directory)),
+        loadSessions(instanceId, undefined, maxPages),
+        ...directories.map((directory) => loadSessions(instanceId, directory, maxPages)),
       ]);
       const successful = lists.filter((list): list is Session[] => list !== null);
       if (successful.length === 0) return null;
@@ -292,6 +304,7 @@ export const loadAllSessions = async (
           seen.add(session.id);
           merged.push(session);
         });
+      if (successful.length !== lists.length || successful.some(isPartialSessionList)) partialSessionLists.add(merged);
       return [instanceId, merged] as const;
     })
   );
@@ -301,7 +314,7 @@ export const loadAllSessions = async (
 };
 
 const newerSession = (a: Session, b: Session): Session =>
-  (b.updated ?? 0) > (a.updated ?? 0) ? b : a;
+  (b.updated ?? 0) > (a.updated ?? 0) ? b : shareValue(b, a);
 
 /**
  * Applies a poll result on top of the current lists. The poll is authoritative for which
@@ -319,8 +332,10 @@ export const mergePolledSessions = (
     const previous = new Map((current[instanceId] ?? []).map((session) => [session.id, session]));
     merged[instanceId] = list.map((session) => {
       const local = previous.get(session.id);
+      previous.delete(session.id);
       return local ? newerSession(session, local) : session;
     });
+    if (isPartialSessionList(list)) merged[instanceId].push(...previous.values());
   });
   preserved.forEach((session) => {
     const list = merged[session.instanceId] ?? [];
@@ -330,7 +345,7 @@ export const mergePolledSessions = (
         ? [session, ...list]
         : list.map((entry, i) => (i === index ? newerSession(entry, session) : entry));
   });
-  return merged;
+  return shareValue(current, merged);
 };
 
 /** Only instances that answered are present; a failed instance keeps its previous projects. */
@@ -604,7 +619,8 @@ const normalizeMessages = (data: unknown): ChatMessage[] => {
       const rawModel = asRecord(info.model);
       const providerID = optionalString(info.providerID) ?? optionalString(rawModel.providerID);
       const modelID = optionalString(info.modelID) ?? optionalString(rawModel.modelID) ?? optionalString(rawModel.id);
-      const model = providerID && modelID ? { providerID, modelID } : undefined;
+      const variant = optionalString(info.variant) ?? optionalString(rawModel.variant);
+      const model = providerID && modelID ? { providerID, modelID, ...(variant ? { variant } : {}) } : undefined;
       const createdAt = typeof time.created === 'number' ? time.created : undefined;
       const completedAt = typeof time.completed === 'number' ? time.completed : undefined;
       const rawError = info.error ?? item.error;

@@ -124,6 +124,20 @@ describe('invalidation queue', () => {
     ]);
   });
 
+  test('upgrading a throttled tail advances its timer', async () => {
+    const calls: string[] = [];
+    const queue = new InvalidationQueue(async (entry) => { calls.push(entry.messageMode ?? ''); },
+      (entry) => ({ leadMs: 5, minIntervalMs: entry.messageMode === 'full' ? 0 : 300 }));
+    const tail: Invalidation = { instanceId: 'a', resource: 'messages', sessionId: 's', messageMode: 'tail' };
+    queue.push(tail);
+    await tick(20);
+    queue.push(tail);
+    queue.push({ ...tail, messageMode: 'full' });
+    await tick(30);
+    queue.clear();
+    expect(calls).toEqual(['tail', 'full']);
+  });
+
   test('continuous token hints respect the minimum interval', async () => {
     const startedAt: number[] = [];
     const queue = new InvalidationQueue(

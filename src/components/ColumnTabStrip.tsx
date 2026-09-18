@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Archive, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { cn } from '@/lib/utils';
+import { shortcutLabel } from '@/lib/shortcuts';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { AvatarIdentity, BallMood, BlobStyle } from '../types';
 
@@ -61,7 +62,7 @@ export default function ColumnTabStrip({
             tab.minimized ? 'opacity-70' : undefined
           )}
         >
-          <button
+          <Tooltip><TooltipTrigger asChild><button
             type="button"
             onClick={() => (tab.minimized ? onRestore(tab.key) : onActivate(tab.key))}
             className="flex min-w-0 items-center gap-1.5"
@@ -79,7 +80,7 @@ export default function ColumnTabStrip({
               mood={tab.mood}
             />
             <span className="max-w-[150px] truncate text-[11.5px] font-medium">{tab.title}</span>
-          </button>
+          </button></TooltipTrigger><TooltipContent>{shortcutLabel(`Activate session · Mod+${tab.number}`)}</TooltipContent></Tooltip>
 
           {tab.minimized ? (
             <Tooltip>

@@ -306,3 +306,38 @@ from an event payload.
   while the session is selected; with server support that client loop is skipped to avoid racing.
 - Prompt body: `{ parts: [{type:'file', mime, filename, url:<data URL>}..., {type:'text', text}],
   model?, agent?, variant? }`. Stop is `POST /api/session/:id/abort`.
+
+## Workspace reliability and performance
+
+- `bun run test:e2e` runs Playwright against `dev:web`. Install its pinned Chromium with
+  `bunx --no-install playwright install chromium`. Tests use `.pw.ts` so Bun's unit runner does not
+  collect them. `?fixture=performance&noDock` supplies 85 sessions and a 10,000-message transcript;
+  `&slowInstance` holds the second mock instance until `releaseSlowInstance()` is called.
+- Composer persistence uses per-key `composerDraftChanges` (null deletes), not replacement snapshots.
+  `composerMemory` retains transient attachments/reply context across column unmounts. Settings writes
+  are serialized in both renderer and main; failed draft patches remain optimistic and retryable.
+- Instance probes publish `ember:instances-updated` hints. `listInstances(false)` reads the current
+  snapshot without probing; each healthy instance can load while another is still checking.
+- `ReadCoordinator` serializes full/tail transcript reads. Post-mutation and authoritative event
+  repairs request a read after any already-running request. Routine polls fetch tails; full repairs
+  remain for terminal events, reconnects, missing overlap and 60s busy/polling or 5min idle-live safety
+  checks. Routine session-list reads use one page between 5min deeper reads. Partial lists merge rather
+  than deleting absent sessions. The palette can explicitly request deeper indexing.
+- `StableChatView` stabilizes callbacks/data for its memoized child. `Transcript` is memoized separately,
+  virtualizes histories over 80 visible records with TanStack Virtual, and retains expansion state
+  outside virtual rows. Cmd/Ctrl+F within a column opens inline data-backed conversation search.
+  A keyboard/screen-reader-accessible control offers full non-virtualized history; virtual row mounts
+  are not live announcements, so scrolling does not repeatedly announce old messages.
+- `TranscriptCache` accounts estimated bytes (64 MiB target plus the existing count cap). Visible
+  columns and pending sends are protected; minimized/closed histories can be evicted. Protected
+  working sets may exceed the target: it is not a hard process-memory limit.
+- `capabilities.dockIcon` gates the dock renderer before import. Remote assets negotiate gzip/Brotli,
+  with an 8 MiB compressed-asset cache; API responses remain uncached and SSE remains uncompressed.
+- Personal model experience lives in the existing model picker and stores metadata/ratings on the
+  Ember host in `model-stats.json`, separate from settings. It retains up to 10,000 observations for
+  90 days, keyed by instance/session/message. Metrics describe observed model calls, not whole tasks
+  or inference-only timing. Helpful/not-helpful ratings apply to completed replies. No transcript
+  text or tool payloads are retained. Clear/reset also records a cutoff so old polls cannot recreate
+  cleared observations. Desktop IPC, the authenticated remote bridge and the mock implement it.
+- At this baseline `bun.lock` is tracked, despite the older note above; dependency changes include its
+  generated updates along with `package.json`.

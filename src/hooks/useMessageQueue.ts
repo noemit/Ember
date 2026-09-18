@@ -9,6 +9,7 @@ import {
   type QueueMessageInput,
 } from '../api';
 import { modelRefKey } from '../types';
+import { shareValue } from '../lib/structuralSharing';
 import type {
   MessageQueueSession,
   ModelOption,
@@ -53,7 +54,7 @@ export const mergePolledQueues = (
     });
     merged[instanceId] = result;
   });
-  return merged;
+  return shareValue(prev, merged);
 };
 
 /**

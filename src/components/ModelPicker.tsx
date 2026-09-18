@@ -8,9 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelOption } from '../types';
+import ModelScorecard from './ModelScorecard';
+import { refreshModelStats } from '@/lib/modelStats';
 
 type Props = {
   open: boolean;
+  instanceId?: string;
+  directory?: string;
   models: ModelOption[];
   /** `provider/model` keys the instance used most recently, newest first. */
   recentModels: string[];
@@ -84,7 +88,7 @@ const Fact = ({ label, value }: { label: string; value: React.ReactNode }) => (
   </div>
 );
 
-const Details = ({ model }: { model: ModelOption }) => {
+const Details = ({ model, instanceId, directory }: { model: ModelOption; instanceId?: string; directory?: string }) => {
   const { details } = model;
   const chips = [
     details.reasoning && 'Reasoning',
@@ -131,6 +135,7 @@ const Details = ({ model }: { model: ModelOption }) => {
           {details.releaseDate ? <Fact label="Released" value={details.releaseDate} /> : null}
           {details.variants.length ? <Fact label="Effort levels" value={details.variants.join(' · ')} /> : null}
         </div>
+        <ModelScorecard model={model} instanceId={instanceId} directory={directory} />
       </CardContent>
     </Card>
   );
@@ -138,6 +143,8 @@ const Details = ({ model }: { model: ModelOption }) => {
 
 export default function ModelPicker({
   open,
+  instanceId,
+  directory,
   models,
   recentModels,
   value,
@@ -156,6 +163,7 @@ export default function ModelPicker({
 
   React.useEffect(() => {
     if (open) {
+      void refreshModelStats();
       setQuery('');
       setHovered(null);
       setExpandedProviders(new Set());
@@ -326,6 +334,7 @@ export default function ModelPicker({
               ) : null}
             </div>
 
+            {selectedModel ? <div className="max-h-64 overflow-auto border-t p-3 sm:hidden"><ModelScorecard model={{ ...selectedModel, variant: validSelectedVariant }} instanceId={instanceId} directory={directory} /></div> : null}
             <div className="flex-none border-t px-3 py-1.5 text-[10.5px] text-muted-foreground">
               {total} models from {groups.filter((group) => group.id !== 'recent').length} connected providers
             </div>
@@ -333,7 +342,7 @@ export default function ModelPicker({
 
           <div className="hidden min-w-0 flex-1 overflow-y-auto p-5 sm:block">
             {activeModel ? (
-              <Details model={activeModel} />
+              <Details model={{ ...activeModel, variant: activeKey === selectedKey ? validSelectedVariant : undefined }} instanceId={instanceId} directory={directory} />
             ) : (
               <div className="flex h-full flex-col justify-center gap-2 text-center text-muted-foreground">
                 <Sparkles className="mx-auto size-5" />
