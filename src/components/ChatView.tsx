@@ -94,6 +94,8 @@ type Props = {
   defaultModelId: string | null;
   /** `provider/model` keys the instance used most recently, newest first. */
   recentModels: string[];
+  /** Re-read this instance's model catalogue; called when the picker opens so new models appear without a relaunch. */
+  onModelsRefresh?: () => void;
   sending: boolean;
   queue: MessageQueueSession | null;
   reloading: boolean;
@@ -256,6 +258,7 @@ export default function ChatView({
   models,
   defaultModelId,
   recentModels,
+  onModelsRefresh,
   sending,
   queue,
   reloading,
@@ -1090,6 +1093,7 @@ export default function ChatView({
                 onClick={() => {
                   setPickerActivated(true);
                   setPickerOpen(true);
+                  onModelsRefresh?.();
                 }}
                 aria-label="Choose model"
                 className="h-7 max-w-[132px] flex-none px-2 text-xs font-normal sm:max-w-[280px]"
