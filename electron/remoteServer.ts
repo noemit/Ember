@@ -19,7 +19,7 @@ const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 
 type ApiResponse = { ok: boolean; status: number; data: unknown };
 type Handlers = {
-  modelStats: ModelStatsStore;
+  modelStats: Pick<ModelStatsStore, 'list' | 'observe' | 'rate' | 'clear'>;
   listInstances: (refresh?: boolean) => Promise<unknown>;
   getSettings: () => unknown;
   setSettings: (patch: unknown) => unknown;
@@ -32,7 +32,7 @@ type Handlers = {
 };
 
 const SSE_HEARTBEAT_MS = 25_000;
-type Session = { expiresAt: number };
+type Session = { expiresAt: number; streams: Set<() => void> };
 type Attempt = { count: number; resetAt: number };
 
 const tailscaleAddress = (): string | null => {
@@ -156,18 +156,18 @@ export const serveStatic = async (request: http.IncomingMessage, response: http.
 
 const clientAddress = (request: http.IncomingMessage): string => request.socket.remoteAddress ?? 'unknown';
 
-export const startRemoteServer = (root: string, handlers: Handlers): http.Server | null => {
-  const address = tailscaleAddress();
-  if (!address) {
-    console.warn('Remote Ember access disabled: no Tailscale IPv4 address found');
-    return null;
-  }
-
+export const createRemoteServer = (root: string, handlers: Handlers): http.Server => {
   const sessions = new Map<string, Session>();
   const attempts = new Map<string, Attempt>();
+  const revoke = (token: string | undefined) => {
+    if (!token) return;
+    const session = sessions.get(token);
+    sessions.delete(token);
+    if (session) [...session.streams].forEach((close) => close());
+  };
   const server = http.createServer(async (request, response) => {
     try {
-      const url = new URL(request.url ?? '/', `http://${address}`);
+      const url = new URL(request.url ?? '/', 'http://localhost');
       if (url.pathname === '/remote/login' && request.method === 'POST') {
         const source = clientAddress(request);
         const now = Date.now();
@@ -186,7 +186,7 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
         }
         attempts.delete(source);
         const token = randomBytes(32).toString('base64url');
-        sessions.set(token, { expiresAt: now + SESSION_TTL_MS });
+        sessions.set(token, { expiresAt: now + SESSION_TTL_MS, streams: new Set() });
         response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}`);
         return json(response, 200, { ok: true });
       }
@@ -194,7 +194,7 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
       const token = cookies(request)[SESSION_COOKIE];
       const session = token ? sessions.get(token) : undefined;
       const authenticated = Boolean(session && session.expiresAt > Date.now());
-      if (session && !authenticated) sessions.delete(token!);
+      if (session && !authenticated) revoke(token);
       if (!authenticated) {
         if (url.pathname === '/remote/login' && request.method === 'GET') {
           response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -209,7 +209,7 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
       }
 
       if (url.pathname === '/remote/logout' && request.method === 'POST') {
-        if (token) sessions.delete(token);
+        revoke(token);
         response.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
         return json(response, 200, { ok: true });
       }
@@ -233,18 +233,38 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
           Connection: 'keep-alive',
           'X-Accel-Buffering': 'no',
         });
-        const write = (event: unknown) => response.write(`data: ${JSON.stringify(event)}\n\n`);
+        let closed = false;
+        let heartbeat: ReturnType<typeof setInterval> | undefined;
+        let unsubscribe = () => {};
+        const cleanup = () => {
+          if (closed) return;
+          closed = true;
+          if (heartbeat) clearInterval(heartbeat);
+          unsubscribe();
+          session?.streams.delete(cleanup);
+          response.end();
+        };
+        const active = () => Boolean(token && session && sessions.get(token) === session && session.expiresAt > Date.now());
+        const write = (event: unknown) => {
+          if (closed) return;
+          if (!active()) { revoke(token); cleanup(); return; }
+          response.write(`data: ${JSON.stringify(event)}\n\n`);
+        };
+        session?.streams.add(cleanup);
+        request.on('close', cleanup);
+        response.on('close', cleanup);
+        response.on('error', cleanup);
         Object.entries(handlers.eventStatus()).forEach(([instanceId, connected]) =>
           write({ instanceId, type: 'ember:stream-status', connected })
         );
-        const unsubscribe = handlers.subscribeEvents(write);
-        const heartbeat = setInterval(() => response.write(':heartbeat\n\n'), SSE_HEARTBEAT_MS);
-        const cleanup = () => {
-          clearInterval(heartbeat);
-          unsubscribe();
-        };
-        request.on('close', cleanup);
-        response.on('error', cleanup);
+        if (!closed) {
+          unsubscribe = handlers.subscribeEvents(write);
+          if (closed) unsubscribe();
+          else heartbeat = setInterval(() => {
+            if (!active()) { revoke(token); cleanup(); }
+            else response.write(':heartbeat\n\n');
+          }, SSE_HEARTBEAT_MS);
+        }
         return;
       }
       if (url.pathname === '/remote/api' && request.method === 'POST') {
@@ -263,6 +283,16 @@ export const startRemoteServer = (root: string, handlers: Handlers): http.Server
   });
 
   server.on('error', (error) => console.error('Remote Ember server error', error));
+  return server;
+};
+
+export const startRemoteServer = (root: string, handlers: Handlers): http.Server | null => {
+  const address = tailscaleAddress();
+  if (!address) {
+    console.warn('Remote Ember access disabled: no Tailscale IPv4 address found');
+    return null;
+  }
+  const server = createRemoteServer(root, handlers);
   server.listen(REMOTE_PORT, address, () => console.log(`Remote Ember access: http://${address}:${REMOTE_PORT}`));
   return server;
 };

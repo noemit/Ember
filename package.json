@@ -17,6 +17,7 @@
     "buddy-arena": "bun run buddy-arena/server.ts",
     "test": "bun test",
     "test:e2e": "playwright test",
+    "test:native": "bun run build && playwright test --config playwright.native.config.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "check": "bun run typecheck && bun run lint && bun test"

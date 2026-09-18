@@ -677,6 +677,7 @@ ipcMain.handle('ember:events:status', (event) => {
 let remoteServer: ReturnType<typeof startRemoteServer> = null;
 refreshRemoteServer = () => {
   remoteServer?.close();
+  remoteServer?.closeAllConnections();
   remoteServer = null;
   const settings = readEmberSettings();
   if (!settings.remoteAccessEnabled || !settings.remotePasswordConfigured) return;

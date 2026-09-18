@@ -313,6 +313,13 @@ from an event payload.
   `bunx --no-install playwright install chromium`. Tests use `.pw.ts` so Bun's unit runner does not
   collect them. `?fixture=performance&noDock` supplies 85 sessions and a 10,000-message transcript;
   `&slowInstance` holds the second mock instance until `releaseSlowInstance()` is called.
+- `bun run test:native` builds production assets and runs the `.native.ts` Playwright suite against
+  the real Electron main/preload and authenticated remote router. It isolates HOME, Chromium profile,
+  and OpenChamber settings in a temporary directory and uses a loopback upstream fixture; it never
+  operates on real sessions. Requires a GUI-capable environment (validated on macOS). Remote tests
+  bind the router factory to loopback; production `startRemoteServer` remains Tailscale-only. This
+  covers IPC, disk persistence, production CSP/assets, remote cookies and shared drafts/ratings,
+  but not real Tailnet connectivity or a packaged/notarized distribution.
 - Composer persistence uses per-key `composerDraftChanges` (null deletes), not replacement snapshots.
   `composerMemory` retains transient attachments/reply context across column unmounts. Settings writes
   are serialized in both renderer and main; failed draft patches remain optimistic and retryable.
@@ -333,6 +340,8 @@ from an event payload.
   working sets may exceed the target: it is not a hard process-memory limit.
 - `capabilities.dockIcon` gates the dock renderer before import. Remote assets negotiate gzip/Brotli,
   with an 8 MiB compressed-asset cache; API responses remain uncached and SSE remains uncompressed.
+  Remote sessions own their SSE subscriptions: logout revokes existing streams, expiry is checked on
+  events and heartbeats, and disabling/restarting remote access closes existing HTTP connections.
 - Personal model experience lives in the existing model picker and stores metadata/ratings on the
   Ember host in `model-stats.json`, separate from settings. It retains up to 10,000 observations for
   90 days, keyed by instance/session/message. Metrics describe observed model calls, not whole tasks
