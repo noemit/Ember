@@ -1084,6 +1084,25 @@ describe('transcript metadata', () => {
 });
 
 describe('message submission', () => {
+  test('rejects a missing or substituted explicit model before making a request', async () => {
+    let calls = 0;
+    setRequest(async () => { calls += 1; return { ok: true, status: 200, data: {} }; });
+    expect((await sendPrompt('local', 's', { text: 'test', selectedModelId: 'openai/gpt-5' })).ok).toBe(false);
+    expect((await sendPrompt('local', 's', { text: 'test', selectedModelId: 'openai/gpt-5', model: queueModel })).ok).toBe(false);
+    expect((await enqueueMessage('local', 's', '/project', { text: 'test', selectedModelId: 'openai/gpt-5', model: queueModel })).ok).toBe(false);
+    expect(calls).toBe(0);
+  });
+
+  test('sends the selected identity and delegates only for server default', async () => {
+    const bodies: unknown[] = [];
+    setRequest(async (_instance, _method, _path, body) => { bodies.push(body); return { ok: true, status: 200, data: {} }; });
+    await sendPrompt('local', 's', { text: 'test', selectedModelId: 'anthropic/claude-sonnet', model: queueModel, variant: 'high' });
+    await sendPrompt('local', 's', { text: 'test', selectedModelId: 'default' });
+    expect(bodies[0]).toMatchObject({ model: { providerID: 'anthropic', modelID: 'claude-sonnet' }, variant: 'high' });
+    expect(bodies[0]).not.toHaveProperty('selectedModelId');
+    expect(bodies[1]).not.toHaveProperty('model');
+  });
+
   test('extracts synchronous invalid-request messages from common API error shapes', () => {
     expect(errorMessageOf({ message: 'Invalid request Error' })).toBe('Invalid request Error');
     expect(errorMessageOf({ error: { data: { message: 'Model is unavailable' } } })).toBe(

@@ -9,7 +9,8 @@ import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
 import type { PromptInput } from '../api';
 import { ModelPickerFallback } from './ModelPickerFallback';
 import { cn } from '@/lib/utils';
-import { composerMemory, removedDrafts, type DraftChanges } from '@/lib/composerDrafts';
+import { clearComposerText, composerMemory, removedDrafts, type ComposerState, type DraftChanges } from '@/lib/composerDrafts';
+import { resolveComposerModel } from '@/lib/modelSelection';
 import { shortcutLabel } from '@/lib/shortcuts';
 import { useStableProps } from '@/lib/useStableProps';
 import { useStableCallback } from '@/lib/useStableCallback';
@@ -126,7 +127,7 @@ type Props = {
   onSend: (input: PromptInput) => Promise<boolean>;
   onQueue: (input: PromptInput) => Promise<boolean>;
   onSendQueued: (itemId: string) => Promise<boolean>;
-  onQueuedModelChange: (itemId: string, model: ModelOption) => Promise<boolean>;
+  onQueuedModelChange: (itemId: string, model: ModelOption, variant?: string) => Promise<boolean>;
   onMoveQueued: (itemId: string, direction: -1 | 1) => Promise<boolean>;
   onRemoveQueued: (itemId: string) => Promise<boolean>;
   onRetryQueued: (itemId: string) => Promise<boolean>;
@@ -171,14 +172,6 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const STALE_AGENT_MS = 10 * 60_000;
 
 const MAX_COMPOSER_DRAFTS = 50;
-
-type ComposerState = {
-  text: string;
-  modelId: string;
-  variant: string;
-  attachments: FileAttachment[];
-  replyContext: ChatMessage | null;
-};
 
 const saveComposerDraft = (
   drafts: Map<string, ComposerState>,
@@ -309,6 +302,7 @@ function ChatView({
   const [text, setText] = React.useState('');
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
   const [variant, setVariant] = React.useState('');
+  const [loadedComposerKey, setLoadedComposerKey] = React.useState<string | null>(null);
   // Latest composer text, for async edit/park handlers that must detect concurrent typing.
   const textRef = React.useRef('');
   textRef.current = text;
@@ -420,9 +414,9 @@ function ChatView({
   };
 
   React.useEffect(() => {
-    if (!composerKey || (!text && !attachments.length && !replyContext)) return;
+    if (!composerKey || loadedComposerKey !== composerKey || (!text && !attachments.length && !replyContext)) return;
     saveComposerDraft(composerMemory, composerKey, { text, modelId, variant, attachments, replyContext });
-  }, [composerKey, text, modelId, variant, attachments, replyContext]);
+  }, [composerKey, loadedComposerKey, text, modelId, variant, attachments, replyContext]);
 
   const updateComposerChoices = (patch: Partial<Pick<ComposerState, 'modelId' | 'variant'>>) => {
     if (!composerKey) return;
@@ -501,8 +495,14 @@ function ChatView({
       }
     }
     previousComposerKeyRef.current = composerKey;
+    setLoadedComposerKey(composerKey);
 
-    const saved = composerKey ? composerDraftsRef.current.get(composerKey) : undefined;
+    const stored = composerKey && !removedDrafts.has(composerKey) ? savedComposerDrafts[composerKey] : undefined;
+    const saved = composerKey ? composerDraftsRef.current.get(composerKey) ?? (stored ? composerFromStored(stored) : undefined) : undefined;
+    if (saved && composerKey) {
+      saveComposerDraft(composerDraftsRef.current, composerKey, saved);
+      touchedComposerChoicesRef.current.add(composerKey);
+    }
     const created = createdModelRef.current;
     const sessionModelKey = session?.model ? modelRefKey(session.model) : undefined;
     const prefill = draftInstanceId ? newSessionPrefill?.model ?? undefined : undefined;
@@ -531,13 +531,11 @@ function ChatView({
     return () => window.cancelAnimationFrame(frame);
   }, [composerKey]);
 
-  const model = models.find((entry) => modelRefKey(entry) === modelId);
+  const { model, error: modelError } = resolveComposerModel(modelId, variant, models, defaultModelId);
   const defaultModel = defaultModelId ? models.find((entry) => modelRefKey(entry) === defaultModelId) : undefined;
-  const modelButtonLabel = model
-    ? `${model.details.providerName} / ${model.details.name}${modelId === defaultModelId ? ' (Default)' : ''}`
-    : defaultModel
-      ? `${defaultModel.details.providerName} / ${defaultModel.details.name} (Default)`
-      : 'Server default';
+  const modelButtonLabel = modelId === DEFAULT_MODEL
+    ? `Server default${defaultModel ? ` · ${defaultModel.details.name}` : ''}`
+    : model ? `${model.details.providerName} / ${model.details.name}` : `${modelId} (unavailable)`;
   const lastMessage = messages[messages.length - 1];
   const activeModelRef: ModelRef | undefined =
     (lastMessage?.role === 'user' ? lastMessage.model : undefined) ??
@@ -557,7 +555,7 @@ function ChatView({
   const draftReady = Boolean(draftInstanceId && draftDirectory.trim());
   const effectiveBypass = draftInstanceId ? draftBypass : bypass;
 
-  const canSend = (session ? true : draftReady) && (text.trim().length > 0 || attachments.length > 0);
+  const canSend = loadedComposerKey === composerKey && !modelError && (session ? true : draftReady) && (text.trim().length > 0 || attachments.length > 0);
   const queueItems = queue?.items ?? [];
   const shouldQueue = Boolean(session && (busy || queueItems.length > 0));
   const reasoningMeta = REASONING_META[reasoningDisplay];
@@ -587,6 +585,7 @@ function ChatView({
     const input: PromptInput = {
       text: submitted.text,
       model,
+      selectedModelId: submitted.modelId,
       mode: session?.agent,
       variant: submitted.variant || undefined,
       attachments: submitted.attachments,
@@ -612,29 +611,28 @@ function ChatView({
     }
     result.then((sent) => {
       if (sent) return;
-      if (submittedKey && previousComposerKeyRef.current !== submittedKey) {
-        updateComposerDraft(submittedKey, submitted);
+      const currentDraft = submittedKey ? composerDraftsRef.current.get(submittedKey) : undefined;
+      if (submittedKey && currentDraft && (currentDraft.text.trim() || currentDraft.attachments.length || currentDraft.replyContext)) {
+        updateComposerDraft(submittedKey, {
+          ...currentDraft,
+          attachments: currentDraft.attachments.length ? currentDraft.attachments : submitted.attachments,
+          replyContext: currentDraft.replyContext ?? submitted.replyContext,
+        });
         return;
       }
-      if (submittedKey && composerDraftsRef.current.has(submittedKey)) {
-        const currentDraft = composerDraftsRef.current.get(submittedKey);
-        if (currentDraft) {
-          updateComposerDraft(submittedKey, {
-            ...currentDraft,
-            attachments: currentDraft.attachments.length ? currentDraft.attachments : submitted.attachments,
-            replyContext: currentDraft.replyContext ?? submitted.replyContext,
-          });
-        }
-        return;
-      }
-      if (submittedKey) updateComposerDraft(submittedKey, submitted);
-      setText(submitted.text);
-      setModelId(submitted.modelId);
-      setVariant(submitted.variant);
-      setAttachments(submitted.attachments);
-      setReplyContext(submitted.replyContext);
+      const restored = { ...submitted, modelId: currentDraft?.modelId ?? submitted.modelId, variant: currentDraft?.variant ?? submitted.variant };
+      if (submittedKey) updateComposerDraft(submittedKey, restored);
+      if (previousComposerKeyRef.current !== submittedKey) return;
+      setText(restored.text);
+      setModelId(restored.modelId);
+      setVariant(restored.variant);
+      setAttachments(restored.attachments);
+      setReplyContext(restored.replyContext);
     });
-    if (composerKey) updateComposerDraft(composerKey, null);
+    if (composerKey) {
+      if (session) touchedComposerChoicesRef.current.add(composerKey);
+      updateComposerDraft(composerKey, session ? clearComposerText(submitted) : null);
+    }
     setText('');
     setAttachments([]);
     setAttachmentError(null);
@@ -647,7 +645,8 @@ function ChatView({
     const parked = text.trim();
     if (!parked) return;
     onSaveNote(notesKey, parked);
-    updateComposerDraft(composerKey, null);
+    touchedComposerChoicesRef.current.add(composerKey);
+    updateComposerDraft(composerKey, { text: '', modelId, variant, attachments, replyContext });
     setText('');
     setAttachmentError(null);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -663,8 +662,8 @@ function ChatView({
   };
 
   const sendNote = async (note: SessionNote): Promise<boolean> => {
-    if (!composerKey || !session) return false;
-    const input: PromptInput = { text: note.text, model, variant: variant || undefined };
+    if (!composerKey || !session || modelError) return false;
+    const input: PromptInput = { text: note.text, model, selectedModelId: modelId, variant: variant || undefined };
     const sent = await (shouldQueue ? onQueue : onSend)(input);
     if (sent) onDeleteNote(notesKey, note.id);
     return sent;
@@ -1028,6 +1027,10 @@ function ChatView({
                 </button>
               </div>
             ) : null}
+            {modelError ? <div role="alert" className="mx-3 mt-2 flex flex-wrap items-center gap-2 text-xs text-destructive">
+              <span className="min-w-0 break-words">{modelError} Your draft is kept.</span>
+              {onModelsRefresh ? <button type="button" className="underline" onClick={onModelsRefresh}>Refresh models</button> : null}
+            </div> : null}
             <AutoResizeTextarea
               ref={textareaRef}
               value={text}

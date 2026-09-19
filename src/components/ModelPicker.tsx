@@ -10,6 +10,7 @@ import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelOption } from '../types';
 import ModelScorecard from './ModelScorecard';
 import { refreshModelStats } from '@/lib/modelStats';
+import { resolveComposerModel } from '@/lib/modelSelection';
 
 type Props = {
   open: boolean;
@@ -25,6 +26,7 @@ type Props = {
   /** Default key OpenCode resolves when value is DEFAULT_MODEL. */
   defaultModelId?: string | null;
   collapseProviders?: boolean;
+  requireConcreteModel?: boolean;
   onSelect: (key: string, variant: string) => void;
   onOpenChange: (open: boolean) => void;
 };
@@ -151,6 +153,7 @@ export default function ModelPicker({
   variant = '',
   defaultModelId = null,
   collapseProviders = false,
+  requireConcreteModel = false,
   onSelect,
   onOpenChange,
 }: Props) {
@@ -202,20 +205,23 @@ export default function ModelPicker({
 
   const selectedModel = selectedKey === DEFAULT_MODEL ? defaultModel : byKey.get(selectedKey) ?? null;
   const variantOptions = selectedModel?.details.variants ?? [];
-  const validSelectedVariant = variantOptions.includes(selectedVariant) ? selectedVariant : '';
-  const activeKey = hovered ?? (selectedKey !== DEFAULT_MODEL ? selectedKey : null);
+  const selectionError = requireConcreteModel && selectedKey === DEFAULT_MODEL && !defaultModel
+    ? 'The instance default model is unavailable. Choose an available model.'
+    : resolveComposerModel(selectedKey, selectedVariant, models, defaultModelId).error;
+  const activeKey = hovered && byKey.has(hovered) ? hovered : selectedKey !== DEFAULT_MODEL ? selectedKey : null;
   const activeModel = activeKey ? byKey.get(activeKey) ?? null : null;
   const total = groups.reduce((sum, group) => sum + (group.id === 'recent' ? 0 : group.models.length), 0);
 
   const pick = (key: string) => {
     const nextModel = key === DEFAULT_MODEL ? defaultModel : byKey.get(key) ?? null;
     setSelectedKey(key);
-    setSelectedVariant((current) => nextModel?.details.variants.includes(current) ? current : '');
+    if (key !== selectedKey) setSelectedVariant((current) => nextModel?.details.variants.includes(current) ? current : '');
     setHovered(key === DEFAULT_MODEL ? null : key);
   };
 
   const apply = () => {
-    onSelect(selectedKey, validSelectedVariant);
+    if (selectionError) return;
+    onSelect(selectedKey, selectedVariant);
     onOpenChange(false);
   };
 
@@ -334,7 +340,7 @@ export default function ModelPicker({
               ) : null}
             </div>
 
-            {selectedModel ? <div className="max-h-64 overflow-auto border-t p-3 sm:hidden"><ModelScorecard model={{ ...selectedModel, variant: validSelectedVariant }} instanceId={instanceId} directory={directory} /></div> : null}
+            {selectedModel ? <div className="max-h-64 overflow-auto border-t p-3 sm:hidden"><ModelScorecard model={{ ...selectedModel, variant: selectedVariant }} instanceId={instanceId} directory={directory} /></div> : null}
             <div className="flex-none border-t px-3 py-1.5 text-[10.5px] text-muted-foreground">
               {total} models from {groups.filter((group) => group.id !== 'recent').length} connected providers
             </div>
@@ -342,13 +348,13 @@ export default function ModelPicker({
 
           <div className="hidden min-w-0 flex-1 overflow-y-auto p-5 sm:block">
             {activeModel ? (
-              <Details model={{ ...activeModel, variant: activeKey === selectedKey ? validSelectedVariant : undefined }} instanceId={instanceId} directory={directory} />
+              <Details model={{ ...activeModel, variant: activeKey === selectedKey ? selectedVariant : undefined }} instanceId={instanceId} directory={directory} />
             ) : (
               <div className="flex h-full flex-col justify-center gap-2 text-center text-muted-foreground">
                 <Sparkles className="mx-auto size-5" />
-                <p className="text-[13px] font-medium text-foreground">{defaultLabel}</p>
+                <p className="text-[13px] font-medium text-foreground">{selectedKey !== DEFAULT_MODEL ? 'Selected model unavailable' : defaultLabel}</p>
                 <p className="text-[12px]">
-                  {defaultModel
+                  {selectedKey !== DEFAULT_MODEL ? selectedKey : defaultModel
                     ? 'OpenCode will use this configured model unless you choose another.'
                     : 'The instance picks its configured default. Hover a model on the left to see what it offers.'}
                 </p>
@@ -356,11 +362,12 @@ export default function ModelPicker({
             )}
           </div>
         </div>
+        {selectionError ? <p role="status" className="border-t px-3 py-2 text-xs text-destructive">{selectionError}</p> : null}
         <div className="flex flex-none items-center gap-2 border-t p-2.5">
           <span className="text-[11px] font-medium text-muted-foreground">Reasoning</span>
           <Select
-            value={validSelectedVariant || '__default'}
-            disabled={variantOptions.length === 0}
+            value={selectedVariant || '__default'}
+            disabled={variantOptions.length === 0 && !selectedVariant}
             onValueChange={(next) => setSelectedVariant(next === '__default' ? '' : next)}
           >
             <SelectTrigger size="sm" aria-label="Reasoning level" className="h-7 min-w-32 text-xs capitalize">
@@ -368,6 +375,7 @@ export default function ModelPicker({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__default">Default</SelectItem>
+              {selectedVariant && !variantOptions.includes(selectedVariant) ? <SelectItem value={selectedVariant} disabled>{selectedVariant} (unavailable)</SelectItem> : null}
               {variantOptions.map((option) => (
                 <SelectItem key={option} value={option} className="capitalize">
                   {option}
@@ -379,7 +387,7 @@ export default function ModelPicker({
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button size="sm" onClick={apply}>
+          <Button size="sm" onClick={apply} disabled={Boolean(selectionError)}>
             Done
           </Button>
         </div>

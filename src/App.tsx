@@ -57,6 +57,7 @@ import {
 import { useStableCallback } from '@/lib/useStableCallback';
 import { copyText } from '@/lib/clipboard';
 import { mergeDraftChanges, type DraftChanges } from '@/lib/composerDrafts';
+import { selectedModelError } from '@/lib/modelSelection';
 import { ReadCoordinator } from '@/lib/readCoordinator';
 import { shareValue } from '@/lib/structuralSharing';
 import { TranscriptCache } from '@/lib/transcriptCache';
@@ -1189,6 +1190,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- readyKey is the stable string form of readyIds; refs carry the rest
   }, [readyKey]);
 
+  const refreshModels = useStableCallback(async (instanceId: string) => {
+    const next = await loadModels(instanceId).catch(() => null);
+    if (next) setModelsByInstance((previous) => shareValue(previous, { ...previous, [instanceId]: next }));
+    else showActionError('Could not refresh models. Your model selection has not changed.');
+  });
+
   // ---- Refreshers: one per REST resource. Timers and event hints both call these. ----
   // Each takes the instance ids to refresh and merges the result into state, leaving other
   // instances untouched. Failure preserves prior state (the loaders return null / omit keys).
@@ -1770,6 +1777,8 @@ export default function App() {
   /** Create the session from the draft, then send the first message into it. */
   const handleCreateAndSend = async (options: NewSessionOptions, input: PromptInput): Promise<boolean> => {
     showActionError(null);
+    const modelError = selectedModelError(input.selectedModelId, input.model);
+    if (modelError) { showActionError(modelError); return false; }
     let created: Session | null;
     try {
       created = await createSession(options.instanceId, options.directory);
@@ -1799,6 +1808,10 @@ export default function App() {
       return next;
     });
     const ref = { instanceId: options.instanceId, sessionId: session.id };
+    handleComposerDraftsChange({ [sessionKey(ref)]: {
+      text: '', modelId: input.selectedModelId ?? (input.model ? modelRefKey(input.model) : DEFAULT_MODEL),
+      variant: input.variant, updatedAt: now,
+    } });
     openSession(ref, session);
     if (options.bypass) void setYolo(ref, true, session.directory);
     // The optimistic insert above plus the pendingCreatedSessions grace keep the row visible;
@@ -2522,6 +2535,7 @@ export default function App() {
           permissions={columnPermissions}
           questions={columnQuestions}
           models={models?.models ?? []}
+          onModelsRefresh={() => void refreshModels(ref.instanceId)}
           defaultModelId={models?.defaultModelId ?? null}
           recentModels={recentModelKeys(sessionsByInstance[ref.instanceId] ?? [])}
           sending={sendingKeys.has(key)}
@@ -2548,7 +2562,7 @@ export default function App() {
           onSend={(input) => sendTo(ref, session.directory, input)}
           onQueue={(input) => queue.queueMessage(input, target)}
           onSendQueued={(itemId) => queue.sendQueuedMessage(itemId, target)}
-          onQueuedModelChange={(itemId, model) => queue.changeQueuedModel(itemId, model, target)}
+          onQueuedModelChange={(itemId, model, variant) => queue.changeQueuedModel(itemId, model, target, variant)}
           onMoveQueued={(itemId, direction) => queue.moveQueued(itemId, direction, target)}
           onRemoveQueued={(itemId) => queue.removeQueued(itemId, target)}
           onRetryQueued={(itemId) => queue.retryQueued(itemId, target)}
@@ -2789,6 +2803,7 @@ export default function App() {
                   permissions={[]}
                   questions={[]}
                   models={selectedModels?.models ?? []}
+                  onModelsRefresh={() => { if (newSessionInstanceId) void refreshModels(newSessionInstanceId); }}
                   defaultModelId={selectedModels?.defaultModelId ?? null}
                   recentModels={recentModels}
                   sending={false}

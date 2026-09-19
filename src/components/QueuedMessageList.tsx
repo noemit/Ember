@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronUp, Loader2, Minus, NotebookPen, Pencil, Play } from 'lucide-react';
-import { modelRefKey } from '../types';
+import { DEFAULT_MODEL, modelRefKey } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -267,6 +267,7 @@ export default function QueuedMessageList({
         <React.Suspense fallback={<ModelPickerFallback />}>
           <ModelPicker
             open
+            requireConcreteModel
             models={models}
             recentModels={recentModels}
             value={modelRefKey(queueModelPickerItem.sendConfig)}
@@ -274,7 +275,7 @@ export default function QueuedMessageList({
             defaultModelId={defaultModelId}
             collapseProviders
             onSelect={(next, nextVariant) => {
-              const nextModel = models.find((entry) => modelRefKey(entry) === next);
+              const nextModel = models.find((entry) => modelRefKey(entry) === (next === DEFAULT_MODEL ? defaultModelId : next));
               const itemId = queueModelPickerItem.id;
               setQueueModelPickerItemId(null);
               if (nextModel) {

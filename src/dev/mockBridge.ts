@@ -461,6 +461,7 @@ if (performanceFixture) {
   }));
   permissions.local = [];
   questions.local = [];
+  if (new URLSearchParams(window.location.search).has('busy')) sessions.local[0].status = 'busy';
   settings = { ...settings, openSessions: ['local::perf-0', 'local::perf-1'], activeSession: 'local::perf-0', minimizedSessions: [] };
   const saved = sessionStorage.getItem('ember-performance-settings');
   if (saved) settings = { ...settings, ...JSON.parse(saved) };
@@ -873,7 +874,7 @@ const bridge: EmberBridge = {
       const bulk = Object.fromEntries(
         Array.from({ length: 60 }, (_, i) => [`router-${i}`, model(`router-${i}`, `Router Model ${i}`, { cost: { input: 0, output: 0 }, variants: {}, status: i % 20 === 7 ? 'beta' : 'active' })])
       );
-      return delay(ok({
+      const catalogue: { connected: string[]; all: Array<{ id: string; name: string; models: Record<string, unknown> }>; default: Record<string, string> } = {
         connected: ['anthropic', 'openai', 'router'],
         all: [
           { id: 'anthropic', name: 'Anthropic', models: {
@@ -885,7 +886,14 @@ const bridge: EmberBridge = {
           { id: 'unused', name: 'Unused provider', models: { x: model('x', 'Should not appear') } },
         ],
         default: { 'unused': 'x', 'anthropic': 'claude-sonnet' },
-      }));
+      };
+      const missing = performanceFixture ? new URLSearchParams(window.location.search).get('missingModel') : null;
+      if (missing) {
+        const slash = missing.indexOf('/');
+        const provider = catalogue.all.find((provider) => provider.id === missing.slice(0, slash));
+        if (provider) delete provider.models[missing.slice(slash + 1)];
+      }
+      return delay(ok(catalogue));
     }
     return { ok: false, status: 404, data: null };
   },

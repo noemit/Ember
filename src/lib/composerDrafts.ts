@@ -8,6 +8,10 @@ export type ComposerState = {
   replyContext: ChatMessage | null;
 };
 
+export const clearComposerText = (state: ComposerState): ComposerState => ({
+  ...state, text: '', attachments: [], replyContext: null,
+});
+
 export type DraftChanges = Record<string, StoredComposerDraft | null>;
 
 export const mergeDraftChanges = (

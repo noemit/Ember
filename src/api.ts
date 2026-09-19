@@ -1,5 +1,6 @@
 import { sessionKey } from './types';
 import { shareValue } from './lib/structuralSharing';
+import { selectedModelError } from './lib/modelSelection';
 import type {
   BallState,
   ChatMessage,
@@ -1225,6 +1226,7 @@ export const createClientMessageId = (timestamp = Date.now()): string => {
 
 export type PromptInput = {
   text: string;
+  selectedModelId?: string;
   model?: ModelOption;
   mode?: string;
   /** Reasoning-effort variant advertised by the selected model. */
@@ -1245,8 +1247,9 @@ export const enqueueMessage = async (
   instanceId: string,
   sessionId: string,
   directory: string,
-  { text, model, mode, variant, attachments = [], replyContext, queuedContext = [], agentMention }: QueueMessageInput
+  { text, model, selectedModelId, mode, variant, attachments = [], replyContext, queuedContext = [], agentMention }: QueueMessageInput
 ): Promise<{ ok: boolean; status: number; data: MessageQueueMutation | null }> => {
+  if (selectedModelError(selectedModelId, model)) return { ok: false, status: 400, data: null };
   const sendConfig: Record<string, string> = {
     providerID: model.providerID,
     modelID: model.modelID,
@@ -1326,10 +1329,12 @@ export const reorderQueuedMessages = async (
 export const sendPrompt = async (
   instanceId: string,
   sessionId: string,
-  { text, model, mode, variant, attachments = [], replyContext, queuedContext = [], agentMention }: PromptInput,
+  { text, model, selectedModelId, mode, variant, attachments = [], replyContext, queuedContext = [], agentMention }: PromptInput,
   directory?: string,
   messageId?: string
 ): Promise<{ ok: boolean; status: number; data: unknown }> => {
+  const modelError = selectedModelError(selectedModelId, model);
+  if (modelError) return { ok: false, status: 400, data: { error: modelError } };
   const takenContextParts = queuedContext.flatMap((entry) => {
     const synthetic: Record<string, unknown> = { type: 'text', text: entry.text, synthetic: true };
     if (entry.kind !== 'context') return [synthetic];

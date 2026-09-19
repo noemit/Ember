@@ -10,6 +10,7 @@ import {
 } from '../api';
 import { modelRefKey } from '../types';
 import { shareValue } from '../lib/structuralSharing';
+import { selectedModelError } from '../lib/modelSelection';
 import type {
   MessageQueueSession,
   ModelOption,
@@ -140,12 +141,12 @@ export const useMessageQueue = ({
     instanceId: string,
     item: QueuedMessage,
     model: ModelOption = queuedMessageModel(instanceId, item),
-    variant: string | undefined = item.sendConfig.variant
+    variant: string | null | undefined = item.sendConfig.variant
   ): QueueMessageInput => ({
     text: item.text || item.content,
     model,
     mode: item.sendConfig.agent,
-    variant,
+    variant: variant ?? undefined,
     attachments: item.attachments.flatMap((file) =>
       file.dataUrl ? [{ filename: file.filename, mime: file.mimeType, url: file.dataUrl }] : []
     ),
@@ -247,6 +248,8 @@ export const useMessageQueue = ({
       showActionError('Could not queue this message because the session folder is unknown.');
       return false;
     }
+    const modelError = selectedModelError(input.selectedModelId, input.model);
+    if (modelError) { showActionError(modelError); return false; }
     const modelList = modelsByInstance[instanceId];
     const model = input.model ?? modelList?.models.find(
       (candidate) => modelRefKey(candidate) === modelList.defaultModelId
@@ -358,9 +361,11 @@ export const useMessageQueue = ({
     const originalIndex = queue.items.findIndex((item) => item.id === itemId);
     if (!directory || originalIndex < 0) return false;
     const queuedItem = queue.items[originalIndex];
-    const validNextVariant = nextVariant && nextModel.details.variants.includes(nextVariant)
-      ? nextVariant
-      : undefined;
+    if (nextVariant && !nextModel.details.variants.includes(nextVariant)) {
+      showActionError(`Reasoning level ${nextVariant} is unavailable for ${nextModel.label}. Choose a supported level.`);
+      return false;
+    }
+    const validNextVariant = nextVariant;
     if (
       queuedItem.sendConfig.providerID === nextModel.providerID &&
       queuedItem.sendConfig.modelID === nextModel.modelID &&
@@ -399,7 +404,7 @@ export const useMessageQueue = ({
         instanceId,
         sessionId,
         directory,
-        queuedMessageInput(instanceId, takenItem, nextModel, validNextVariant)
+        queuedMessageInput(instanceId, takenItem, nextModel, validNextVariant ?? null)
       );
       if (!changed.ok || !changed.data) {
         const restored = await restore();

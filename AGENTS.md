@@ -323,6 +323,16 @@ from an event payload.
 - Composer persistence uses per-key `composerDraftChanges` (null deletes), not replacement snapshots.
   `composerMemory` retains transient attachments/reply context across column unmounts. Settings writes
   are serialized in both renderer and main; failed draft patches remain optimistic and retryable.
+  Sending or saving a note clears content but retains a choice-only draft with the selected model and
+  reasoning level. New-agent creation transfers that choice to the created session. Restore choices
+  before paint, independently of session-list metadata. `modelSelection.ts` resolves concrete IDs by
+  exact match: absent models/effort levels block composer sends, queues and note sends without changing
+  the selection. Only the `default` sentinel delegates model choice to the server. `selectedModelId`
+  travels through client send/queue handlers as a fallback guard, never in the upstream request body.
+  Picker opening and the unavailable-model warning can refresh the catalogue; refreshes do not choose
+  a replacement. Queued-message model edits forward reasoning explicitly, including an explicit
+  default/cleared effort; they must not inherit the old queue item's effort by accident.
+  `e2e/modelSelection.pw.ts` verifies outgoing model IDs, effort levels and persistence.
 - Instance probes publish `ember:instances-updated` hints. `listInstances(false)` reads the current
   snapshot without probing; each healthy instance can load while another is still checking.
 - `ReadCoordinator` serializes full/tail transcript reads. Post-mutation and authoritative event
