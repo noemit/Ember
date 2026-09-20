@@ -55,6 +55,16 @@ test('all visible columns have underlines regardless of focus; minimized tabs do
   await expect(visibleMarkers(page)).toHaveCount(2);
 });
 
+test('X on an inactive column archives on the first click, not just activate', async ({ page }) => {
+  await captureMutations(page);
+  const inactive = page.locator('main').nth(1);
+  await expect(inactive.locator('header')).toHaveAttribute('data-active', 'false');
+  await inactive.getByRole('button', { name: 'Archive session', exact: true }).click();
+  await expect(page.locator('textarea')).toHaveCount(1);
+  await expect.poll(async () => (await mutations(page)).filter((entry: { method: string }) => entry.method === 'PATCH').length).toBe(1);
+  expect((await mutations(page))[0].path).toContain('/api/session/perf-1');
+});
+
 test('tab X archives rather than just removing the workspace entry', async ({ page }) => {
   await page.locator('main').first().getByRole('button', { name: 'Minimize session', exact: true }).click();
   await captureMutations(page);

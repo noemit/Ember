@@ -718,7 +718,13 @@ function ChatView({
     <main
       className="relative flex min-w-0 flex-1 overflow-hidden"
       data-session-key={session ? seed : undefined}
-      onPointerDownCapture={onActivate}
+      onPointerDownCapture={(event) => {
+        // Buttons carry their own intent. Activating here would start the column-width
+        // transition under the pointer mid-press, so the click can land off the button —
+        // a single press of × on an inactive column used to just activate instead of archiving.
+        if (event.target instanceof Element && event.target.closest('button, a')) return;
+        onActivate?.();
+      }}
       onKeyDown={(event) => {
         if (session && !event.defaultPrevented && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
           event.preventDefault();
