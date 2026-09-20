@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -92,7 +92,14 @@ const parseInstanceDefaults = (value: unknown): Record<string, InstanceDefaults>
   return defaults;
 };
 
-const PROBE_TIMEOUT_MS = 1500;
+// Health probes cross SSH tunnels and Tailscale links; a momentarily slow remote (e.g. right
+// after the laptop wakes) shouldn't be marked unreachable on a 1.5s budget. The watchdog below
+// re-probes periodically, so a wrong verdict self-heals.
+const PROBE_TIMEOUT_MS = 4000;
+// How often every configured instance is re-probed. Without this an instance marked
+// unreachable (startup while the tunnel was down, a transient flap) stayed dead until the user
+// hit the instances refresh button or restarted — its sessions silently went stale forever.
+const INSTANCE_WATCHDOG_MS = 60_000;
 const API_TIMEOUT_MS = 20_000;
 const MAX_API_BODY_BYTES = 32 * 1024 * 1024;
 const MAX_API_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -304,11 +311,21 @@ const loadInstances = async (refresh = true): Promise<Instance[]> => {
   });
 
   const previous = new Map(instanceSnapshot.map((instance) => [instance.id, instance]));
+  // Broadcast only when the visible snapshot actually changed; the 60s watchdog runs this
+  // function on a timer and shouldn't flicker "checking" badges for identical results.
+  const snapshotSignature = (list: Instance[]): string =>
+    list.map((entry) => `${entry.id}:${entry.status}:${entry.attachable}:${entry.label}:${entry.url ?? ''}`).join('|');
+  const previousSignature = snapshotSignature(instanceSnapshot);
+  const announceIfChanged = () => {
+    if (snapshotSignature(instanceSnapshot) !== previousSignature) {
+      broadcast({ instanceId: '*', type: 'ember:instances-updated' });
+    }
+  };
   instanceSnapshot = candidates.map(({ instance }) => {
     if (instance.status === 'checking') instance.attachable = previous.get(instance.id)?.attachable ?? false;
     return instance;
   });
-  broadcast({ instanceId: '*', type: 'ember:instances-updated' });
+  announceIfChanged();
   await Promise.all(
     candidates.map(async (candidate) => {
       const url = candidate.instance.url;
@@ -318,7 +335,7 @@ const loadInstances = async (refresh = true): Promise<Instance[]> => {
       candidate.instance.status = reachable ? 'ready' : 'unreachable';
       candidate.instance.attachable = reachable;
       eventStreams.sync(instanceSnapshot.filter((instance) => instance.attachable).map((instance) => instance.id));
-      broadcast({ instanceId: '*', type: 'ember:instances-updated' });
+      announceIfChanged();
     })
   );
 
@@ -696,6 +713,15 @@ refreshRemoteServer = () => {
 app.whenReady().then(() => {
   refreshRemoteServer();
   createWindow();
+  // Keep instance health fresh: a remote that was unreachable when probed (sleep, dropped
+  // tunnel, VPN reconnect) reattaches on its own instead of waiting for a manual refresh.
+  setInterval(() => { void loadInstances(true); }, INSTANCE_WATCHDOG_MS).unref();
+  // On wake, bounce half-open sockets now (not in 90s at the stall detector) and re-probe so
+  // remotes that came back while the machine slept reattach immediately.
+  powerMonitor.on('resume', () => {
+    eventStreams.restartAll();
+    void loadInstances(true);
+  });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

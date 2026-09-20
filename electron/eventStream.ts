@@ -27,6 +27,19 @@ const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30_000;
 /** Upstream heartbeats every ~15-30s; past this with no bytes the socket is presumed dead. */
 const STALL_MS = 90_000;
+/**
+ * A TCP connect that never answers (blackholed tunnel, dead VPN peer) must not hang the
+ * subscription: without a deadline here the read loop never starts, the stall timer never arms
+ * and no reconnect is ever scheduled.
+ */
+const CONNECT_TIMEOUT_MS = 20_000;
+
+type StreamTimeouts = { connectMs: number; stallMs: number; reconnectBaseMs: number };
+const DEFAULT_TIMEOUTS: StreamTimeouts = {
+  connectMs: CONNECT_TIMEOUT_MS,
+  stallMs: STALL_MS,
+  reconnectBaseMs: RECONNECT_BASE_MS,
+};
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -115,7 +128,8 @@ class StreamSubscription {
     private readonly stream: EmberEvent['stream'],
     private readonly resolveTarget: () => Target | null,
     private readonly handlers: Handlers,
-    private readonly fetchImpl: typeof fetch = fetch
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly timeouts: StreamTimeouts = DEFAULT_TIMEOUTS
   ) {}
 
   start(): void {
@@ -131,9 +145,28 @@ class StreamSubscription {
     this.abort = null;
   }
 
+  /**
+   * Drop the live socket (or pending retry) and reconnect immediately — used when the system
+   * resumes, where half-open connections would otherwise sit until the stall detector fired.
+   */
+  restart(): void {
+    if (this.stopped) return;
+    this.attempt = 0;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.abort) {
+      // The aborted connect's `finally` schedules the next attempt (~1s away at attempt 0).
+      this.abort.abort();
+      return;
+    }
+    void this.connect();
+  }
+
   private scheduleReconnect(): void {
     if (this.stopped) return;
-    const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.attempt) * (0.75 + Math.random() * 0.5);
+    const delay = Math.min(RECONNECT_MAX_MS, this.timeouts.reconnectBaseMs * 2 ** this.attempt) * (0.75 + Math.random() * 0.5);
     this.attempt += 1;
     this.timer = setTimeout(() => void this.connect(), delay);
   }
@@ -147,10 +180,12 @@ class StreamSubscription {
     }
     const abort = new AbortController();
     this.abort = abort;
-    let stallTimer: NodeJS.Timeout | null = null;
+    // The same timer covers the connect phase (CONNECT deadline) and, once streaming, silence
+    // between frames (STALL deadline).
+    let stallTimer: NodeJS.Timeout | null = setTimeout(() => abort.abort(), this.timeouts.connectMs);
     const armStall = () => {
       if (stallTimer) clearTimeout(stallTimer);
-      stallTimer = setTimeout(() => abort.abort(), STALL_MS);
+      stallTimer = setTimeout(() => abort.abort(), this.timeouts.stallMs);
     };
 
     try {
@@ -198,7 +233,8 @@ export class EventStreamManager {
   constructor(
     private readonly resolveTarget: (instanceId: string) => Target | null,
     private readonly handlers: Handlers,
-    private readonly fetchImpl: typeof fetch = fetch
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly timeouts: StreamTimeouts = DEFAULT_TIMEOUTS
   ) {}
 
   sync(instanceIds: string[]): void {
@@ -232,7 +268,8 @@ export class EventStreamManager {
               this.handlers.onStatus({ instanceId, connected: set.has('opencode') });
             },
           },
-          this.fetchImpl
+          this.fetchImpl,
+          this.timeouts
         );
         sub.start();
         return sub;
@@ -248,6 +285,11 @@ export class EventStreamManager {
   /** Live status of every managed instance, for a renderer that just (re)loaded. */
   snapshot(): Record<string, boolean> {
     return Object.fromEntries([...this.subscriptions.keys()].map((id) => [id, this.isConnected(id)]));
+  }
+
+  /** Bounce every subscription — on system resume, dead sockets are dropped now, not in 90s. */
+  restartAll(): void {
+    for (const subs of this.subscriptions.values()) subs.forEach((sub) => sub.restart());
   }
 
   stopAll(): void {

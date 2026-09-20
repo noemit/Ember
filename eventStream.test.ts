@@ -77,12 +77,16 @@ describe('event hints', () => {
 });
 
 describe('stream manager', () => {
-  const streamResponse = (frames: string[]) =>
+  const streamResponse = (frames: string[], signal?: AbortSignal) =>
     new Response(
       new ReadableStream({
         start(controller) {
           frames.forEach((frame) => controller.enqueue(new TextEncoder().encode(frame)));
-          // Leave the stream open; the test stops the manager.
+          // Leave the stream open; the test stops the manager. A real fetch binds the body to
+          // the request signal, so mirror that: abort closes the stream.
+          signal?.addEventListener('abort', () => {
+            try { controller.close(); } catch { /* already closed */ }
+          });
         },
       }),
       { status: 200, headers: { 'content-type': 'text/event-stream' } }
@@ -118,6 +122,53 @@ describe('stream manager', () => {
     expect(events.map((event) => event.type).sort()).toEqual(['openchamber:session-activity', 'session.status']);
     manager.stopAll();
     expect(manager.isConnected('a')).toBe(false);
+  });
+
+  test('a hung connect is aborted by the connect deadline and retried', async () => {
+    let calls = 0;
+    const fetchImpl = ((input: string | URL | Request, init?: RequestInit) => {
+      calls += 1;
+      // Never answers, like a blackholed tunnel; honours AbortSignal like undici.
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+    }) as typeof fetch;
+    const statuses: boolean[] = [];
+    const manager = new EventStreamManager(
+      () => ({ url: 'http://c.test', headers: {} }),
+      { onEvent: () => {}, onStatus: (status) => statuses.push(status.connected) },
+      fetchImpl,
+      { connectMs: 20, stallMs: 60_000, reconnectBaseMs: 5 }
+    );
+    manager.sync(['c']);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(manager.isConnected('c')).toBe(false);
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(statuses.every((connected) => connected === false)).toBe(true);
+    manager.stopAll();
+  });
+
+  test('restartAll drops the live socket and reconnects without waiting for the stall timer', async () => {
+    let calls = 0;
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      calls += 1;
+      return streamResponse(['data: {"type":"openchamber:session-activity","properties":{"sessionId":"s1"}}\n\n'], init?.signal ?? undefined);
+    }) as typeof fetch;
+    const manager = new EventStreamManager(
+      () => ({ url: 'http://d.test', headers: {} }),
+      { onEvent: () => {}, onStatus: () => {} },
+      fetchImpl,
+      { connectMs: 60_000, stallMs: 60_000, reconnectBaseMs: 5 }
+    );
+    manager.sync(['d']);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(manager.isConnected('d')).toBe(true);
+    const connectedCalls = calls;
+    manager.restartAll();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls).toBeGreaterThan(connectedCalls);
+    expect(manager.isConnected('d')).toBe(true);
+    manager.stopAll();
   });
 
   test('a failed connect is not "live" and gets retried', async () => {

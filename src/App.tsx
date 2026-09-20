@@ -1568,9 +1568,17 @@ export default function App() {
     const resume = () => {
       if (!document.hidden) readyIds.forEach(catchUp);
     };
+    const online = () => {
+      // A restored network can also mean a changed tunnel or port; reprobe so an instance
+      // marked unreachable reattaches instead of waiting for the watchdog.
+      void readInstances().catch(() => {});
+      resume();
+    };
     document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', online);
     return () => {
       document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('online', online);
       unsubscribe();
       invalidationQueue.clear();
     };
@@ -1970,6 +1978,9 @@ export default function App() {
       setQuestionsByInstance((current) => ({ ...current, [session.instanceId]: questionResult.value! }));
     }
     if (results.some((result) => result.status === 'rejected')) {
+      // A failed reload often means the instance dropped; reprobe so its status is honest and a
+      // revived remote reattaches without waiting for the watchdog.
+      void readInstances().catch(() => {});
       showActionError(
         'Some session data could not be refreshed.',
         () => void handleReloadSession(session)

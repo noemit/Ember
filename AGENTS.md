@@ -70,6 +70,11 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `electron/eventStream.ts` — SSE client for the two per-instance streams (see Data freshness).
   It parses frames, keeps only `{ instanceId, type, sessionId?, directory? }`, and reconnects with
   jittered backoff; main fans hints out to windows (`ember:event`) and to `/remote/events`.
+  Each subscription has a connect-phase deadline (a blackholed connect can't stall the read loop
+  forever) and a byte-silence stall detector, plus `restartAll()` for system resume. Recovery is
+  layered: a 60s watchdog re-probes every instance so an `unreachable` verdict self-heals (probe
+  results broadcast only on change), and `powerMonitor` `resume` bounces all sockets and reprobes
+  immediately; the renderer also reprobes on `online` and after a failed session reload.
 - `src/components/ChatView.tsx` — the transcript shell and composer. Text, model, reasoning variant,
   attachments, and reply context are kept per session; the one-line textarea grows to a
   capped height and failed sends restore the draft. Draft text and model choices persist
