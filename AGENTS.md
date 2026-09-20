@@ -97,10 +97,13 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   then compacts the fork so the new session carries just the summary and the source is left
   untouched (`POST /api/openchamber/sessions/:id/fork` + `/api/session/:id/summarize`). The
   same two display settings are also editable from the top bar's View options dialog
-  (`ViewOptionsDialog.tsx`). As a workspace column it also shows an archive button next to the
-  instance badge (`onArchive`) and minimize/close controls in the header (`onMinimize`/`onClose`),
-  and calls `onActivate` on pointer-down so the active session (and the rail's ring/highlight)
-  follows the column the user is working in.
+  (`ViewOptionsDialog.tsx`). As a workspace column it shows minimize and archive controls in the
+  header (`onMinimize`/`onArchive`; × archives through App's `requestArchive`, which routes busy,
+  queued or input-blocked sessions through `ArchiveSessionDialog.tsx` first and always offers
+  Undo — it never sends an abort), and calls `onActivate` on pointer-down so the active session
+  (and the rail's row highlight) follows the column the user is working in. The active column's
+  header is tinted (`data-active`); rail blobs show an underline while their session is a column
+  (`visibleColumn`/`visibleKeys`), so two open panels means two underlines.
 - `src/components/InstanceBar.tsx` — the top bar (Ember wordmark, command palette, view options,
   instances menu, settings). App passes the error/notice toasts as `banner`, so they render inline
   next to the search button; both self-dismiss (errors after three minutes).
@@ -144,8 +147,8 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `src/components/ColumnTabStrip.tsx` — the numbered strip above the columns (right of the rail) of
   the open sessions that aren't currently columns (overflow + minimized). Columns and tabs share one
   numbering (1-based `openSessions` order, so `Cmd/Ctrl+1–9` is stable); a tab click loads it into
-  the **rightmost** column, the chevron minimizes/restores (sticky across restarts), the archive
-  button archives, and × closes. Renders nothing when everything fits. App remembers each project's
+  the **rightmost** column, the chevron minimizes/restores (sticky across restarts), and ×
+  archives (same `requestArchive` path as the column header). Renders nothing when everything fits. App remembers each project's
   column order, minimized set and active session (`projectLayoutsRef`) so leaving and returning
   restores the arrangement; reopening a project always reopens *all* its sessions, so closing one
   isn't a dead end.

@@ -4,7 +4,6 @@ import { Archive, Box, Pin, Plus } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { blobStripLayout } from '@/lib/projectGroups';
 import { ARCHIVE_AGE_OPTIONS, bulkArchiveTargets } from '@/lib/bulkArchive';
-import { cn } from '@/lib/utils';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -29,7 +28,8 @@ type Props = {
   markerColor: number | undefined;
   sessions: Session[];
   moods: Record<string, BallMood>;
-  selectedKey: string | null;
+  /** Session keys shown as workspace columns; each visible blob gets an underline. */
+  visibleKeys: Set<string>;
   avatarIdentities: Record<string, AvatarIdentity>;
   blobStyle: BlobStyle;
   reloadingKeys: Set<string>;
@@ -64,7 +64,7 @@ export default function ProjectCard({
   markerColor,
   sessions,
   moods,
-  selectedKey,
+  visibleKeys,
   avatarIdentities,
   blobStyle,
   reloadingKeys,
@@ -142,7 +142,7 @@ export default function ProjectCard({
         {visible.map((session) => {
           const key = sessionKey(session);
           const title = session.title ?? session.id;
-          const selected = key === selectedKey;
+          const visible = visibleKeys.has(key);
           return (
             <ContextMenu key={key}>
               <Tooltip>
@@ -151,10 +151,9 @@ export default function ProjectCard({
                     <span
                       role="button"
                       tabIndex={0}
-                      className={cn(
-                        'relative flex-none cursor-pointer rounded-full outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-1 focus-visible:ring-offset-card',
-                        selected ? 'ring-2 ring-highlight ring-offset-1 ring-offset-card' : undefined
-                      )}
+                      data-session-key={key}
+                      data-visible-column={visible ? 'true' : undefined}
+                      className="relative flex-none cursor-pointer rounded-full outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-1 focus-visible:ring-offset-card"
                       aria-label={title}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -175,6 +174,13 @@ export default function ProjectCard({
                         size={layout.size}
                         mood={moods[key] ?? 'idle'}
                       />
+                      {visible ? (
+                        <span
+                          data-column-underline
+                          aria-hidden="true"
+                          className="pointer-events-none absolute -bottom-1 left-1/2 h-[3px] w-[55%] min-w-3 -translate-x-1/2 rounded-full bg-highlight"
+                        />
+                      ) : null}
                       {pinnedCounts[key] ? (
                         <span
                           className="pointer-events-none absolute -bottom-0.5 -left-0.5 flex size-3 items-center justify-center rounded-full bg-background text-highlight ring-1 ring-border"

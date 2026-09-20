@@ -4,6 +4,7 @@ import InstanceBar from './components/InstanceBar';
 import LeftRail from './components/LeftRail';
 import ChatView from './components/ChatView';
 import ColumnTabStrip, { type WorkspaceTab } from './components/ColumnTabStrip';
+import ArchiveSessionDialog from './components/ArchiveSessionDialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { applyTheme } from './themes';
 import {
@@ -72,6 +73,7 @@ import { useFeedback } from './hooks/useFeedback';
 import { mergePolledQueues, useMessageQueue, type QueueTarget } from './hooks/useMessageQueue';
 import { usePoll } from './hooks/usePoll';
 import { newSessionDirectoryPrefill, newSessionModelPrefill } from './lib/newSessionDefaults';
+import { isSessionBusy } from './lib/bulkArchive';
 import { notesKeyForSession } from './lib/projectGroups';
 import { countPinsBySession } from './lib/pins';
 import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
@@ -269,6 +271,7 @@ export default function App() {
   const [avatarPickerSession, setAvatarPickerSession] = React.useState<Session | null>(null);
   const [settingsView, setSettingsView] = React.useState<'general' | 'instances'>('general');
   const [archiveOpen, setArchiveOpen] = React.useState(false);
+  const [archiveConfirmKey, setArchiveConfirmKey] = React.useState<string | null>(null);
   const [showScheduled, setShowScheduled] = React.useState(false);
   const [mobileRailOpen, setMobileRailOpen] = React.useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
@@ -2003,13 +2006,22 @@ export default function App() {
         ),
       }));
       // Archived sessions never stay open; a neighbour takes over if this was the active column.
-      if (archived) closeSession(sessionKey(session));
+      const wasOpen = openSessionsRef.current.includes(key);
+      if (archived) closeSession(key);
       setActionNotice(
         archived
           ? {
               message: 'Session archived.',
               actionLabel: 'Undo',
-              action: () => void handleArchive(session, false),
+              // Undo restores the session on the instance and reopens it if the archive closed it.
+              action: () => {
+                void (async () => {
+                  await handleArchive(session, false);
+                  if (wasOpen) {
+                    openSession({ instanceId: session.instanceId, sessionId: session.id }, session);
+                  }
+                })();
+              },
             }
           : { message: 'Session restored.' }
       );
@@ -2029,6 +2041,26 @@ export default function App() {
         return next;
       });
     }
+  };
+
+  /**
+   * Archive from a session's × control (header or tab). A session with live work, a pending
+   * permission/question or queued messages gets one confirmation first; archiving never sends an
+   * abort and always offers Undo.
+   */
+  const requestArchive = (session: Session) => {
+    const key = sessionKey(session);
+    const ref = parseSessionKey(key);
+    if (!ref || session.archived || archivingKeys.has(key)) return;
+    const pending =
+      isSessionBusy(moods[key] ?? 'idle') ||
+      permissions.some((entry) => entry.instanceId === ref.instanceId && entry.sessionId === ref.sessionId) ||
+      questions.some((entry) => entry.instanceId === ref.instanceId && entry.sessionId === ref.sessionId) ||
+      (queuesByInstance[ref.instanceId] ?? []).some(
+        (entry) => entry.sessionId === ref.sessionId && entry.items.length > 0
+      );
+    if (pending) setArchiveConfirmKey(key);
+    else void handleArchive(session, true);
   };
 
   /** Bulk archive/restore from a project card's `+N` menu, with one undo notice for the batch. */
@@ -2438,6 +2470,8 @@ export default function App() {
 
   const multiInstance = readyIds.length > 1;
 
+  const archiveConfirmSession = archiveConfirmKey ? sessionByKey.get(archiveConfirmKey) ?? null : null;
+
   // The column the user is working in: whichever they last clicked, focused or scrolled. Before
   // any interaction (or if that session left), the most recently updated visible column stands in
   // using data already in hand — no polling. If timestamps are missing, any non-idle column will do.
@@ -2576,9 +2610,8 @@ export default function App() {
           handoffing={handoffKeys.has(key)}
           onHandoff={() => void handleHandoff(session)}
           onMinimize={() => minimizeSession(key)}
-          onClose={() => closeSession(key)}
           onActivate={() => activateSession(key)}
-          onArchive={() => void handleArchive(session, true)}
+          onArchive={() => requestArchive(session)}
         />
       </div>
     );
@@ -2723,6 +2756,7 @@ export default function App() {
               mobileOpen={mobileRailOpen}
               reloadingKeys={reloadingKeys}
               archivingKeys={archivingKeys}
+              visibleColumnKeys={columnKeySet}
               pinnedCounts={pinnedCountsBySession}
               windowLabel={
                 SESSION_WINDOWS.find((option) => option.hours === sessionWindowHours && option.hours > 0)
@@ -2778,9 +2812,8 @@ export default function App() {
                   const session = (sessionsByInstance[ref.instanceId] ?? []).find(
                     (entry) => entry.id === ref.sessionId
                   );
-                  if (session) void handleArchive(session, true);
+                  if (session) requestArchive(session);
                 }}
-                onClose={closeSession}
               />
               <div ref={workspaceRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
               {newSessionInstanceId || columns.length === 0 ? (
@@ -2880,6 +2913,18 @@ export default function App() {
               }}
             />
           </React.Suspense>
+
+          {archiveConfirmSession ? (
+            <ArchiveSessionDialog
+              session={archiveConfirmSession}
+              onCancel={() => setArchiveConfirmKey(null)}
+              onConfirm={() => {
+                const confirmed = archiveConfirmSession;
+                setArchiveConfirmKey(null);
+                void handleArchive(confirmed, true);
+              }}
+            />
+          ) : null}
 
           {archiveOpen ? (
             <React.Suspense fallback={<DialogFallback label="Loading archive…" />}>

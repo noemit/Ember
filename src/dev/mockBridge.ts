@@ -462,6 +462,9 @@ if (performanceFixture) {
   permissions.local = [];
   questions.local = [];
   if (new URLSearchParams(window.location.search).has('busy')) sessions.local[0].status = 'busy';
+  if (new URLSearchParams(window.location.search).has('waiting')) permissions.local = [{
+    id: 'archive-permission', sessionID: 'perf-0', permission: 'bash', patterns: ['echo pending'], metadata: {}, always: [],
+  }];
   settings = { ...settings, openSessions: ['local::perf-0', 'local::perf-1'], activeSession: 'local::perf-0', minimizedSessions: [] };
   const saved = sessionStorage.getItem('ember-performance-settings');
   if (saved) settings = { ...settings, ...JSON.parse(saved) };

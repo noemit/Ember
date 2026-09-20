@@ -41,6 +41,8 @@ type Props = {
   mobileOpen: boolean;
   reloadingKeys: Set<string>;
   archivingKeys: Set<string>;
+  /** Session keys currently rendered as workspace columns; each gets an underline on its blob. */
+  visibleColumnKeys: Set<string>;
   /** Session key → how many messages are pinned, so rows/blobs can flag it. */
   pinnedCounts: Record<string, number>;
   /** The currently open session, if any. Pinned to the rail when filters hide it. */
@@ -87,6 +89,7 @@ export default function LeftRail({
   mobileOpen,
   reloadingKeys,
   archivingKeys,
+  visibleColumnKeys,
   pinnedCounts,
   selectedSession,
   windowLabel,
@@ -287,6 +290,7 @@ export default function LeftRail({
         topMeta={topMetaFor(session)}
         preview={previews[key]}
         selected={key === selectedKey}
+        visibleColumn={visibleColumnKeys.has(key)}
         mood={moods[key] ?? 'idle'}
         reloading={reloadingKeys.has(key)}
         archiving={archivingKeys.has(key)}
@@ -329,6 +333,7 @@ export default function LeftRail({
           topMeta={instance?.label ? instanceMeta(instance.label) : undefined}
           preview={previews[key]}
           selected={key === selectedKey}
+          visibleColumn={visibleColumnKeys.has(key)}
           mood={moods[key] ?? 'idle'}
           reloading={reloadingKeys.has(key)}
           archiving={archivingKeys.has(key)}
@@ -353,7 +358,7 @@ export default function LeftRail({
         markerColor={instanceDefaults[entry.instanceId]?.markerColor}
         sessions={entry.sessions}
         moods={moods}
-        selectedKey={selectedKey}
+        visibleKeys={visibleColumnKeys}
         avatarIdentities={avatarIdentities}
         blobStyle={blobStyle}
         reloadingKeys={reloadingKeys}

@@ -51,6 +51,8 @@ export type SessionRowProps = {
   projectName: string | undefined;
   preview: string | undefined;
   selected: boolean;
+  /** True while the session is a workspace column; an underline under the blob marks it. */
+  visibleColumn?: boolean;
   mood: BallMood;
   reloading: boolean;
   archiving: boolean;
@@ -149,6 +151,7 @@ const SessionRow = React.memo(function SessionRow({
   projectName,
   preview,
   selected,
+  visibleColumn,
   mood,
   reloading,
   archiving,
@@ -199,10 +202,21 @@ const SessionRow = React.memo(function SessionRow({
               selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
             )}
           >
-            <div className="relative mt-[7px]">
+            <div
+              className="relative mt-[7px]"
+              data-session-key={key}
+              data-visible-column={visibleColumn ? 'true' : undefined}
+            >
               {/* Project/task/session identity is resolved once in App so every surface stays aligned,
                   including across instances that reuse session ids. */}
               <Blob style={blobStyle} seed={key} identity={identity} size={55} mood={mood} />
+              {visibleColumn ? (
+                <span
+                  data-column-underline
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -bottom-1.5 left-1/2 h-[3px] w-7 -translate-x-1/2 rounded-full bg-highlight"
+                />
+              ) : null}
               {pinnedCount ? (
                 <span
                   className="pointer-events-none absolute -bottom-0.5 -left-0.5 flex size-4 items-center justify-center rounded-full bg-background text-highlight ring-1 ring-border"

@@ -69,7 +69,7 @@ Open `http://localhost:5179`. This runs Vite with a **mock bridge and synthetic 
 
 - Click a **project title** to open its sessions together; click a **session avatar** to open just that session.
 - Click **New agent** or a project's **+** to prepare a draft. Choose the instance, folder, and model; the first send creates the session.
-- **Minimize** keeps a session as a tab. **Close** removes it from the workspace without archiving it. **Archive** changes its state in OpenChamber and offers Undo.
+- **Minimize** keeps a session as a tab. **×** archives it in OpenChamber and offers Undo; archiving a session that is working, has queued messages, or is waiting for input asks for one confirmation first (it never sends a stop command). Every sidebar blob whose session is on screen gets a small underline — one per open column.
 - Use the project's **ellipsis menu** to archive inactive or older sessions. Cleanup excludes sessions known to be working or waiting for input.
 - Messages sent while a session is busy go into its **OpenChamber queue**. Notes are different: they stay parked until you explicitly send them or bring them back into the composer.
 - Model selection is per session. If a chosen model or reasoning level is absent from the loaded catalogue, Ember keeps the choice and draft, explains the problem, and blocks composer submission. Refresh the catalogue or explicitly choose a replacement. **Server default** is an intentional selection, not a silent fallback.

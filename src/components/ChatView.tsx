@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Archive, ArrowUp, Box, ChevronDown, GitFork, Loader2, MessageCircleQuestion, Minimize2, NotebookPen, Paperclip, Pin, Play, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowUp, Box, ChevronDown, GitFork, Loader2, MessageCircleQuestion, Minimize2, NotebookPen, Paperclip, Pin, Play, RefreshCw, Reply, ShieldAlert, ShieldCheck, Square, X } from 'lucide-react';
 import Blob from '../blob/Blob';
 import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelPrefill } from '../lib/newSessionDefaults';
@@ -144,12 +144,10 @@ type Props = {
   onHandoff: () => void;
   /** Column chrome: collapse this column into the tab strip. */
   onMinimize?: () => void;
-  /** Column chrome: close this session's column. */
-  onClose?: () => void;
+  /** Column chrome: archive this session (Undo is offered by the app-level notice). */
+  onArchive?: () => void;
   /** Called when the user interacts with this column, so the active session follows focus. */
   onActivate?: () => void;
-  /** Archive this session from its header (next to the instance badge). */
-  onArchive?: () => void;
   /** The column the user is working in; inactive columns trim their composer chrome. Defaults true. */
   active?: boolean;
 };
@@ -294,7 +292,6 @@ function ChatView({
   handoffing,
   onHandoff,
   onMinimize,
-  onClose,
   onActivate,
   onArchive,
   active = true,
@@ -720,6 +717,7 @@ function ChatView({
   return (
     <main
       className="relative flex min-w-0 flex-1 overflow-hidden"
+      data-session-key={session ? seed : undefined}
       onPointerDownCapture={onActivate}
       onKeyDown={(event) => {
         if (session && !event.defaultPrevented && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
@@ -739,7 +737,7 @@ function ChatView({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.16 }}
           >
-            <header className="flex h-11 flex-none items-center gap-2.5 border-b px-3 sm:px-4">
+            <header data-active={active} className="flex h-11 flex-none items-center gap-2.5 border-b px-3 sm:px-4 data-[active=true]:bg-muted/25">
               <span
                 className="min-w-0 flex-1 truncate text-[13px] font-medium"
                 style={instanceMarkerColor === undefined ? undefined : {
@@ -788,22 +786,6 @@ function ChatView({
                   {instance.label}
                 </Badge>
               ) : null}
-              {onArchive ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={onArchive}
-                      aria-label="Archive session"
-                      className="text-muted-foreground"
-                    >
-                      <Archive className="size-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Archive session</TooltipContent>
-                </Tooltip>
-              ) : null}
               <Button
                 variant="outline"
                 size="sm"
@@ -825,7 +807,7 @@ function ChatView({
               >
                 <ToolCallsIcon hidden={hideToolCalls} casing="var(--muted)" className="size-3.5" />
               </Toggle>
-              {onMinimize || onClose ? (
+              {onMinimize || onArchive ? (
                 <div className="flex items-center gap-0.5">
                   {onMinimize ? (
                     <Tooltip>
@@ -842,19 +824,19 @@ function ChatView({
                       <TooltipContent>Minimize to a tab</TooltipContent>
                     </Tooltip>
                   ) : null}
-                  {onClose ? (
+                  {onArchive ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={onClose}
-                          aria-label="Close session"
+                          onClick={onArchive}
+                          aria-label="Archive session"
                         >
                           <X className="size-3.5" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Close session</TooltipContent>
+                      <TooltipContent>Archive session</TooltipContent>
                     </Tooltip>
                   ) : null}
                 </div>
