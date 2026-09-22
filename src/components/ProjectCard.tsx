@@ -20,10 +20,8 @@ import type { AvatarIdentity, BallMood, BlobStyle, Project, Session } from '../t
 
 // The rail is 320px wide; strip sits inside px-1.5 rail + px-2 card padding.
 const STRIP_WIDTH = 280;
-// Each blob carries a title label beneath it: 10 chars plus an em-dash when cut.
+// Each blob carries its title as a two-line chip beneath it (hard-clipped — no ellipsis).
 const LABEL_WIDTH = 56;
-const shortTitle = (title: string) =>
-  title.length > 10 ? `${title.slice(0, 10).trimEnd()}—` : title;
 
 type Props = {
   project: Project;
@@ -190,8 +188,10 @@ export default function ProjectCard({
                           </span>
                         ) : null}
                       </span>
-                      <span className="mt-0.5 w-full truncate text-center text-[9px] leading-tight text-muted-foreground">
-                        {shortTitle(title)}
+                      <span data-blob-label className="mt-0.5 block max-h-[26px] w-full overflow-hidden text-center">
+                        <span className="rounded-sm bg-muted px-1 py-px text-[10px] leading-[13px] break-words text-muted-foreground [box-decoration-break:clone] [-webkit-box-decoration-break:clone]">
+                          {title}
+                        </span>
                       </span>
                       {visible ? (
                         <span

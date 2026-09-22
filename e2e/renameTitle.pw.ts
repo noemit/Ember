@@ -30,8 +30,8 @@ test('double-clicking the header title renames the session on the instance', asy
   const [patch] = await mutations(page);
   expect(patch.path).toContain('/api/session/perf-0');
   expect(patch.body.title).toBe('Renamed session');
-  // The blob's label in the rail follows the rename (truncated at 10 chars + em-dash).
-  await expect(page.locator('aside [data-session-key="local::perf-0"]')).toContainText('Renamed se—');
+  // The blob's label chip in the rail follows the rename.
+  await expect(page.locator('aside [data-session-key="local::perf-0"]')).toContainText('Renamed session');
 });
 
 test('Escape cancels the rename without touching the instance', async ({ page }) => {
@@ -47,9 +47,14 @@ test('Escape cancels the rename without touching the instance', async ({ page })
   expect(await mutations(page)).toHaveLength(0);
 });
 
-test('every blob in a project card carries a truncated title label', async ({ page }) => {
+test('every blob in a project card carries a two-line title chip', async ({ page }) => {
   const blob = page.locator('aside [data-session-key="local::perf-0"]');
-  // "Performance session 0" → first 10 chars + an em-dash, not an ellipsis.
-  await expect(blob).toContainText('Performanc—');
+  // The full title is present in a chip under the blob — clipped after two lines, never
+  // shortened with an ellipsis or em-dash.
+  await expect(blob).toContainText('Performance session 0');
   await expect(blob).not.toContainText('…');
+  await expect(blob).not.toContainText('—');
+  const label = blob.locator('[data-blob-label]');
+  const box = await label.boundingBox();
+  expect(box?.height).toBeLessThanOrEqual(27);
 });

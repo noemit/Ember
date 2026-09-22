@@ -131,7 +131,7 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   The selected session is pinned into the list even when filters hide it.
 - `src/components/ProjectCard.tsx` — a multi-session project: name, `+`, and a row of 48px
   mood-carrying blobs that shrink then overflow to `+N`. Every blob carries the session title
-  beneath it, truncated to 10 characters plus an em-dash (`shortTitle`), so `blobStripLayout`
+  beneath it as a two-line chip (hard-clipped, no ellipsis), so `blobStripLayout`
   counts each item at `LABEL_WIDTH` (56px) even when blobs shrink below it. Clicking the project name/body opens the
   project; clicking a blob opens just that session; right-clicking a blob still offers the per-session
   menu. Right-clicking the `+N` chip opens a tidy-up menu ("Archive N inactive" plus "older than 1
