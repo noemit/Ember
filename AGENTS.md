@@ -108,7 +108,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   Undo — it never sends an abort), and calls `onActivate` on pointer-down so the active session
   (and the rail's row highlight) follows the column the user is working in. The active column's
   header is tinted (`data-active`); rail blobs show an underline while their session is a column
-  (`visibleColumn`/`visibleKeys`), so two open panels means two underlines.
+  (`visibleColumn`/`visibleKeys`), so two open panels means two underlines. Double-clicking the
+  header title renames the session on its instance (`PATCH /api/session/:id` `{ title }`; the
+  local copy bumps `updated` so a stale in-flight poll can't revert it).
 - `src/components/InstanceBar.tsx` — the top bar (Ember wordmark, command palette, view options,
   instances menu, settings). App passes the error/notice toasts as `banner`, so they render inline
   next to the search button; both self-dismiss (errors after three minutes).
@@ -128,7 +130,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   appear in search results when their name or path matches, listed after projects that have sessions.
   The selected session is pinned into the list even when filters hide it.
 - `src/components/ProjectCard.tsx` — a multi-session project: name, `+`, and a row of 48px
-  mood-carrying blobs that shrink then overflow to `+N`. Clicking the project name/body opens the
+  mood-carrying blobs that shrink then overflow to `+N`. Every blob carries the session title
+  beneath it, truncated to 10 characters plus an em-dash (`shortTitle`), so `blobStripLayout`
+  counts each item at `LABEL_WIDTH` (56px) even when blobs shrink below it. Clicking the project name/body opens the
   project; clicking a blob opens just that session; right-clicking a blob still offers the per-session
   menu. Right-clicking the `+N` chip opens a tidy-up menu ("Archive N inactive" plus "older than 1
   day / 3 days / 1 week / 2 weeks / 1 month" with counts), driven by `src/lib/bulkArchive.ts`. Bulk

@@ -20,6 +20,10 @@ import type { AvatarIdentity, BallMood, BlobStyle, Project, Session } from '../t
 
 // The rail is 320px wide; strip sits inside px-1.5 rail + px-2 card padding.
 const STRIP_WIDTH = 280;
+// Each blob carries a title label beneath it: 10 chars plus an em-dash when cut.
+const LABEL_WIDTH = 56;
+const shortTitle = (title: string) =>
+  title.length > 10 ? `${title.slice(0, 10).trimEnd()}—` : title;
 
 type Props = {
   project: Project;
@@ -78,7 +82,7 @@ export default function ProjectCard({
   onArchiveMany,
   onCustomizeAppearance,
 }: Props) {
-  const layout = blobStripLayout(sessions.length, STRIP_WIDTH, 48, 30);
+  const layout = blobStripLayout(sessions.length, STRIP_WIDTH, 48, 30, 4, LABEL_WIDTH);
   const visible = sessions.slice(0, layout.visible);
   // Recomputed per render so the menu's counts stay current with the session list.
   const inactiveTargets = bulkArchiveTargets(sessions, moods, { now: Date.now() });
@@ -153,7 +157,8 @@ export default function ProjectCard({
                       tabIndex={0}
                       data-session-key={key}
                       data-visible-column={visible ? 'true' : undefined}
-                      className="relative flex-none cursor-pointer rounded-full outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-1 focus-visible:ring-offset-card"
+                      className="relative flex flex-none cursor-pointer flex-col items-center rounded-md outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-1 focus-visible:ring-offset-card"
+                      style={{ width: Math.max(layout.size, LABEL_WIDTH) }}
                       aria-label={title}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -167,28 +172,33 @@ export default function ProjectCard({
                         }
                       }}
                     >
-                      <Blob
-                        style={blobStyle}
-                        seed={key}
-                        identity={avatarIdentities[key]}
-                        size={layout.size}
-                        mood={moods[key] ?? 'idle'}
-                      />
+                      <span className="relative">
+                        <Blob
+                          style={blobStyle}
+                          seed={key}
+                          identity={avatarIdentities[key]}
+                          size={layout.size}
+                          mood={moods[key] ?? 'idle'}
+                        />
+                        {pinnedCounts[key] ? (
+                          <span
+                            className="pointer-events-none absolute -bottom-0.5 -left-0.5 flex size-3 items-center justify-center rounded-full bg-background text-highlight ring-1 ring-border"
+                            title={`${pinnedCounts[key]} pinned message${pinnedCounts[key] === 1 ? '' : 's'}`}
+                            aria-label={`${pinnedCounts[key]} pinned`}
+                          >
+                            <Pin className="size-1.5" />
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-0.5 w-full truncate text-center text-[9px] leading-tight text-muted-foreground">
+                        {shortTitle(title)}
+                      </span>
                       {visible ? (
                         <span
                           data-column-underline
                           aria-hidden="true"
                           className="pointer-events-none absolute -bottom-1 left-1/2 h-[3px] w-[55%] min-w-3 -translate-x-1/2 rounded-full bg-highlight"
                         />
-                      ) : null}
-                      {pinnedCounts[key] ? (
-                        <span
-                          className="pointer-events-none absolute -bottom-0.5 -left-0.5 flex size-3 items-center justify-center rounded-full bg-background text-highlight ring-1 ring-border"
-                          title={`${pinnedCounts[key]} pinned message${pinnedCounts[key] === 1 ? '' : 's'}`}
-                          aria-label={`${pinnedCounts[key]} pinned`}
-                        >
-                          <Pin className="size-1.5" />
-                        </span>
                       ) : null}
                     </span>
                   </ContextMenuTrigger>

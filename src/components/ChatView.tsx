@@ -146,6 +146,8 @@ type Props = {
   onMinimize?: () => void;
   /** Column chrome: archive this session (Undo is offered by the app-level notice). */
   onArchive?: () => void;
+  /** Persist a new session title on its instance (double-click on the header title). */
+  onRename?: (title: string) => void;
   /** Called when the user interacts with this column, so the active session follows focus. */
   onActivate?: () => void;
   /** The column the user is working in; inactive columns trim their composer chrome. Defaults true. */
@@ -294,9 +296,11 @@ function ChatView({
   onMinimize,
   onActivate,
   onArchive,
+  onRename,
   active = true,
 }: Props) {
   const [text, setText] = React.useState('');
+  const [editingTitle, setEditingTitle] = React.useState(false);
   const [modelId, setModelId] = React.useState(DEFAULT_MODEL);
   const [variant, setVariant] = React.useState('');
   const [loadedComposerKey, setLoadedComposerKey] = React.useState<string | null>(null);
@@ -528,6 +532,12 @@ function ChatView({
     return () => window.cancelAnimationFrame(frame);
   }, [composerKey]);
 
+  const commitRename = (value: string) => {
+    setEditingTitle(false);
+    const next = value.trim();
+    if (next && session && next !== session.title) onRename?.(next);
+  };
+
   const { model, error: modelError } = resolveComposerModel(modelId, variant, models, defaultModelId);
   const defaultModel = defaultModelId ? models.find((entry) => modelRefKey(entry) === defaultModelId) : undefined;
   const modelButtonLabel = modelId === DEFAULT_MODEL
@@ -744,17 +754,34 @@ function ChatView({
             transition={{ duration: 0.16 }}
           >
             <header data-active={active} className="flex h-11 flex-none items-center gap-2.5 border-b px-3 sm:px-4 data-[active=true]:bg-muted/25">
-              <span
-                className="min-w-0 flex-1 truncate text-[13px] font-medium"
-                style={instanceMarkerColor === undefined ? undefined : {
-                  textDecoration: 'underline',
-                  textDecorationColor: `var(--instance-marker-${instanceMarkerColor})`,
-                  textDecorationThickness: '2px',
-                  textUnderlineOffset: '3px',
-                }}
-              >
-                {session.title ?? session.id}
-              </span>
+              {editingTitle ? (
+                <input
+                  autoFocus
+                  defaultValue={session.title ?? ''}
+                  aria-label="Rename session"
+                  className="min-w-0 flex-1 rounded-md border border-highlight/50 bg-background px-1.5 py-0.5 text-[13px] font-medium outline-none"
+                  onFocus={(event) => event.currentTarget.select()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') commitRename(event.currentTarget.value);
+                    else if (event.key === 'Escape') setEditingTitle(false);
+                  }}
+                  onBlur={(event) => commitRename(event.currentTarget.value)}
+                />
+              ) : (
+                <span
+                  className={cn('min-w-0 flex-1 truncate text-[13px] font-medium', onRename && 'cursor-text')}
+                  title={onRename ? `${session.title ?? session.id} — double-click to rename` : undefined}
+                  onDoubleClick={onRename ? () => setEditingTitle(true) : undefined}
+                  style={instanceMarkerColor === undefined ? undefined : {
+                    textDecoration: 'underline',
+                    textDecorationColor: `var(--instance-marker-${instanceMarkerColor})`,
+                    textDecorationThickness: '2px',
+                    textUnderlineOffset: '3px',
+                  }}
+                >
+                  {session.title ?? session.id}
+                </span>
+              )}
               {offerReload || reloading ? (
                 <Button
                   variant="secondary"

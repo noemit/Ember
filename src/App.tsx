@@ -40,6 +40,7 @@ import {
   loadScheduledIdentityData,
   mergePolledSessions,
   rejectQuestion,
+  renameSession,
   replyPermission,
   replyQuestion,
   runScheduledTask,
@@ -2055,6 +2056,30 @@ export default function App() {
   };
 
   /**
+   * Rename on the source instance, mirroring locally right away. The local `updated` bump keeps
+   * an in-flight pre-rename poll from reverting the title (the server's PATCH bumps it too).
+   */
+  const handleRenameSession = async (session: Session, title: string) => {
+    const next = title.trim();
+    const previous = session.title;
+    if (!next || next === previous) return;
+    const apply = (value: string | undefined) =>
+      setSessionsByInstance((prev) => ({
+        ...prev,
+        [session.instanceId]: (prev[session.instanceId] ?? []).map((entry) =>
+          entry.id === session.id ? { ...entry, title: value, updated: Date.now() } : entry
+        ),
+      }));
+    apply(next);
+    try {
+      if (!(await renameSession(session, next))) throw new Error('rename failed');
+    } catch {
+      apply(previous);
+      showActionError('Could not rename the session.');
+    }
+  };
+
+  /**
    * Archive from a session's × control (header or tab). A session with live work, a pending
    * permission/question or queued messages gets one confirmation first; archiving never sends an
    * abort and always offers Undo.
@@ -2623,6 +2648,7 @@ export default function App() {
           onMinimize={() => minimizeSession(key)}
           onActivate={() => activateSession(key)}
           onArchive={() => requestArchive(session)}
+          onRename={(title) => void handleRenameSession(session, title)}
         />
       </div>
     );

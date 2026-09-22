@@ -94,22 +94,26 @@ export type BlobStrip = {
 /**
  * How a project card's blob strip lays out: full size for a handful, shrinking toward `minSize`
  * as the count grows, and a `+N` overflow chip once even the minimum size no longer fits.
+ * `minItemWidth` widens each item's footprint when chrome beneath the blob (the title label)
+ * needs more room than the blob itself.
  */
 export const blobStripLayout = (
   count: number,
   availableWidth: number,
   maxSize = 30,
   minSize = 18,
-  gap = 4
+  gap = 4,
+  minItemWidth = 0
 ): BlobStrip => {
   if (count <= 0) return { size: maxSize, visible: 0, overflow: 0 };
   const size = count <= 4 ? maxSize : Math.max(minSize, maxSize - (count - 4) * 2);
+  const item = Math.max(size, minItemWidth);
   let visible = count;
   while (visible > 1) {
     const overflow = count - visible;
     const chipWidth = overflow > 0 ? Math.max(size, 22) : 0;
     const total =
-      visible * size + (visible - 1) * gap + (overflow > 0 ? gap + chipWidth : 0);
+      visible * item + (visible - 1) * gap + (overflow > 0 ? gap + chipWidth : 0);
     if (total <= availableWidth) break;
     visible -= 1;
   }

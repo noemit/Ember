@@ -665,6 +665,8 @@ const bridge: EmberBridge = {
       if (!session) return { ok: false, status: 404, data: null };
       const archived = (body as { time?: { archived?: number } })?.time?.archived;
       if (typeof archived === 'number') session.archived = archived || undefined;
+      const title = (body as { title?: string })?.title;
+      if (typeof title === 'string' && title.trim()) session.title = title.trim();
       return delay(ok({ id: session.id, title: session.title, time: { updated: session.updated, archived: session.archived } }));
     }
     if (url.pathname === '/api/session' && method === 'POST') {

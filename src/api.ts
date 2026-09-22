@@ -231,6 +231,18 @@ export const setSessionArchived = async (
   return response.ok;
 };
 
+/** Rename a session on its OpenChamber instance (`session.update` → `Session.setTitle`). */
+export const renameSession = async (session: Session, title: string): Promise<boolean> => {
+  const query = session.directory ? `?directory=${encodeURIComponent(session.directory)}` : '';
+  const response = await window.ember.request(
+    session.instanceId,
+    'PATCH',
+    `/api/session/${encodeURIComponent(session.id)}${query}`,
+    { title }
+  );
+  return response.ok;
+};
+
 /**
  * Compact a session's context. OpenChamber's `/compact` maps to OpenCode's `session.summarize`
  * (`POST /api/session/:id/summarize`): older turns are summarized and a recent tail kept, per the
