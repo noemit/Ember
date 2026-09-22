@@ -10,7 +10,7 @@ import { DEFAULT_MODEL, modelRefKey } from '../types';
 import type { ModelOption } from '../types';
 import ModelScorecard from './ModelScorecard';
 import { refreshModelStats } from '@/lib/modelStats';
-import { resolveComposerModel } from '@/lib/modelSelection';
+import { canonicalVariant, resolveComposerModel } from '@/lib/modelSelection';
 
 type Props = {
   open: boolean;
@@ -205,6 +205,9 @@ export default function ModelPicker({
 
   const selectedModel = selectedKey === DEFAULT_MODEL ? defaultModel : byKey.get(selectedKey) ?? null;
   const variantOptions = selectedModel?.details.variants ?? [];
+  // A saved variant can differ from the catalogue only by case ('Default' vs 'default');
+  // show and store the advertised spelling.
+  const canonicalSelected = canonicalVariant(variantOptions, selectedVariant) ?? selectedVariant;
   const selectionError = requireConcreteModel && selectedKey === DEFAULT_MODEL && !defaultModel
     ? 'The instance default model is unavailable. Choose an available model.'
     : resolveComposerModel(selectedKey, selectedVariant, models, defaultModelId).error;
@@ -215,13 +218,13 @@ export default function ModelPicker({
   const pick = (key: string) => {
     const nextModel = key === DEFAULT_MODEL ? defaultModel : byKey.get(key) ?? null;
     setSelectedKey(key);
-    if (key !== selectedKey) setSelectedVariant((current) => nextModel?.details.variants.includes(current) ? current : '');
+    if (key !== selectedKey) setSelectedVariant((current) => canonicalVariant(nextModel?.details.variants, current) ?? '');
     setHovered(key === DEFAULT_MODEL ? null : key);
   };
 
   const apply = () => {
     if (selectionError) return;
-    onSelect(selectedKey, selectedVariant);
+    onSelect(selectedKey, canonicalSelected);
     onOpenChange(false);
   };
 
@@ -366,7 +369,7 @@ export default function ModelPicker({
         <div className="flex flex-none items-center gap-2 border-t p-2.5">
           <span className="text-[11px] font-medium text-muted-foreground">Reasoning</span>
           <Select
-            value={selectedVariant || '__default'}
+            value={canonicalSelected || '__default'}
             disabled={variantOptions.length === 0 && !selectedVariant}
             onValueChange={(next) => setSelectedVariant(next === '__default' ? '' : next)}
           >
@@ -375,7 +378,7 @@ export default function ModelPicker({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__default">Default</SelectItem>
-              {selectedVariant && !variantOptions.includes(selectedVariant) ? <SelectItem value={selectedVariant} disabled>{selectedVariant} (unavailable)</SelectItem> : null}
+              {selectedVariant && !canonicalVariant(variantOptions, selectedVariant) ? <SelectItem value={selectedVariant} disabled>{selectedVariant} (unavailable)</SelectItem> : null}
               {variantOptions.map((option) => (
                 <SelectItem key={option} value={option} className="capitalize">
                   {option}

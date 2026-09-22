@@ -1,6 +1,6 @@
 import { sessionKey } from './types';
 import { shareValue } from './lib/structuralSharing';
-import { selectedModelError } from './lib/modelSelection';
+import { canonicalVariant, selectedModelError } from './lib/modelSelection';
 import type {
   BallState,
   ChatMessage,
@@ -1255,7 +1255,7 @@ export const enqueueMessage = async (
     modelID: model.modelID,
   };
   if (mode) sendConfig.agent = mode;
-  if (variant) sendConfig.variant = variant;
+  if (variant) sendConfig.variant = canonicalVariant(model.details.variants, variant) ?? variant;
   const item = {
     content: text.trim(),
     text,
@@ -1368,7 +1368,7 @@ export const sendPrompt = async (
   const body: Record<string, unknown> = { parts };
   if (model) body.model = { providerID: model.providerID, modelID: model.modelID };
   if (mode) body.agent = mode;
-  if (variant) body.variant = variant;
+  if (variant) body.variant = canonicalVariant(model?.details.variants, variant) ?? variant;
   if (messageId) body.messageID = messageId;
 
   return window.ember.request(

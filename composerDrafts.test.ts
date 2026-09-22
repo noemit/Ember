@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { clearComposerText, mergeDraftChanges } from './src/lib/composerDrafts';
-import { resolveComposerModel, selectedModelError } from './src/lib/modelSelection';
+import { canonicalVariant, resolveComposerModel, sameVariant, selectedModelError } from './src/lib/modelSelection';
 import { DEFAULT_MODEL, type ModelOption } from './src/types';
 
 const chosen: ModelOption = {
@@ -31,6 +31,14 @@ describe('explicit model choices', () => {
   });
   test('unavailable reasoning levels are not silently cleared', () => {
     expect(resolveComposerModel('p/chosen', 'removed', [chosen], 'p/chosen').error).toContain('removed');
+  });
+  test('reasoning levels match ignoring case and resolve to the catalogue spelling', () => {
+    expect(canonicalVariant(['low', 'high'], 'HIGH')).toBe('high');
+    expect(canonicalVariant(['low', 'high'], 'ultra')).toBeUndefined();
+    expect(resolveComposerModel('p/chosen', 'High', [chosen], 'p/chosen').error).toBeNull();
+    expect(sameVariant('Default', 'default')).toBe(true);
+    expect(sameVariant(undefined, '')).toBe(true);
+    expect(sameVariant('high', undefined)).toBe(false);
   });
 });
 

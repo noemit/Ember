@@ -10,7 +10,7 @@ import {
 } from '../api';
 import { modelRefKey } from '../types';
 import { shareValue } from '../lib/structuralSharing';
-import { selectedModelError } from '../lib/modelSelection';
+import { canonicalVariant, sameVariant, selectedModelError } from '../lib/modelSelection';
 import type {
   MessageQueueSession,
   ModelOption,
@@ -361,15 +361,15 @@ export const useMessageQueue = ({
     const originalIndex = queue.items.findIndex((item) => item.id === itemId);
     if (!directory || originalIndex < 0) return false;
     const queuedItem = queue.items[originalIndex];
-    if (nextVariant && !nextModel.details.variants.includes(nextVariant)) {
+    const validNextVariant = nextVariant ? canonicalVariant(nextModel.details.variants, nextVariant) ?? null : nextVariant;
+    if (nextVariant && !validNextVariant) {
       showActionError(`Reasoning level ${nextVariant} is unavailable for ${nextModel.label}. Choose a supported level.`);
       return false;
     }
-    const validNextVariant = nextVariant;
     if (
       queuedItem.sendConfig.providerID === nextModel.providerID &&
       queuedItem.sendConfig.modelID === nextModel.modelID &&
-      queuedItem.sendConfig.variant === validNextVariant
+      sameVariant(queuedItem.sendConfig.variant, validNextVariant)
     ) return true;
     if (queue.sendingId) {
       showActionError('Wait until the current queued message finishes sending before changing models.');
