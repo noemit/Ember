@@ -315,6 +315,8 @@ export type EmberSettings = {
   sessionNotes: Record<string, SessionNote[]>;
   composerDrafts: Record<string, StoredComposerDraft>;
   scheduledSessionBindings: Record<string, string>;
+  /** Archive finished scheduled-task runs once they're a day old. */
+  autoArchiveScheduledRuns: boolean;
   avatarOverrides: Record<string, AvatarOverride>;
   projectColorAssignments: Record<string, number>;
   /** Workspace: ordered open session keys ("instance::session"). */

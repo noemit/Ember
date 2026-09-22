@@ -294,6 +294,7 @@ let settings: EmberSettings = {
     'local::ses_a1': 'task:local::p1::daily-channel-brief',
     'local::ses_a7': 'task:local::p1::daily-channel-brief',
   },
+  autoArchiveScheduledRuns: true,
   avatarOverrides: {
     'task:local::p1::daily-channel-brief': { shapeName: 'dumpling' },
     'session:local::ses_a5': { shapeName: 'splat' },

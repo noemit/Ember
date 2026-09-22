@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: EmberSettings = {
   sessionNotes: {},
   composerDrafts: {},
   scheduledSessionBindings: {},
+  autoArchiveScheduledRuns: true,
   avatarOverrides: {},
   projectColorAssignments: {},
   openSessions: [],

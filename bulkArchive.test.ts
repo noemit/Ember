@@ -3,6 +3,7 @@ import {
   ARCHIVE_AGE_OPTIONS,
   bulkArchiveTargets,
   isSessionBusy,
+  staleScheduledRuns,
 } from './src/lib/bulkArchive';
 import type { BallMood, Session } from './src/types';
 
@@ -63,5 +64,36 @@ describe('bulk archive targets', () => {
     expect(isSessionBusy('idle')).toBe(false);
     expect(isSessionBusy('error')).toBe(false);
     expect(isSessionBusy('unread')).toBe(false);
+  });
+});
+
+describe('stale scheduled runs', () => {
+  const now = 1_000_000_000_000;
+  const day = 24 * 3_600_000;
+  const bindings = {
+    'local::stale-run': 'task:local::p1::brief',
+    'local::fresh-run': 'task:local::p1::brief',
+    'local::open-run': 'task:local::p1::brief',
+    'local::busy-run': 'task:local::p1::brief',
+    'local::done-run': 'task:local::p1::brief',
+  };
+  const list = [
+    session('stale-run', now - 2 * day),
+    session('fresh-run', now - 60_000),
+    session('open-run', now - 2 * day),
+    session('busy-run', now - 2 * day),
+    session('done-run', now - 2 * day),
+    session('plain', now - 2 * day),
+    { ...session('already-archived', now - 2 * day), archived: now - day },
+  ];
+  const moodMap = moods({ 'busy-run': 'thinking' });
+
+  test('targets only bound, idle, day-old runs that are not open', () => {
+    const targets = staleScheduledRuns(list, bindings, moodMap, new Set(['local::open-run']), now);
+    expect(targets.map((s) => s.id).sort()).toEqual(['done-run', 'stale-run']);
+  });
+
+  test('no bindings means nothing is a scheduled run', () => {
+    expect(staleScheduledRuns(list, {}, moodMap, new Set(), now)).toEqual([]);
   });
 });

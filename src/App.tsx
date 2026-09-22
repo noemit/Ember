@@ -74,7 +74,7 @@ import { useFeedback } from './hooks/useFeedback';
 import { mergePolledQueues, useMessageQueue, type QueueTarget } from './hooks/useMessageQueue';
 import { usePoll } from './hooks/usePoll';
 import { newSessionDirectoryPrefill, newSessionModelPrefill } from './lib/newSessionDefaults';
-import { isSessionBusy } from './lib/bulkArchive';
+import { isSessionBusy, staleScheduledRuns } from './lib/bulkArchive';
 import { notesKeyForSession } from './lib/projectGroups';
 import { countPinsBySession } from './lib/pins';
 import { InvalidationQueue, invalidationsFor, parseEmberEvent, type Invalidation } from '@/lib/invalidation';
@@ -2100,7 +2100,7 @@ export default function App() {
   };
 
   /** Bulk archive/restore from a project card's `+N` menu, with one undo notice for the batch. */
-  const handleArchiveMany = async (sessions: Session[], archived = true) => {
+  const handleArchiveMany = async (sessions: Session[], archived = true, notice?: (count: number) => string) => {
     const targets = sessions.filter((session) => Boolean(session.archived) !== archived);
     if (targets.length === 0) return;
     showActionError(null);
@@ -2142,12 +2142,52 @@ export default function App() {
     }
     if (succeeded.length > 0) {
       setActionNotice({
-        message: `${archived ? 'Archived' : 'Restored'} ${succeeded.length} session${succeeded.length === 1 ? '' : 's'}.`,
+        message: archived && notice
+          ? notice(succeeded.length)
+          : `${archived ? 'Archived' : 'Restored'} ${succeeded.length} session${succeeded.length === 1 ? '' : 's'}.`,
         actionLabel: 'Undo',
         action: () => void handleArchiveMany(succeeded, !archived),
       });
     }
   };
+
+  /**
+   * Housekeeping: scheduled-task runs archive themselves once they're a day old, finished, and
+   * not on screen. They stay reachable — the scheduled view lists bound sessions regardless of
+   * archive state, and Undo/restore still works. One notice covers the whole sweep.
+   */
+  const sweepAttemptsRef = React.useRef(new Map<string, number>());
+  const sweepStaleScheduledRuns = useStableCallback(() => {
+    if (!settings.autoArchiveScheduledRuns || archivingKeys.size > 0) return;
+    const open = new Set([...openSessions, ...minimizedSessions]);
+    const ready = new Set(readyIds);
+    const pool = Object.values(sessionsByInstance)
+      .flat()
+      .filter((session) => ready.has(session.instanceId));
+    const now = Date.now();
+    // A failed archive is retried at most every five minutes, not on every poll.
+    const targets = staleScheduledRuns(pool, settings.scheduledSessionBindings, moods, open, now)
+      .filter((session) => {
+        const key = sessionKey(session);
+        const attempted = sweepAttemptsRef.current.get(key) ?? 0;
+        if (now - attempted < 5 * 60_000) return false;
+        sweepAttemptsRef.current.set(key, now);
+        return true;
+      });
+    if (targets.length > 0) {
+      void handleArchiveMany(
+        targets,
+        true,
+        (count) => `Auto-archived ${count} finished scheduled run${count === 1 ? '' : 's'}.`
+      );
+    }
+  });
+
+  React.useEffect(() => {
+    sweepStaleScheduledRuns();
+    const timer = window.setInterval(sweepStaleScheduledRuns, 15 * 60_000);
+    return () => window.clearInterval(timer);
+  }, [sweepStaleScheduledRuns, sessionsByInstance, settings.scheduledSessionBindings, settings.autoArchiveScheduledRuns]);
 
   /** From the archive screen: restore, then open the session as a column. */
   const handleRestoreAndOpen = async (session: Session) => {    await handleArchive(session, false);

@@ -296,7 +296,7 @@ export default function SettingsPanel({
                     Sessions
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-3">
+                <CardContent className="flex flex-col gap-3 p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="font-medium">Show sessions active in the</span>
@@ -319,6 +319,23 @@ export default function SettingsPanel({
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-t pt-3">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="font-medium">Auto-archive scheduled runs</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Task runs archive themselves a day after they finish. The scheduled view still lists them.
+                      </span>
+                    </div>
+                    <Toggle
+                      pressed={settings.autoArchiveScheduledRuns}
+                      onPressedChange={(enabled) => onChange({ autoArchiveScheduledRuns: enabled })}
+                      variant="outline"
+                      size="sm"
+                      aria-label="Auto-archive scheduled runs"
+                    >
+                      {settings.autoArchiveScheduledRuns ? 'On' : 'Off'}
+                    </Toggle>
                   </div>
                 </CardContent>
               </Card>

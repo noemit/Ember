@@ -128,6 +128,13 @@ test('the underline follows whichever blob is a column', async ({ page }) => {
   await expect(visibleMarkers(page)).toHaveCount(await page.locator('main[data-session-key]').count());
 });
 
+test('a day-old finished scheduled run archives itself', async ({ page }) => {
+  await page.goto('/?noDock');
+  // ses_a7 ("Daily channel brief · yesterday") is bound to a task and idle for a day.
+  await expect(page.getByText(/Auto-archived \d+ finished scheduled run/)).toBeVisible();
+  await expect(page.locator('aside')).not.toContainText('Daily channel brief · yesterday');
+});
+
 test('one-session project rows use the same visible-column indicator', async ({ page }) => {
   await page.goto('/?noDock');
   await page.getByRole('button', { name: /Agent Platform/ }).first().click();

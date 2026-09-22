@@ -137,7 +137,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   menu. Right-clicking the `+N` chip opens a tidy-up menu ("Archive N inactive" plus "older than 1
   day / 3 days / 1 week / 2 weeks / 1 month" with counts), driven by `src/lib/bulkArchive.ts`. Bulk
   actions never touch a busy/thinking/needs-input session and share one Undo notice
-  (`handleArchiveMany`). A session with pinned messages shows a small pin badge at its blob's
+  (`handleArchiveMany`). Separately, `sweepStaleScheduledRuns` in App auto-archives scheduled-task
+  runs that are a day old, finished, and not open — `staleScheduledRuns` in `bulkArchive.ts` picks
+  the targets, retry attempts are throttled per session, and the scheduled view still lists them
+  via `scheduledSessionBindings`. The `autoArchiveScheduledRuns` setting (default on) gates it. A session with pinned messages shows a small pin badge at its blob's
   bottom-left (`pinnedCounts`, from `src/lib/pins.ts`).
 - `src/components/SessionRow.tsx` — the shared full session row (55px blob, title, preview,
   instance/project line, archive button, context menu) used by the rail and the archive screen.
