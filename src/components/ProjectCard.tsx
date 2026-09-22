@@ -188,7 +188,7 @@ export default function ProjectCard({
                           </span>
                         ) : null}
                       </span>
-                      <span data-blob-label className="mt-0.5 block max-h-[26px] w-full overflow-hidden text-center">
+                      <span data-blob-label className="mt-0.5 block max-h-[30px] w-full overflow-hidden text-center">
                         <span className="rounded-sm bg-muted px-1 py-px text-[10px] leading-[13px] break-words text-muted-foreground [box-decoration-break:clone] [-webkit-box-decoration-break:clone]">
                           {title}
                         </span>

@@ -56,5 +56,7 @@ test('every blob in a project card carries a two-line title chip', async ({ page
   await expect(blob).not.toContainText('—');
   const label = blob.locator('[data-blob-label]');
   const box = await label.boundingBox();
-  expect(box?.height).toBeLessThanOrEqual(27);
+  // Two 13px lines plus the chip's per-line padding — room for both lines, then it clips.
+  expect(box?.height).toBeGreaterThan(15);
+  expect(box?.height).toBeLessThanOrEqual(31);
 });
