@@ -1136,7 +1136,7 @@ function ChatView({
               className="min-h-9 w-full bg-transparent px-3 pt-2 pb-1 text-base placeholder:text-muted-foreground focus-visible:border-input focus-visible:ring-0 disabled:cursor-not-allowed sm:px-3.5 sm:text-[13px]"
             />
 
-            <div className="flex items-center gap-1 overflow-x-auto px-2 pt-1.5 pb-2 sm:gap-1.5">
+            <div className="@container flex items-center gap-1 overflow-x-auto px-2 pt-1.5 pb-2 sm:gap-1.5">
               <Button
                 variant="ghost"
                 size="sm"
@@ -1148,7 +1148,9 @@ function ChatView({
                   onModelsRefresh?.();
                 }}
                 aria-label="Choose model"
-                className="h-7 max-w-[132px] flex-none px-2 text-xs font-normal sm:max-w-[280px]"
+                // min-w-0 + default shrink: the label truncates down to the chevron before any
+                // icon-only control gives up space in a skinny column.
+                className="h-7 min-w-0 max-w-[132px] px-2 text-xs font-normal sm:max-w-[280px]"
               >
                 <span className="truncate">{modelButtonLabel}</span>
                 <ChevronDown className="size-3.5 text-muted-foreground" />
@@ -1196,7 +1198,7 @@ function ChatView({
                 className="h-7 flex-none px-2 text-xs data-[state=on]:border-warning/60 data-[state=on]:bg-warning/10 data-[state=on]:text-warning"
               >
                 <ShieldCheck className="size-3.5" />
-                <span className="hidden sm:inline">YOLO</span>
+                <span className="hidden @[320px]:inline">YOLO</span>
               </Toggle>
 
               <input
