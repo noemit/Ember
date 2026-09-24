@@ -483,10 +483,14 @@ export const releaseSlowInstance = () => {
   releaseSlow();
 };
 
-export const appendFixtureMessage = (text: string) => {
+/** `silent` skips the stream hint, like an event lost to a dropped connection. */
+export const appendFixtureMessage = (text: string, sessionId = 'perf-0', silent = false) => {
   if (!performanceFixture) return;
-  sessions.local[0].messages.push({ role: 'assistant', text });
-  emit({ instanceId: 'local', type: 'message.part.updated', sessionId: 'perf-0' });
+  const session = sessions.local.find((entry) => entry.id === sessionId);
+  if (!session) return;
+  session.messages.push({ role: 'assistant', text });
+  session.updated = Date.now();
+  if (!silent) emit({ instanceId: 'local', type: 'message.part.updated', sessionId });
 };
 
 let modelObservations: ModelObservation[] = JSON.parse(sessionStorage.getItem('ember-mock-model-stats') ?? '[]');
@@ -909,7 +913,7 @@ const bridge: EmberBridge = {
 
 declare global {
   interface Window {
-    emberFixture?: { releaseSlowInstance: () => void; appendMessage: (text: string) => void };
+    emberFixture?: { releaseSlowInstance: () => void; appendMessage: (text: string, sessionId?: string, silent?: boolean) => void };
   }
 }
 if (performanceFixture) window.emberFixture = { releaseSlowInstance, appendMessage: appendFixtureMessage };

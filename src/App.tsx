@@ -379,6 +379,9 @@ export default function App() {
   // One deduplicated full repair per session when a tail has no safe overlap to merge.
   const fullRepairRef = React.useRef<(key: string) => void>(() => {});
   const fullRepairInFlight = React.useRef(new Set<string>());
+  // The session `updated` each cached transcript reflects. A newer `updated` means it is stale,
+  // however recently it was read.
+  const transcriptVersion = React.useRef(new Map<string, number>());
   const scheduledBindingsRef = React.useRef<Record<string, string>>({});
   const lastStatusAnnouncementRef = React.useRef<{
     key: string;
@@ -416,6 +419,9 @@ export default function App() {
         transcriptKeysToKeep([...protectedTranscriptKeys.current], [...messageCacheRef.current.keys()], activeSession)
       )
     );
+    for (const key of transcriptVersion.current.keys()) {
+      if (!messageCacheRef.current.has(key) && !transcriptsRef.current[key]) transcriptVersion.current.delete(key);
+    }
   }, [transcripts, openSessions, activeSession, minimizedSessions, workspaceWidth]);
 
   const commitSummary = React.useCallback(
@@ -446,7 +452,7 @@ export default function App() {
    * in lockstep no matter which caller issued the fetch.
    */
   const commitFetchedTranscript = useStableCallback(
-    (key: string, fetched: ChatMessage[], mode: 'full' | 'tail', version?: number) => {
+    (key: string, fetched: ChatMessage[], mode: 'full' | 'tail', version?: number, repair = true) => {
       const current =
         messageCacheRef.current.get(key) ?? transcriptsRef.current[key]?.messages ?? [];
       const pending = pendingOptimisticIds.current.get(key) ?? new Set<string>();
@@ -454,6 +460,12 @@ export default function App() {
         mode === 'tail'
           ? reconcileTranscriptTail(current, fetched, pending)
           : reconcileFullTranscript(current, fetched, pending);
+      // A background tail with no overlap isn't worth a full fetch nobody is looking at; the stale
+      // version makes the next switch-in repair it instead.
+      if (outcome.needsFullFetch && !repair) {
+        commitSummary(key, fetched, false, version);
+        return;
+      }
       if (outcome.reconciledOptimisticIds.length > 0) {
         releaseOptimistic(key, outcome.reconciledOptimisticIds);
       }
@@ -461,8 +473,19 @@ export default function App() {
       setTranscriptFor(key, outcome.messages, 'ready');
       commitSummary(key, outcome.messages, mode === 'full', version);
       if (outcome.needsFullFetch) requestFullRepair(key);
+      else transcriptVersion.current.set(key, version ?? 0);
     }
   );
+
+  /**
+   * Fold a tail that was fetched for a background session's preview into its cached transcript,
+   * so switching back renders current messages with no extra request. Sessions without a cached
+   * transcript stay summary-only; this never grows the cache.
+   */
+  const mergeBackgroundTail = useStableCallback((key: string, tail: ChatMessage[], version?: number) => {
+    if (messageCacheRef.current.has(key)) commitFetchedTranscript(key, tail, 'tail', version, false);
+    else commitSummary(key, tail, false, version);
+  });
 
   const updateCachedMessages = (
     key: string,
@@ -1364,13 +1387,13 @@ export default function App() {
     }
   });
 
-  /** Background sessions refresh only their summary; they never touch the transcript cache. */
+  /** Background sessions refresh their summary, and their cached transcript if they have one. */
   const refreshMessageSummary = useStableCallback(async (ref: SessionRef) => {
     const key = sessionKey(ref);
     const { directory, updated } = sessionMetaFor(ref);
     try {
       const tail = await loadMessageTail(ref.instanceId, ref.sessionId, directory);
-      commitSummary(key, tail, false, updated);
+      mergeBackgroundTail(key, tail, updated);
     } catch (err) {
       console.warn('Failed to load message summary', err);
     }
@@ -1612,13 +1635,22 @@ export default function App() {
   usePoll(() => refreshStateFor(deadIdsRef.current), STATE_POLL_MS, deadIds.length > 0);
   usePoll(() => refreshStateFor(liveIdsRef.current), STATE_POLL_LIVE_MS, liveIds.length > 0);
 
-  // Preview warming writes only compact summaries; it never inserts a transcript into the message
-  // cache. The effect reads summaries through a ref so a poll that lands mid-batch doesn't cancel it.
+  // Reads for a session the user just brought on screen. Preview warming waits for them so a burst
+  // of background tails can't queue ahead of the transcript being looked at.
+  const priorityReads = React.useRef(new Set<Promise<void>>());
+  const statesRef = React.useRef(states);
+  statesRef.current = states;
+
+  // Preview warming refreshes compact summaries, and folds the tail into a transcript that is
+  // already cached (never inserting one). The effect reads summaries through a ref so a poll that
+  // lands mid-batch doesn't cancel it. Working sessions go first: they are the likeliest switch.
   React.useEffect(() => {
     if (document.hidden) return;
+    const working = (session: Session) => (statesRef.current[sessionKey(session)] === 'active' ? 1 : 0);
     const targets = [...sessions]
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
       .slice(0, PREVIEW_COUNT)
+      .sort((a, b) => working(b) - working(a))
       .filter((session) => {
         const summary = summariesRef.current[sessionKey(session)];
         return !summary || summary.version !== session.updated;
@@ -1636,7 +1668,10 @@ export default function App() {
           const key = sessionKey(session);
           const previous = summariesRef.current[key];
           let summary: SessionMessageSummary | null = null;
+          let lastTail: ChatMessage[] | null = null;
           for (const limit of PREVIEW_LIMITS) {
+            if (priorityReads.current.size > 0) await Promise.allSettled([...priorityReads.current]);
+            if (cancelled) break;
             const tail = await loadMessageTail(
               session.instanceId,
               session.id,
@@ -1645,10 +1680,14 @@ export default function App() {
             ).catch(() => null);
             // A failed request leaves the prior summary in place.
             if (!tail || cancelled) break;
+            lastTail = tail;
             summary = summarizeMessages(tail, { previous, complete: false, version: session.updated });
             // Stop once a previewable turn is found, or once the transcript is exhausted; otherwise
             // expand through 32 and 128. A tool-only tail at the largest limit retains `previous`.
             if (summary.preview || summary.failed || tail.length < limit) break;
+          }
+          if (lastTail && !cancelled && messageCacheRef.current.has(key)) {
+            commitFetchedTranscript(key, lastTail, 'tail', session.updated, false);
           }
           if (summary) results.push([key, summary]);
         }
@@ -1673,27 +1712,44 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [sessions]);
+  }, [sessions, commitFetchedTranscript]);
+
+  /**
+   * Bring an on-screen transcript up to date. Cached messages render first; a cached session gets
+   * a bounded tail (which repairs itself with a full read when it no longer overlaps), an uncached
+   * one a full read.
+   */
+  const showTranscript = useStableCallback((ref: SessionRef) => {
+    const key = sessionKey(ref);
+    const cached = messageCacheRef.current.has(key) || Boolean(transcriptsRef.current[key]?.messages.length);
+    const read = cached ? refreshMessageTail(ref) : refreshMessages(ref);
+    priorityReads.current.add(read);
+    void read.finally(() => priorityReads.current.delete(read));
+  });
 
   // Selecting a column refreshes it immediately; the poll below (and message events) keep it
-  // fresh while the agent is working. Cached messages render before the fetch lands.
+  // fresh while the agent is working.
   const selectedMetadataKey = selectedSession ? `${sessionKey(selectedSession)}\u0000${selectedSession.directory ?? ''}` : null;
   React.useEffect(() => {
-    if (!selected || !selectedMetadataKey) return;
-    if (Date.now() - (fullReadAt.current.get(sessionKey(selected)) ?? 0) > 20_000) void refreshMessages(selected);
-  }, [selected, selectedMetadataKey, refreshMessages]);
+    if (selected && selectedMetadataKey) showTranscript(selected);
+  }, [selected, selectedMetadataKey, showTranscript]);
 
+  // Every column that just came on screen refreshes, however recently it was read. One already on
+  // screen refreshes when the session list says it moved past the version its transcript reflects,
+  // which also covers stream events lost to a dropped connection.
   const previouslyVisible = React.useRef(new Set<string>());
   React.useEffect(() => {
     const known = new Set<string>();
     for (const key of columns) {
       const ref = parseSessionKey(key);
-      if (!ref || !(sessionsByInstance[ref.instanceId] ?? []).some((session) => session.id === ref.sessionId)) continue;
+      const session = ref && (sessionsByInstance[ref.instanceId] ?? []).find((entry) => entry.id === ref.sessionId);
+      if (!ref || !session) continue;
       known.add(key);
-      if (!previouslyVisible.current.has(key) && (!messageCacheRef.current.has(key) || Date.now() - (fullReadAt.current.get(key) ?? 0) > 20_000)) void refreshMessages(ref);
+      const behind = (session.updated ?? 0) > (transcriptVersion.current.get(key) ?? -1);
+      if (!previouslyVisible.current.has(key) || behind) showTranscript(ref);
     }
     previouslyVisible.current = known;
-  }, [columns, sessionsByInstance, refreshMessages]);
+  }, [columns, sessionsByInstance, showTranscript]);
 
   // Only the columns actually on screen poll their transcripts; overflow/minimized tabs rely on
   // the preview cache and the session list's `updated`.

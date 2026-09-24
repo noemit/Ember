@@ -36,7 +36,14 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   selection, pollers, and the send/reload/archive/permission handlers. Sessions are keyed by
   `sessionKey()` (`instanceId::sessionId`) because ids repeat across instances. A bounded in-memory
   message cache (`MESSAGE_CACHE_LIMIT`, the open-session cap plus a small margin) holds full
-  transcripts; sidebar previews warm only the compact summary map (`summaries`), never the cache.
+  transcripts; sidebar previews warm the compact summary map (`summaries`) and fold their tail into
+  a transcript that is *already* cached (`mergeBackgroundTail`; never inserting one, and never
+  spending a full read on a background session whose tail no longer overlaps).
+  Freshness is version-based, not time-based: `transcriptVersion` records the session `updated` each
+  cached transcript reflects. A column coming on screen always refreshes (`showTranscript`: tail
+  when cached, full otherwise), and an on-screen column refreshes when the session list shows a
+  newer `updated`. Those switch-in reads are `priorityReads`, which preview warming waits behind;
+  warming also runs working sessions first.
   Transcript state is keyed by session so switching renders the cached transcript before the first
   paint while the fresh fetch runs, and it is pruned to the open sessions plus whatever the cache
   still holds, so it can't grow with every session ever shown. Session polls merge per id with the
