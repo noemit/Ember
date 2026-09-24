@@ -70,6 +70,26 @@ test('long history mounts a bounded window and supports finding old messages', a
   await expect(history.getByText('New streaming fixture response', { exact: true })).toBeVisible();
 });
 
+test('long history with uneven row heights opens on, and keeps following, the latest message', async ({ page }) => {
+  await page.goto('/?fixture=performance&noDock&varied');
+  const history = page.getByRole('log', { name: 'Conversation' }).first();
+  const latest = history.getByText('Synthetic message 9999', { exact: true });
+  await expect(latest).toBeInViewport();
+  // Row measurement settles after mount; it must not silently drop follow mode.
+  await page.waitForTimeout(1500);
+  await expect(latest).toBeInViewport();
+  await expect(page.getByRole('button', { name: 'Jump to latest' })).toHaveCount(0);
+  await page.evaluate(() => window.emberFixture!.appendMessage('Fresh reply after load'));
+  await expect(history.getByText('Fresh reply after load', { exact: true })).toBeInViewport();
+
+  // Scrolling up is still the reader's call.
+  await history.hover();
+  await page.mouse.wheel(0, -3000);
+  await expect(page.getByRole('button', { name: 'Jump to latest' }).first()).toBeVisible();
+  await page.evaluate(() => window.emberFixture!.appendMessage('Arrives while reading history'));
+  await expect(history.getByText('Arrives while reading history', { exact: true })).not.toBeInViewport();
+});
+
 test('project cleanup and shortcut hints are discoverable', async ({ page }) => {
   await page.getByRole('button', { name: 'Project actions for Habit' }).first().click();
   await expect(page.getByRole('menuitem', { name: /Archive .* inactive/ })).toBeVisible();

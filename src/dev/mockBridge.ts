@@ -457,7 +457,9 @@ if (performanceFixture) {
     updated: Date.now() - index * 1000, status: 'idle', model: { id: 'claude-sonnet', providerID: 'anthropic' },
     messages: Array.from({ length: index === 0 ? 10_000 : 2 }, (_, message) => ({
       role: message % 2 ? 'assistant' as const : 'user' as const,
-      text: `Synthetic message ${message}`,
+      text: new URLSearchParams(window.location.search).has('varied') && message % 7 === 1
+        ? `Synthetic message ${message}\n\n${'A longer paragraph that wraps across several lines in a narrow column. '.repeat(12)}\n\n- one\n- two\n- three`
+        : `Synthetic message ${message}`,
     })),
   }));
   permissions.local = [];

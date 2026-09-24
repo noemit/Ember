@@ -82,6 +82,8 @@ type Props = {
 
 /** How close to the bottom (px) still counts as "following" the conversation. */
 const FOLLOW_THRESHOLD = 48;
+/** How long after wheel/touch/key input a scroll away from the bottom still counts as the reader's. */
+const USER_SCROLL_WINDOW = 600;
 
 const spring = { type: 'spring', stiffness: 420, damping: 32 } as const;
 
@@ -1042,11 +1044,17 @@ function Transcript({
     };
   }, [scrollToBottom]);
 
+  // Only the reader can stop following. The virtualizer corrects scrollTop as rows measure and
+  // content growth clamps it; those programmatic scrolls must not read as "scrolled up".
+  const userScrollAt = React.useRef(0);
+  const pointerDown = React.useRef(false);
+  const noteUserScroll = () => { userScrollAt.current = Date.now(); };
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const next = distance <= FOLLOW_THRESHOLD;
+    if (!next && !pointerDown.current && Date.now() - userScrollAt.current > USER_SCROLL_WINDOW) return;
     if (next !== followRef.current) {
       followRef.current = next;
       setFollowing(next);
@@ -1123,7 +1131,12 @@ function Transcript({
         <span className="whitespace-nowrap text-xs">{findMatches.length ? (findIndex % findMatches.length) + 1 : 0}/{findMatches.length}</span>
         <Button size="xs" variant="ghost" onClick={() => { setFind(null); setHighlightedMessageId(null); }}>Close</Button>
       </div> : null}
-      <div ref={scrollRef} tabIndex={0} aria-label="Conversation history" onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
+      <div ref={scrollRef} tabIndex={0} aria-label="Conversation history" onScroll={handleScroll}
+        onWheel={noteUserScroll} onTouchMove={noteUserScroll} onKeyDown={noteUserScroll}
+        onPointerDown={() => { pointerDown.current = true; noteUserScroll(); }}
+        onPointerUp={() => { pointerDown.current = false; noteUserScroll(); }}
+        onPointerCancel={() => { pointerDown.current = false; }}
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
         <div
           ref={contentRef}
           role="log"
