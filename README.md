@@ -11,7 +11,7 @@ It is not an agent harness: OpenChamber owns execution, queues, permissions, and
 - **One workspace, multiple instances.** Browse recent sessions across local, remote, and reachable SSH-backed instances. Healthy instances load without waiting for slow ones.
 - **Project-focused columns and tabs.** Open a project together, or open an individual session. Up to eight sessions can be open, with columns adapting to the available width and overflow becoming tabs.
 - **Visible agent state.** Buddy and Glyph avatars distinguish working, thinking, waiting for input, failed, and unread sessions. Customize appearances by project, task, or session.
-- **Reliable composing.** Per-session drafts, attachments, reply context, server-owned follow-up queues, and project notes. Explicit model choices survive sending and clearing text; unavailable choices are shown rather than silently replaced.
+- **Reliable composing.** Per-session drafts, attachments (paperclip, drag-and-drop onto a column, or paste), reply context, server-owned follow-up queues, and project notes. Explicit model choices survive sending and clearing text; unavailable choices are shown rather than silently replaced.
 - **Long conversations without the clutter.** Virtualized transcripts, inline search, pinned messages, expandable tool output, and configurable reasoning display. A context meter can compact a session, and the handoff action can fork it into a new session.
 - **Useful cleanup and discovery.** Session/note search, archived-session restoration, project cleanup menus with Undo, and actions for existing scheduled tasks.
 - **Personal model experience.** The existing model picker shows observed usage statistics and your Helpful / Not helpful ratings—not an automatic leaderboard or model router.

@@ -465,6 +465,39 @@ function ChatView({
     if (read.length > 0) setAttachments((prev) => [...prev, ...read]);
   };
 
+  // Enter/leave fire for every child crossed, so count depth rather than toggling.
+  const dragDepth = React.useRef(0);
+  const [dragging, setDragging] = React.useState(false);
+  const carriesFiles = (event: React.DragEvent) =>
+    Boolean(composerKey) && event.dataTransfer.types.includes('Files');
+  const dropHandlers = {
+    onDragEnter: (event: React.DragEvent) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      dragDepth.current += 1;
+      setDragging(true);
+    },
+    onDragOver: (event: React.DragEvent) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    },
+    onDragLeave: (event: React.DragEvent) => {
+      if (!carriesFiles(event)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDragging(false);
+    },
+    onDrop: (event: React.DragEvent) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      dragDepth.current = 0;
+      setDragging(false);
+      onActivate?.();
+      void addFiles(event.dataTransfer.files);
+      textareaRef.current?.focus();
+    },
+  };
+
   React.useEffect(() => {
     if (!composerKey) return;
     setNow(Date.now());
@@ -728,6 +761,7 @@ function ChatView({
     <main
       className="relative flex min-w-0 flex-1 overflow-hidden"
       data-session-key={session ? seed : undefined}
+      {...dropHandlers}
       onPointerDownCapture={(event) => {
         // Buttons carry their own intent. Activating here would start the column-width
         // transition under the pointer mid-press, so the click can land off the button —
@@ -1053,6 +1087,11 @@ function ChatView({
               maxLength={200_000}
               placeholder={shouldQueue ? 'Queue a follow-up…' : 'Message the agent…'}
               aria-label={shouldQueue ? 'Queue a follow-up message' : 'Message the agent'}
+              onPaste={(event) => {
+                if (event.clipboardData.files.length === 0) return;
+                event.preventDefault();
+                void addFiles(event.clipboardData.files);
+              }}
               onChange={(event) => {
                 setText(event.target.value);
                 if (composerKey) {
@@ -1397,6 +1436,15 @@ function ChatView({
           onUnpin={onTogglePin}
         />
       </React.Suspense>
+      {dragging ? (
+        <div
+          data-testid="drop-overlay"
+          className="pointer-events-none absolute inset-2 z-50 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-ring bg-background/80 text-sm text-muted-foreground"
+        >
+          <Paperclip className="size-4" />
+          Drop to attach
+        </div>
+      ) : null}
     </main>
   );
 }

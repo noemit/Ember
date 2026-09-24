@@ -79,6 +79,9 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   attachments, and reply context are kept per session; the one-line textarea grows to a
   capped height and failed sends restore the draft. Draft text and model choices persist
   across restarts (including choice-only drafts), while attachments and reply context stay in memory.
+  Files attach through the paperclip, by dropping them anywhere on the column (a depth-counted
+  "Drop to attach" overlay; the drop activates that column), or by pasting them into the textarea —
+  all three go through `addFiles` and its 10 MB / 18 MB limits.
   `ProjectPicker.tsx` and `QueuedMessageList.tsx` are lazy children; the queue list is keyed by
   session so its per-item UI resets on switch. A new agent is a *draft*, not a dialog: with
   `newSessionInstanceId` set and no session selected, the composer is live under key
