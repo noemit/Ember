@@ -1,5 +1,5 @@
-import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, shell } from 'electron';
-import type { IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, powerMonitor, shell } from 'electron';
+import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -17,6 +17,7 @@ import {
   isBlobStyle,
   isReasoningDisplay,
   resolveApiUrl,
+  resolveHealthUrl,
   type BlobStyle,
   type EmberSettings,
   type InstanceDefaults,
@@ -223,19 +224,30 @@ const hostHeaders = (host: StoredHost, root: Record<string, unknown>): Record<st
   return headers;
 };
 
-const probeHealth = async (url: string, headers: Record<string, string>): Promise<boolean> => {
-  const healthUrl = resolveApiUrl(url, '/api/health');
-  if (!healthUrl) return false;
-  try {
-    const response = await fetch(healthUrl, {
-      headers,
-      redirect: 'error',
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
+/**
+ * OpenCode 2 / OpenChamber 2 serve `/health`; the v1 API had `/api/health`. Probing both tells
+ * a genuinely old instance apart from one that's merely down, so the UI can say "unsupported"
+ * instead of endlessly retrying a server that will never answer the routes Ember calls.
+ */
+type ProbeResult = 'v2' | 'v1' | 'down';
+
+const probeHealth = async (url: string, headers: Record<string, string>): Promise<ProbeResult> => {
+  const attempt = async (target: string | null): Promise<boolean> => {
+    if (!target) return false;
+    try {
+      const response = await fetch(target, {
+        headers,
+        redirect: 'error',
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
+  if (await attempt(resolveHealthUrl(url))) return 'v2';
+  if (await attempt(resolveApiUrl(url, '/api/health'))) return 'v1';
+  return 'down';
 };
 
 let instanceSnapshot: Instance[] = [];
@@ -280,7 +292,7 @@ const loadInstances = async (refresh = true): Promise<Instance[]> => {
         : isLocalHttpUrl(url)
           ? 'local'
           : 'remote';
-    const usable = !isRelay && Boolean(resolveApiUrl(url, '/api/health'));
+    const usable = !isRelay && Boolean(resolveApiUrl(url, '/api/session'));
 
     candidates.push({
       instance: {
@@ -331,10 +343,10 @@ const loadInstances = async (refresh = true): Promise<Instance[]> => {
     candidates.map(async (candidate) => {
       const url = candidate.instance.url;
       if (!url || candidate.instance.status === 'unsupported') return;
-      const reachable = await probeHealth(url, candidate.headers);
+      const probe = await probeHealth(url, candidate.headers);
       if (generation !== probeGeneration) return;
-      candidate.instance.status = reachable ? 'ready' : 'unreachable';
-      candidate.instance.attachable = reachable;
+      candidate.instance.status = probe === 'v2' ? 'ready' : probe === 'v1' ? 'unsupported' : 'unreachable';
+      candidate.instance.attachable = probe === 'v2';
       eventStreams.sync(instanceSnapshot.filter((instance) => instance.attachable).map((instance) => instance.id));
       announceIfChanged();
     })
@@ -376,7 +388,7 @@ const instanceTarget = (instanceId: string): { url: string; headers: Record<stri
 
   const rawUrl = hostUrl(host);
   const rawDirectUrl = typeof host.url === 'string' ? host.url : '';
-  if (!resolveApiUrl(rawUrl, '/api/health') || rawDirectUrl.startsWith('relay://')) return null;
+  if (!resolveApiUrl(rawUrl, '/api/session') || rawDirectUrl.startsWith('relay://')) return null;
 
   return { url: rawUrl, headers: hostHeaders(host, root) };
 };
@@ -450,7 +462,39 @@ const createWindow = (): BrowserWindow => {
       event.preventDefault();
     }
   });
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // A link opened in a new window (Cmd/middle-click, window.open) goes to the browser too.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void openTarget(url);
+    return { action: 'deny' };
+  });
+  // Electron ships no default context menu: links get open/copy, editable fields the
+  // usual edit roles, and any other selection a plain Copy.
+  win.webContents.on('context-menu', (_event, params) => {
+    const template: MenuItemConstructorOptions[] = [];
+    if (params.linkURL) {
+      // The renderer serves file://, so a path link arrives already resolved to file://.
+      const target = params.linkURL.startsWith('file:') ? fileURLToPath(params.linkURL) : params.linkURL;
+      template.push(
+        { label: 'Open Link', click: () => void openTarget(target) },
+        { label: 'Copy Link', click: () => clipboard.writeText(target) },
+        { type: 'separator' }
+      );
+    }
+    if (params.isEditable) {
+      template.push(
+        { role: 'undo', enabled: params.editFlags.canUndo },
+        { role: 'redo', enabled: params.editFlags.canRedo },
+        { type: 'separator' },
+        { role: 'cut', enabled: params.editFlags.canCut },
+        { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste },
+        { role: 'selectAll', enabled: params.editFlags.canSelectAll }
+      );
+    } else if (params.selectionText.trim()) {
+      template.push({ role: 'copy' });
+    }
+    if (template.length) Menu.buildFromTemplate(template).popup({ window: win });
+  });
   win.webContents.session.setPermissionCheckHandler(() => false);
   win.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   win.once('ready-to-show', () => win.show());
@@ -585,24 +629,33 @@ ipcMain.handle('ember:settings:set', (event, patch: unknown) => {
 });
 
 /**
- * Open a link from a chat: http(s) URLs go to the default browser, absolute local paths
- * that exist are revealed in Finder. Anything else (other schemes, remote-only paths) is
- * refused so agent output can't trigger arbitrary handlers.
+ * Open a link from a chat or context menu: http(s) URLs go to the default browser, absolute
+ * local paths that exist are revealed in Finder. Anything else (other schemes, remote-only
+ * paths) is refused so agent output can't trigger arbitrary handlers.
  */
-ipcMain.handle('ember:open', async (event, args: { target?: unknown }): Promise<boolean> => {
-  assertTrustedSender(event);
-  const target = String(args?.target || '').trim();
-  try {
-    const external = new URL(target);
-    if (['http:', 'https:'].includes(external.protocol) && !external.username && !external.password) {
+// `localhost:3000` parses as the odd scheme `localhost:` and `www.example.com` isn't a URL
+// at all, so agents' bare web addresses need an explicit http:// prefix before anything else.
+const NEEDS_SCHEME = /^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|www\.)[^\s]*$/i;
+
+const openTarget = async (target: string): Promise<boolean> => {
+  let filePath = target;
+  for (const candidate of NEEDS_SCHEME.test(target) ? [`http://${target}`, target] : [target]) {
+    try {
+      const external = new URL(candidate);
+      if (external.protocol === 'file:') {
+        filePath = fileURLToPath(external);
+        break;
+      }
+      // Another scheme (vscode:, mailto:, a token like `localhost:`) never leaves the app.
+      if (!['http:', 'https:'].includes(external.protocol) || external.username || external.password) return false;
       await shell.openExternal(external.toString());
       return true;
+    } catch {
+      // Not a URL; try the next candidate, then fall through to the local-path check.
     }
-  } catch {
-    // Not a URL; fall through and treat it as a local path.
   }
 
-  const resolved = target.startsWith('~') ? path.join(os.homedir(), target.slice(1)) : target;
+  const resolved = filePath.startsWith('~') ? path.join(os.homedir(), filePath.slice(1)) : filePath;
   if (!path.isAbsolute(resolved) || !fs.existsSync(resolved)) return false;
   try {
     if (fs.statSync(resolved).isDirectory()) await shell.openPath(resolved);
@@ -611,6 +664,11 @@ ipcMain.handle('ember:open', async (event, args: { target?: unknown }): Promise<
   } catch {
     return false;
   }
+};
+
+ipcMain.handle('ember:open', async (event, args: { target?: unknown }): Promise<boolean> => {
+  assertTrustedSender(event);
+  return openTarget(String(args?.target || '').trim());
 });
 
 /** The renderer rasterises the selected session's blob; the Dock shows it so the app icon says which agent you're on. */

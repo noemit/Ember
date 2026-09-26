@@ -30,7 +30,16 @@ const bridge: EmberBridge = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     })).json() as Promise<EmberSettings>,
-  openExternal: async () => false,
+  // The renderer is already a browser tab: open links in a new one. Bare host:port / www.
+  // addresses get an http:// prefix; local paths can't be revealed on the remote machine,
+  // so they report failure like the Electron bridge does.
+  openExternal: async (target) => {
+    const href = /^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|www\.)\S*$/i.test(target)
+      ? `http://${target}`
+      : target;
+    if (!/^https?:\/\//i.test(href)) return false;
+    return window.open(href, '_blank', 'noopener') !== null;
+  },
   setDockIcon: async () => undefined,
   request: async (instanceId: string, method: string, path: string, body?: unknown): Promise<ApiResponse> =>
     (await request('/remote/api', {

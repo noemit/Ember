@@ -13,16 +13,16 @@ const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 describe('event → invalidations', () => {
   test('a visible token update requests a bounded tail; a background one only its summary', () => {
     expect(
-      invalidationsFor({ instanceId: 'a', type: 'message.part.updated', sessionId: 'open' }, loaded)
+      invalidationsFor({ instanceId: 'a', type: 'session.text.delta', sessionId: 'open' }, loaded)
     ).toEqual([{ instanceId: 'a', resource: 'messages', sessionId: 'open', messageMode: 'tail' }]);
     expect(
-      invalidationsFor({ instanceId: 'a', type: 'message.part.updated', sessionId: 'other' }, loaded)
+      invalidationsFor({ instanceId: 'a', type: 'session.text.delta', sessionId: 'other' }, loaded)
     ).toEqual([{ instanceId: 'a', resource: 'messageSummary', sessionId: 'other' }]);
-    expect(invalidationsFor({ instanceId: 'a', type: 'message.updated' }, loaded)).toEqual([]);
+    expect(invalidationsFor({ instanceId: 'a', type: 'session.text.delta' }, loaded)).toEqual([]);
   });
 
-  test('removal, error and compaction request a full repair for visible sessions', () => {
-    for (const type of ['message.removed', 'message.part.removed', 'session.error', 'session.compacted']) {
+  test('failed, interrupted and compacted turns request a full repair for visible sessions', () => {
+    for (const type of ['session.execution.failed', 'session.execution.interrupted', 'session.error', 'session.compacted']) {
       expect(invalidationsFor({ instanceId: 'a', type, sessionId: 'open' }, loaded)).toContainEqual({
         instanceId: 'a',
         resource: 'messages',
@@ -44,18 +44,18 @@ describe('event → invalidations', () => {
 
   test('background token events never invalidate the session list', () => {
     const result = invalidationsFor(
-      { instanceId: 'a', type: 'message.part.updated', sessionId: 'background' },
+      { instanceId: 'a', type: 'session.text.delta', sessionId: 'background' },
       loaded
     );
     expect(result.some((invalidation) => invalidation.resource === 'sessions')).toBe(false);
   });
 
-  test('permission, question and schedule events keep their existing mapping', () => {
-    expect(invalidationsFor({ instanceId: 'a', type: 'permission.updated', sessionId: 's' }, loadedNone)).toEqual([
+  test('permission, form and schedule events map onto their resources', () => {
+    expect(invalidationsFor({ instanceId: 'a', type: 'permission.asked', sessionId: 's' }, loadedNone)).toEqual([
       { instanceId: 'a', resource: 'permissions' },
       { instanceId: 'a', resource: 'states' },
     ]);
-    expect(invalidationsFor({ instanceId: 'a', type: 'question.asked', sessionId: 's' }, loadedNone)).toEqual([
+    expect(invalidationsFor({ instanceId: 'a', type: 'form.created', sessionId: 's' }, loadedNone)).toEqual([
       { instanceId: 'a', resource: 'questions' },
       { instanceId: 'a', resource: 'states' },
     ]);

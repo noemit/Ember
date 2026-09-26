@@ -32,22 +32,21 @@ test('built Electron and authenticated remote access preserve local work', async
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
     if (request.method !== 'GET') mutations.push(`${request.method} ${path}`);
     let value: unknown = {};
-    if (path === '/api/health') value = { healthy: true };
-    else if (path === '/api/experimental/session') value = ['a', 'b'].map((id) => ({
-      id, title: `Native session ${id}`, directory: '/fixture/project',
-      model: { providerID: 'fixture', modelID: 'model' }, time: { updated: now },
-    }));
+    if (path === '/health') value = { ok: true };
+    else if (path === '/api/session') value = { data: ['a', 'b'].map((id) => ({
+      id, title: `Native session ${id}`, location: { directory: '/fixture/project' }, time: { updated: now },
+    })), cursor: { next: null } };
     else if (/^\/api\/session\/(a|b)\/message$/.test(path)) {
       const id = path.split('/')[3];
-      value = [{ info: { id: `answer-${id}`, role: 'assistant', providerID: 'fixture', modelID: 'model',
-        time: { created: now - 3000, completed: now - 1000 }, tokens: { input: 100, output: 20 }, cost: 0.01 },
-      parts: [{ id: `text-${id}`, type: 'text', text: `Native fixture response ${id}` }] }];
+      value = { data: [{ id: `answer-${id}`, type: 'assistant',
+        time: { created: now - 3000, completed: now - 1000 },
+        model: { providerID: 'fixture', id: 'model' }, tokens: { input: 100, output: 20 }, cost: 0.01,
+        content: [{ type: 'text', text: `Native fixture response ${id}` }] }] };
     } else if (path === '/api/config/settings') value = { projects: [{ id: 'project', path: '/fixture/project', label: 'Fixture project' }] };
-    else if (path === '/api/provider') value = {
-      all: [{ id: 'fixture', name: 'Fixture provider', models: { model: { id: 'model', name: 'Fixture model' } } }],
-      default: { fixture: 'model' },
-    };
-    else if (path === '/api/permission' || path === '/api/question') value = [];
+    else if (path === '/api/model') value = { data: [{ providerID: 'fixture', id: 'model', name: 'Fixture model' }] };
+    else if (path === '/api/provider') value = { data: [{ id: 'fixture', name: 'Fixture' }] };
+    else if (path === '/api/model/default') value = { data: { providerID: 'fixture', id: 'model' } };
+    else if (path === '/api/permission/request' || path === '/api/form' || path === '/api/session/active' || path === '/api/sessions/status') value = { data: path.endsWith('/request') ? { items: [] } : {} };
     else if (path === '/api/message-queue') value = { revision: 1, sessions: [] };
     else if (path === '/api/permission-auto-accept') value = { sessions: {} };
     else if (path.endsWith('/scheduled-tasks')) value = { tasks: [] };

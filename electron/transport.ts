@@ -73,6 +73,19 @@ export const resolveApiUrl = (baseValue: string, apiPath: unknown): string | nul
   return resolved.toString();
 };
 
+/**
+ * `/health` sits outside `/api` on OpenCode 2 / OpenChamber 2. Same rules as `resolveApiUrl`
+ * (http(s) base, no credentials, same origin, stays under the configured path prefix) — kept
+ * separate so the `/api` allowlist for proxied requests never widens.
+ */
+export const resolveHealthUrl = (baseValue: string): string | null => {
+  const base = parseHttpUrl(baseValue);
+  if (!base) return null;
+  const basePath = base.pathname.replace(/\/+$/, '');
+  const resolved = new URL(`${base.origin}${basePath}/health`);
+  return resolved.origin === base.origin ? resolved.toString() : null;
+};
+
 export type StoredAvatarOverride = {
   colorIndex?: number;
   shapeName?: string;

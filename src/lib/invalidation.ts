@@ -41,16 +41,38 @@ type ResourceHint = { resource: Resource; messageMode?: MessageRefreshMode };
 /**
  * Anything on the OpenCode stream that isn't listed here is deliberately ignored. Message hints
  * carry a mode so a visible column can fetch a bounded tail while a terminal event upgrades the
- * pending work to a full repair.
+ * pending work to a full repair. Event names are OpenCode 2's (`session.*`, `permission.*`,
+ * `form.*` — forms are what the API now calls interactive questions).
  */
 const OPENCODE_RESOURCES: Record<string, ResourceHint[]> = {
   'session.created': [{ resource: 'sessions' }],
   'session.updated': [{ resource: 'sessions' }],
+  'session.renamed': [{ resource: 'sessions' }],
+  'session.metadata.updated': [{ resource: 'sessions' }],
+  'session.moved': [{ resource: 'sessions' }],
+  'session.forked': [{ resource: 'sessions' }],
   'session.deleted': [{ resource: 'sessions' }],
+  'session.model.selected': [{ resource: 'sessions' }],
+  'session.agent.selected': [{ resource: 'sessions' }],
   'session.status': [{ resource: 'states' }],
+  'session.retry.scheduled': [{ resource: 'states' }],
+  'session.execution.started': [{ resource: 'states' }],
   'session.idle': [
     { resource: 'states' },
     { resource: 'sessions' },
+    { resource: 'messages', messageMode: 'full' },
+  ],
+  'session.execution.succeeded': [
+    { resource: 'states' },
+    { resource: 'sessions' },
+    { resource: 'messages', messageMode: 'full' },
+  ],
+  'session.execution.failed': [
+    { resource: 'states' },
+    { resource: 'messages', messageMode: 'full' },
+  ],
+  'session.execution.interrupted': [
+    { resource: 'states' },
     { resource: 'messages', messageMode: 'full' },
   ],
   'session.error': [
@@ -58,22 +80,36 @@ const OPENCODE_RESOURCES: Record<string, ResourceHint[]> = {
     { resource: 'messages', messageMode: 'full' },
   ],
   'session.compacted': [{ resource: 'messages', messageMode: 'full' }],
+  'session.compaction.ended': [{ resource: 'messages', messageMode: 'full' }],
+  'session.compaction.failed': [{ resource: 'messages', messageMode: 'full' }],
+  'session.inbox.delivered': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.synthetic': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.usage.updated': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.step.streamed': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.step.ended': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.text.delta': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.text.ended': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.reasoning.delta': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.reasoning.ended': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.tool.called': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.tool.success': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.tool.failed': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.tool.progress': [{ resource: 'messages', messageMode: 'tail' }],
+  'session.shell.ended': [{ resource: 'messages', messageMode: 'tail' }],
   'session.diff': [],
-  'message.updated': [{ resource: 'messages', messageMode: 'tail' }],
-  'message.part.updated': [{ resource: 'messages', messageMode: 'tail' }],
-  'message.part.removed': [{ resource: 'messages', messageMode: 'full' }],
-  'message.removed': [{ resource: 'messages', messageMode: 'full' }],
-  'permission.updated': [{ resource: 'permissions' }, { resource: 'states' }],
+  'permission.asked': [{ resource: 'permissions' }, { resource: 'states' }],
   'permission.replied': [{ resource: 'permissions' }, { resource: 'states' }],
-  'question.asked': [{ resource: 'questions' }, { resource: 'states' }],
-  'question.replied': [{ resource: 'questions' }, { resource: 'states' }],
-  'question.rejected': [{ resource: 'questions' }, { resource: 'states' }],
+  'permission.rejected': [{ resource: 'permissions' }, { resource: 'states' }],
+  'form.created': [{ resource: 'questions' }, { resource: 'states' }],
+  'form.replied': [{ resource: 'questions' }, { resource: 'states' }],
+  'form.cancelled': [{ resource: 'questions' }, { resource: 'states' }],
 };
 
 const OPENCHAMBER_RESOURCES: Record<string, ResourceHint[]> = {
   'openchamber:session-status': [{ resource: 'states' }],
   'openchamber:session-activity': [],
   'openchamber:session-created': [{ resource: 'sessions' }],
+  'openchamber:session-archived': [{ resource: 'sessions' }],
   'openchamber:permission-auto-accept.updated': [{ resource: 'autoAccept' }],
   'openchamber:scheduled-task-ran': [{ resource: 'scheduled' }, { resource: 'sessions' }],
   'openchamber:notification': [],

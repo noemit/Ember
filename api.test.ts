@@ -109,7 +109,7 @@ describe('session loading', () => {
     });
   });
 
-  test('paginates from the last raw record even when subagents are filtered', async () => {
+  test('follows the opaque cursor even when subagents are filtered out', async () => {
     const paths: string[] = [];
     const firstPage = [
       { id: 'top', time: { updated: 1000 } },
@@ -122,16 +122,24 @@ describe('session loading', () => {
     setRequest(async (_instanceId, _method, path) => {
       paths.push(path);
       return paths.length === 1
-        ? { ok: true, status: 200, data: firstPage }
-        : { ok: true, status: 200, data: [{ id: 'older', time: { updated: 700 } }] };
+        ? { ok: true, status: 200, data: { data: firstPage, cursor: { next: 'opaque-page-2' } } }
+        : { ok: true, status: 200, data: { data: [{ id: 'older', time: { updated: 700 } }], cursor: { next: null } } };
     });
 
     expect((await loadSessions('local'))?.map((session) => session.id)).toEqual(['top', 'older']);
-    expect(paths[1]).toContain('cursor=801');
+    expect(paths[0]).toContain('parentID=null');
+    expect(paths[1]).toBe('/api/session?cursor=opaque-page-2');
   });
 
   test('partial page refreshes preserve older sessions', async () => {
-    setRequest(async () => ({ ok: true, status: 200, data: Array.from({ length: 200 }, (_, index) => ({ id: `new-${index}`, time: { updated: 1000 - index } })) }));
+    setRequest(async () => ({
+      ok: true,
+      status: 200,
+      data: {
+        data: Array.from({ length: 200 }, (_, index) => ({ id: `new-${index}`, time: { updated: 1000 - index } })),
+        cursor: { next: 'more' },
+      },
+    }));
     const partial = await loadAllSessions(['local'], {}, 1);
     const old = { id: 'older', instanceId: 'local', updated: 1 };
     const merged = mergePolledSessions({ local: [old] }, partial, []);
@@ -147,29 +155,37 @@ describe('session loading', () => {
     expect(await loadMessages('local', 'session')).toEqual([]);
   });
 
-  test('full loads send no limit; tail loads encode directory and limit', async () => {
+  test('full loads page in ascending order; tail loads take the newest records', async () => {
     const paths: string[] = [];
     setRequest(async (_instanceId, _method, path) => {
       paths.push(path);
-      return { ok: true, status: 200, data: [] };
+      return { ok: true, status: 200, data: { data: [], cursor: { next: null } } };
     });
 
     await loadMessages('local', 'session', '/workspace/ember');
     await loadMessageTail('local', 'session', '/workspace/ember', 8);
     await loadMessageTail('local', 'session');
 
-    expect(paths[0]).toBe('/api/session/session/message?directory=%2Fworkspace%2Fember');
-    expect(paths[1]).toBe('/api/session/session/message?directory=%2Fworkspace%2Fember&limit=8');
-    expect(paths[2]).toBe('/api/session/session/message?limit=8');
+    expect(paths[0]).toBe('/api/session/session/message?order=asc&limit=500');
+    expect(paths[1]).toBe('/api/session/session/message?order=desc&limit=8');
+    expect(paths[2]).toBe('/api/session/session/message?order=desc&limit=8');
   });
 
   test('tail loads slice to the latest limit and normalize identically to full loads', async () => {
     const record = (id: string, text: string) => ({
-      info: { id, role: 'user', time: { created: 1 }, model: { providerID: 'p', modelID: 'm' } },
-      parts: [{ id: `${id}-text`, type: 'text', text }],
+      id,
+      type: 'user',
+      time: { created: 1 },
+      text,
+      model: { providerID: 'p', id: 'm' },
     });
-    const data = [record('m1', 'one'), record('m2', 'two'), record('m3', 'three')];
-    setRequest(async () => ({ ok: true, status: 200, data }));
+    const records = [record('m1', 'one'), record('m2', 'two'), record('m3', 'three')];
+    setRequest(async (_instanceId, _method, path) => ({
+      ok: true,
+      status: 200,
+      // `order=desc` answers newest-first, like the real endpoint.
+      data: { data: path.includes('order=desc') ? [...records].reverse() : records, cursor: { next: null } },
+    }));
 
     expect(await loadMessages('local', 'session')).toEqual(
       await loadMessageTail('local', 'session', undefined, 3)
@@ -190,27 +206,27 @@ describe('session loading', () => {
     setRequest(async () => ({
       ok: true,
       status: 200,
-      data: [
-        {
-          info: {
+      data: {
+        data: [
+          {
             id: 'user',
-            role: 'user',
-            model: { providerID: 'openai', modelID: 'gpt-5' },
+            type: 'user',
             time: { created: 100 },
+            text: 'Hello',
+            model: { providerID: 'openai', id: 'gpt-5' },
           },
-          parts: [{ id: 'user-text', type: 'text', text: 'Hello' }],
-        },
-        {
-          info: {
+          {
             id: 'assistant',
-            role: 'assistant',
-            providerID: 'anthropic',
-            modelID: 'claude-opus',
+            type: 'assistant',
             time: { created: 200, completed: 1450 },
+            model: { providerID: 'anthropic', id: 'claude-opus' },
+            content: [{ id: 'assistant-text', type: 'text', text: 'Hi' }],
           },
-          parts: [{ id: 'assistant-text', type: 'text', text: 'Hi' }],
-        },
-      ],
+          // Lifecycle/plumbing records never surface as chat bubbles.
+          { id: 'sys', type: 'system', time: { created: 150 }, text: 'tools changed' },
+          { id: 'comp', type: 'compaction', time: { created: 160 } },
+        ],
+      },
     }));
 
     const messages = await loadMessages('local', 'session');
@@ -230,25 +246,30 @@ describe('session loading', () => {
     setRequest(async () => ({
       ok: true,
       status: 200,
-      data: [
-        {
-          info: {
+      data: {
+        data: [
+          {
             id: 'cached',
-            role: 'assistant',
+            type: 'assistant',
             time: { created: 1, completed: 2 },
             tokens: { total: 10644, input: 1483, output: 201, reasoning: 0, cache: { read: 8960, write: 0 } },
+            content: [{ id: 'p', type: 'text', text: 'ok' }],
           },
-          parts: [{ id: 'p', type: 'text', text: 'ok' }],
-        },
-        {
-          info: { id: 'unknown', role: 'assistant', time: { created: 3, completed: 4 } },
-          parts: [{ id: 'q', type: 'text', text: 'ok' }],
-        },
-        {
-          info: { id: 'zeros', role: 'assistant', time: { created: 5, completed: 6 }, tokens: { input: 0, output: 0 } },
-          parts: [{ id: 'r', type: 'text', text: 'ok' }],
-        },
-      ],
+          {
+            id: 'unknown',
+            type: 'assistant',
+            time: { created: 3, completed: 4 },
+            content: [{ id: 'q', type: 'text', text: 'ok' }],
+          },
+          {
+            id: 'zeros',
+            type: 'assistant',
+            time: { created: 5, completed: 6 },
+            tokens: { input: 0, output: 0 },
+            content: [{ id: 'r', type: 'text', text: 'ok' }],
+          },
+        ],
+      },
     }));
 
     const [cached, unknown, zeros] = await loadMessages('local', 'session');
@@ -290,20 +311,19 @@ describe('session loading', () => {
     setRequest(async () => ({
       ok: true,
       status: 200,
-      data: [{
-        info: {
+      data: {
+        data: [{
           id: 'assistant-error',
-          role: 'assistant',
-          providerID: 'moonshotai',
-          modelID: 'kimi-k2',
+          type: 'assistant',
+          model: { providerID: 'moonshotai', id: 'kimi-k2' },
           time: { created: 200, completed: 240 },
           error: {
             name: 'APIError',
             data: { message: 'Invalid request Error', statusCode: 400 },
           },
-        },
-        parts: [],
-      }],
+          content: [],
+        }],
+      },
     }));
 
     expect(await loadMessages('local', 'session')).toEqual([
@@ -320,26 +340,24 @@ describe('session loading', () => {
     setRequest(async () => ({
       ok: true,
       status: 200,
-      data: [
-        {
-          info: {
+      data: {
+        data: [
+          {
             id: 'stopped',
-            role: 'assistant',
+            type: 'assistant',
             time: { created: 200 },
             error: { name: 'MessageAbortedError', data: { message: 'The running turn was interrupted.' } },
+            content: [],
           },
-          parts: [],
-        },
-        {
-          info: {
+          {
             id: 'failed',
-            role: 'assistant',
+            type: 'assistant',
             time: { created: 300 },
             error: { name: 'ProviderAuthError', data: { message: 'Invalid API key' } },
+            content: [],
           },
-          parts: [],
-        },
-      ],
+        ],
+      },
     }));
 
     const messages = await loadMessages('local', 'session');
@@ -421,21 +439,25 @@ describe('project loading', () => {
 });
 
 describe('permission loading', () => {
-  test('merges global and directory-scoped pending requests without duplicates', async () => {
+  test('merges global and location-scoped pending requests without duplicates', async () => {
     const paths: string[] = [];
     const request = {
       id: 'per_1',
       sessionID: 'ses_1',
-      permission: 'bash',
-      patterns: ['bun test'],
+      action: 'bash',
+      resources: ['bun test'],
       metadata: {},
     };
     setRequest(async (_instanceId, _method, path) => {
       paths.push(path);
+      const scoped = path.includes('location%5Bdirectory%5D') || path.includes('location[directory]');
       return {
         ok: true,
         status: 200,
-        data: path === '/api/permission' ? [request] : { data: [request] },
+        data: {
+          location: { directory: scoped ? '/workspace/ember' : null },
+          data: [request],
+        },
       };
     });
 
@@ -445,18 +467,23 @@ describe('permission loading', () => {
         id: 'per_1',
         sessionId: 'ses_1',
         directory: '/workspace/ember',
+        permission: 'bash',
+        patterns: ['bun test'],
       }),
     ]);
-    expect(paths).toEqual(['/api/permission', '/api/permission?directory=%2Fworkspace%2Fember']);
+    expect(paths).toEqual([
+      '/api/permission/request',
+      '/api/permission/request?location[directory]=%2Fworkspace%2Fember',
+    ]);
   });
 
-  test('routes replies through the directory that produced the request', async () => {
+  test('routes replies to the session-scoped permission endpoint with a decision', async () => {
     let requestPath = '';
     let requestBody: unknown;
     setRequest(async (_instanceId, _method, path, body) => {
       requestPath = path;
       requestBody = body;
-      return { ok: true, status: 200, data: true };
+      return { ok: true, status: 200, data: {} };
     });
 
     expect(await replyPermission({
@@ -468,13 +495,13 @@ describe('permission loading', () => {
       patterns: [],
       metadata: {},
     }, 'once')).toBe(true);
-    expect(requestPath).toBe('/api/permission/per_1/reply?directory=%2Fworkspace%2Fember');
-    expect(requestBody).toEqual({ reply: 'once' });
+    expect(requestPath).toBe('/api/session/ses_1/permission/per_1/reply');
+    expect(requestBody).toEqual({ decision: 'once' });
   });
 });
 
 describe('session creation and model metadata', () => {
-  test('creates sessions with directory only in the query string', async () => {
+  test('creates sessions with the working directory in a v2 location object', async () => {
     let requestPath = '';
     let requestBody: unknown;
     setRequest(async (_instanceId, _method, path, body) => {
@@ -483,93 +510,62 @@ describe('session creation and model metadata', () => {
       return {
         ok: true,
         status: 200,
-        data: { id: 'ses_new', directory: '/workspace/ember', time: { updated: 100 } },
+        data: { data: { id: 'ses_new', location: { directory: '/workspace/ember' }, time: { updated: 100 } } },
       };
     });
 
     expect((await createSession('local', '/workspace/ember'))?.id).toBe('ses_new');
-    expect(requestPath).toBe('/api/session?directory=%2Fworkspace%2Fember');
-    expect(requestBody).toEqual({});
+    expect(requestPath).toBe('/api/session');
+    expect(requestBody).toEqual({ location: { directory: '/workspace/ember' } });
   });
 
-  test('resolves provider-map defaults and reasoning variants', async () => {
-    setRequest(async () => ({
-      ok: true,
-      status: 200,
-      data: {
-        all: [{
-          id: 'anthropic',
-          name: 'Anthropic',
-          models: {
-            'claude-sonnet': {
+  test('reads the flat model catalogue and the instance default', async () => {
+    setRequest(async (_instanceId, _method, path) => {
+      if (path === '/api/model/default') {
+        return { ok: true, status: 200, data: { data: { providerID: 'anthropic', id: 'claude-sonnet' } } };
+      }
+      if (path === '/api/provider') {
+        return { ok: true, status: 200, data: { data: [{ id: 'anthropic', name: 'Anthropic' }] } };
+      }
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          data: [
+            {
+              providerID: 'anthropic',
               id: 'claude-sonnet',
+              modelID: 'claude-sonnet',
               name: 'Claude Sonnet',
-              capabilities: { reasoning: true, toolcall: true, attachment: true, input: { text: true } },
-              variants: { low: {}, high: {} },
+              capabilities: { tools: true, input: ['text', 'image'], output: ['text'] },
+              cost: [{ input: 3, output: 15, cache: { read: 0.3, write: 3.75 } }],
+              limit: { context: 200_000, output: 64_000 },
+              variants: [{ id: 'low' }, { id: 'high' }],
+              time: { released: Date.parse('2026-05-01') },
+              status: 'active',
+              enabled: true,
             },
-          },
-        }],
-        connected: ['anthropic'],
-        default: { anthropic: 'claude-sonnet' },
-      },
-    }));
+            // Disabled catalogue entries never reach the picker.
+            { providerID: 'unused', id: 'x', name: 'Should not appear', enabled: false },
+          ],
+        },
+      };
+    });
 
     const list = await loadModels('local');
     expect(list?.defaultModelId).toBe('anthropic/claude-sonnet');
+    expect(list?.models).toHaveLength(1);
     expect(list?.models[0].details.variants).toEqual(['low', 'high']);
+    expect(list?.models[0].details.providerName).toBe('Anthropic');
+    expect(list?.models[0].details.toolcall).toBe(true);
+    expect(list?.models[0].details.inputs).toEqual(['image']);
+    expect(list?.models[0].details.costInput).toBe(3);
+    expect(list?.models[0].details.releaseDate).toBe('2026-05-01');
   });
 
-  test('reports a failed provider request as null so the picker keeps its models', async () => {
+  test('reports a failed catalogue request as null so the picker keeps its models', async () => {
     setRequest(async () => ({ ok: false, status: 500, data: { error: 'boom' } }));
     expect(await loadModels('local')).toBeNull();
-  });
-
-  test('falls back to /config/providers when /provider yields no models', async () => {
-    setRequest(async (_instanceId, _method, path) =>
-      path === '/api/provider'
-        ? { ok: true, status: 200, data: { all: [], connected: [] } }
-        : {
-            ok: true,
-            status: 200,
-            data: {
-              providers: [
-                { id: 'deepseek', name: 'DeepSeek', models: { 'deepseek-v4': { id: 'deepseek-v4', name: 'DeepSeek V4' } } },
-              ],
-            },
-          }
-    );
-    const list = await loadModels('local');
-    expect(list?.models[0]?.providerID).toBe('deepseek');
-    expect(list?.models[0]?.modelID).toBe('deepseek-v4');
-  });
-
-  test('parses providers and models whether they arrive as arrays or id maps', async () => {
-    // Providers as an id map, each provider's models as an array.
-    setRequest(async () => ({
-      ok: true,
-      status: 200,
-      data: {
-        all: {
-          anthropic: { name: 'Anthropic', models: [{ id: 'claude-sonnet', name: 'Claude Sonnet' }] },
-        },
-        connected: ['anthropic'],
-      },
-    }));
-    expect((await loadModels('local'))?.models[0]).toMatchObject({
-      providerID: 'anthropic',
-      modelID: 'claude-sonnet',
-    });
-
-    // Providers as an array, each provider's models as an id map with no explicit id.
-    setRequest(async () => ({
-      ok: true,
-      status: 200,
-      data: { providers: [{ id: 'openai', name: 'OpenAI', models: { 'gpt-5': { name: 'GPT-5' } } }] },
-    }));
-    expect((await loadModels('local'))?.models[0]).toMatchObject({
-      providerID: 'openai',
-      modelID: 'gpt-5',
-    });
   });
 });
 
@@ -700,49 +696,55 @@ describe('scheduled task identity', () => {
   });
 });
 
-describe('question loading', () => {
-  test('loads questions from the selected session directory', async () => {
+describe('form loading (v2 questions)', () => {
+  const form = {
+    id: 'que_1',
+    sessionID: 'ses_1',
+    fields: [{
+      key: 'theme',
+      type: 'select',
+      header: 'Theme',
+      title: 'Which theme?',
+      options: [{ value: 'dark', label: 'Dark', description: 'Use dark mode.' }],
+    }],
+  };
+
+  test('loads forms from the selected session directory', async () => {
     const paths: string[] = [];
     setRequest(async (_instanceId, _method, path) => {
       paths.push(path);
       return {
         ok: true,
         status: 200,
-        data: path === '/api/question?directory=%2Fworkspace%2Fember'
-          ? [{
-              id: 'que_1',
-              sessionID: 'ses_1',
-              questions: [{
-                header: 'Theme',
-                question: 'Which theme?',
-                options: [{ label: 'Dark', description: 'Use dark mode.' }],
-              }],
-            }]
-          : [],
+        data: path.includes('location[directory]')
+          ? { location: { directory: '/workspace/ember' }, data: [form] }
+          : { location: { directory: null }, data: [] },
       };
     });
 
-    expect(await loadQuestions('local', '/workspace/ember')).toHaveLength(1);
-    expect(paths).toContain('/api/question?directory=%2Fworkspace%2Fember');
+    const result = await loadQuestions('local', '/workspace/ember');
+    expect(result).toHaveLength(1);
+    expect(result?.[0].questions[0]).toMatchObject({
+      key: 'theme',
+      valueType: 'select',
+      question: 'Which theme?',
+      options: [{ label: 'Dark', description: 'Use dark mode.', value: 'dark' }],
+    });
+    expect(paths).toContain('/api/form?location[directory]=%2Fworkspace%2Fember');
   });
 
-  test('merges default and directory-scoped questions without duplicates', async () => {
+  test('merges default and directory-scoped forms without duplicates', async () => {
     const paths: string[] = [];
-    const question = {
-      id: 'que_1',
-      sessionID: 'ses_1',
-      questions: [{
-        header: 'Theme',
-        question: 'Which theme?',
-        options: [{ label: 'Dark', description: 'Use dark mode.' }],
-      }],
-    };
     setRequest(async (_instanceId, _method, path) => {
       paths.push(path);
+      const scoped = path.includes('location[directory]');
       return {
         ok: true,
         status: 200,
-        data: path === '/api/question' ? [question] : { data: [question] },
+        data: {
+          location: { directory: scoped ? '/workspace/ember' : null },
+          data: [form],
+        },
       };
     });
 
@@ -756,16 +758,16 @@ describe('question loading', () => {
         directory: '/workspace/ember',
       }),
     ]);
-    expect(paths).toEqual(['/api/question', '/api/question?directory=%2Fworkspace%2Fember']);
+    expect(paths).toEqual(['/api/form', '/api/form?location[directory]=%2Fworkspace%2Fember']);
   });
 
-  test('routes question replies through the directory that produced the request', async () => {
+  test('encodes picked labels into a keyed form answer on the session route', async () => {
     let requestPath = '';
     let requestBody: unknown;
     setRequest(async (_instanceId, _method, path, body) => {
       requestPath = path;
       requestBody = body;
-      return { ok: true, status: 200, data: true };
+      return { ok: true, status: 200, data: {} };
     });
 
     expect(await replyQuestion({
@@ -774,13 +776,16 @@ describe('question loading', () => {
       sessionId: 'ses_1',
       directory: '/workspace/ember',
       questions: [{
+        key: 'theme',
+        valueType: 'select',
         header: 'Theme',
         question: 'Which theme?',
-        options: [],
+        options: [{ label: 'Dark', description: 'Use dark mode.', value: 'dark' }],
       }],
     }, [['Dark']])).toBe(true);
-    expect(requestPath).toBe('/api/question/que_1/reply?directory=%2Fworkspace%2Fember');
-    expect(requestBody).toEqual({ answers: [['Dark']] });
+    expect(requestPath).toBe('/api/session/ses_1/form/que_1/reply');
+    // The answer is keyed by field and maps the label back to its option value.
+    expect(requestBody).toEqual({ answer: { theme: 'dark' } });
   });
 });
 
@@ -1094,13 +1099,21 @@ describe('message submission', () => {
   });
 
   test('sends the selected identity and delegates only for server default', async () => {
-    const bodies: unknown[] = [];
-    setRequest(async (_instance, _method, _path, body) => { bodies.push(body); return { ok: true, status: 200, data: {} }; });
+    const calls: Array<{ path: string; body: unknown }> = [];
+    setRequest(async (_instance, _method, path, body) => {
+      calls.push({ path, body });
+      return { ok: true, status: 200, data: {} };
+    });
     await sendPrompt('local', 's', { text: 'test', selectedModelId: 'anthropic/claude-sonnet', model: queueModel, variant: 'high' });
     await sendPrompt('local', 's', { text: 'test', selectedModelId: 'default' });
-    expect(bodies[0]).toMatchObject({ model: { providerID: 'anthropic', modelID: 'claude-sonnet' }, variant: 'high' });
-    expect(bodies[0]).not.toHaveProperty('selectedModelId');
-    expect(bodies[1]).not.toHaveProperty('model');
+    // An explicit model lands on the sticky /model route as a Model.Ref, then the prompt.
+    expect(calls[0]).toEqual({
+      path: '/api/session/s/model',
+      body: { model: { providerID: 'anthropic', id: 'claude-sonnet', variant: 'high' } },
+    });
+    expect(calls[1]).toEqual({ path: '/api/session/s/prompt', body: { text: 'test' } });
+    // Server default: no /model call, just the prompt.
+    expect(calls[2]).toEqual({ path: '/api/session/s/prompt', body: { text: 'test' } });
   });
 
   test('extracts synchronous invalid-request messages from common API error shapes', () => {
@@ -1119,16 +1132,14 @@ describe('message submission', () => {
     const messageId = createClientMessageId(1_750_000_000_000);
 
     expect(messageId).toMatch(/^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
-    await sendPrompt('local', 'session', { text: 'Hello', variant: 'high' }, undefined, messageId);
-    expect(requestBody).toMatchObject({ messageID: messageId, variant: 'high' });
+    await sendPrompt('local', 'session', { text: 'Hello' }, undefined, messageId);
+    expect(requestBody).toMatchObject({ id: messageId, text: 'Hello' });
   });
 
-  test('reconstructs a taken queued message for immediate steering', async () => {
-    let requestPath = '';
-    let requestBody: unknown;
+  test('reconstructs a taken queued message as model, agent, synthetics, then prompt', async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
     setRequest(async (_instanceId, _method, path, body) => {
-      requestPath = path;
-      requestBody = body;
+      calls.push({ path, body });
       return { ok: true, status: 204, data: null };
     });
 
@@ -1147,19 +1158,20 @@ describe('message submission', () => {
       agentMention: 'reviewer',
     }, '/workspace/ember', 'msg_123');
 
-    expect(requestPath).toBe('/api/session/session/prompt_async?directory=%2Fworkspace%2Fember');
-    expect(requestBody).toEqual({
-      parts: [
-        { type: 'text', text: 'Steer this' },
-        { type: 'file', mime: 'text/plain', filename: 'log.txt', url: 'data:text/plain;base64,bG9n' },
-        { type: 'text', text: 'Read this first', synthetic: true },
-        { type: 'text', text: 'Diff context', synthetic: true, metadata: { source: 'pin' } },
-        { type: 'agent', name: 'reviewer' },
-      ],
-      model: { providerID: 'anthropic', modelID: 'claude-sonnet' },
-      agent: 'build',
-      variant: 'high',
-      messageID: 'msg_123',
-    });
+    expect(calls).toEqual([
+      { path: '/api/session/session/model', body: { model: { providerID: 'anthropic', id: 'claude-sonnet', variant: 'high' } } },
+      { path: '/api/session/session/agent', body: { agent: 'build' } },
+      { path: '/api/session/session/synthetic', body: { text: 'Read this first', metadata: { emberReplyContext: true } } },
+      { path: '/api/session/session/synthetic', body: { text: 'Diff context', metadata: { source: 'pin', emberReplyContext: true } } },
+      {
+        path: '/api/session/session/prompt',
+        body: {
+          text: 'Steer this',
+          id: 'msg_123',
+          files: [{ uri: 'data:text/plain;base64,bG9n', name: 'log.txt' }],
+          agents: [{ name: 'reviewer' }],
+        },
+      },
+    ]);
   });
 });

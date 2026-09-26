@@ -26,15 +26,17 @@ type MockMessage = {
   open?: boolean;
 };
 
-type MockQuestion = {
+/** OpenCode 2 `Form.Info` — the pending "questions" a session asks are keyed form fields. */
+type MockForm = {
   id: string;
   sessionID: string;
-  questions: Array<{
-    header: string;
-    question: string;
-    options: Array<{ label: string; description: string }>;
-    multiple?: boolean;
-    custom?: boolean;
+  fields: Array<{
+    key: string;
+    type: string;
+    title: string;
+    description?: string;
+    header?: string;
+    options?: Array<{ value: string; label: string; description?: string }>;
   }>;
 };
 
@@ -49,13 +51,14 @@ type MockSession = {
   messages: MockMessage[];
 };
 
+/** OpenCode 2 `Permission.Request` — the action asked for plus the resources it wants. */
 type MockPermission = {
   id: string;
   sessionID: string;
-  permission: string;
-  patterns: string[];
+  action: string;
+  resources: string[];
+  message?: string;
   metadata: Record<string, unknown>;
-  always: string[];
 };
 
 type MockQueuedMessage = {
@@ -214,37 +217,40 @@ const permissions: Record<string, MockPermission[]> = {
     {
       id: 'perm_1',
       sessionID: 'ses_a4',
-      permission: 'bash',
-      patterns: ['vercel rm *'],
-      metadata: { command: 'vercel rm habit-preview-* --yes', description: 'Delete stale preview deployments' },
-      always: ['vercel rm *'],
+      action: 'bash',
+      resources: ['vercel rm habit-preview-* --yes'],
+      message: 'Delete stale preview deployments',
+      metadata: { command: 'vercel rm habit-preview-* --yes' },
     },
   ],
   studio: [],
 };
 
-const questions: Record<string, MockQuestion[]> = {
+const forms: Record<string, MockForm[]> = {
   local: [
     {
-      id: 'q_1',
+      id: 'form_1',
       sessionID: 'ses_a3',
-      questions: [
+      fields: [
         {
+          key: 'blob-style',
+          type: 'select',
           header: 'Blob style',
-          question: 'Which blob style should be the default?',
+          title: 'Which blob style should be the default?',
           options: [
-            { label: 'Buddy (flat)', description: 'Solid colour, softer shapes.' },
-            { label: 'Glyph (icons)', description: 'Hand-drawn icons on a colour disc.' },
+            { value: 'buddy', label: 'Buddy (flat)', description: 'Solid colour, softer shapes.' },
+            { value: 'glyph', label: 'Glyph (icons)', description: 'Hand-drawn icons on a colour disc.' },
           ],
         },
         {
+          key: 'animations',
+          type: 'multiselect',
           header: 'Animations',
-          question: 'Which animations should stay on?',
-          multiple: true,
+          title: 'Which animations should stay on?',
           options: [
-            { label: 'Reorder', description: 'Sessions slide when order changes.' },
-            { label: 'Enter/exit', description: 'Fade for menus and dialogs.' },
-            { label: 'Idle wobble', description: 'Blobs breathe while idle.' },
+            { value: 'reorder', label: 'Reorder', description: 'Sessions slide when order changes.' },
+            { value: 'enter-exit', label: 'Enter/exit', description: 'Fade for menus and dialogs.' },
+            { value: 'idle-wobble', label: 'Idle wobble', description: 'Blobs breathe while idle.' },
           ],
         },
       ],
@@ -317,21 +323,25 @@ let settings: EmberSettings = {
   remotePasswordConfigured: false,
 };
 
+/**
+ * OpenCode 2 `Session.Message.Info` content entries: text/reasoning/tool parts inside
+ * `content[]`, tool output as `state.content[]` rather than a flat `output` string.
+ */
 const toParts = (message: MockMessage, messageId: string) => [
   ...(message.reasoning ? [{ id: `${messageId}-reasoning`, type: 'reasoning', text: message.reasoning }] : []),
-  ...(message.files ?? []).map((file, index) => ({ id: `${messageId}-file-${index}`, type: 'file', ...file })),
   ...(message.text ? [{ id: `${messageId}-text`, type: 'text', text: message.text }] : []),
   ...(message.tools ?? []).map((tool, index) => ({
     id: `${messageId}-tool-${index}`,
     type: 'tool',
+    name: tool.tool,
     callID: `${messageId}-call-${index}`,
-    tool: tool.tool,
+    executed: tool.status === 'completed' || tool.status === 'error',
     state: {
       status: tool.status,
       input: tool.input ?? {},
       title: tool.title,
-      error: tool.error,
-      output: tool.output,
+      error: tool.error ? { type: 'ToolError', message: tool.error } : undefined,
+      content: tool.output ? [{ type: 'text', text: tool.output }] : undefined,
       metadata: tool.diff ? { diff: tool.diff } : {},
     },
   })),
@@ -422,7 +432,7 @@ const watchForChanges = () => {
         contentSignature(s),
       ]),
       permissions: (permissions[instanceId] ?? []).map((p) => p.id),
-      questions: (questions[instanceId] ?? []).map((q) => q.id),
+      forms: (forms[instanceId] ?? []).map((q) => q.id),
     });
   STREAMING_INSTANCES.forEach((instanceId) => snapshot.set(instanceId, fingerprint(instanceId)));
   watcher = window.setInterval(() => {
@@ -439,13 +449,19 @@ const watchForChanges = () => {
         const prior = previous.get(id) as [string, string, number, number, string] | undefined;
         if (!prior) emit({ instanceId, type: 'session.created', sessionId: id });
         else {
-          if (prior[1] !== status) emit({ instanceId, type: 'session.status', sessionId: id });
-          if (prior[2] !== count) emit({ instanceId, type: 'message.updated', sessionId: id });
-          else if (prior[4] !== row[4]) emit({ instanceId, type: 'message.part.updated', sessionId: id });
+          if (prior[1] !== status) {
+            emit({
+              instanceId,
+              type: status === 'idle' ? 'session.idle' : 'session.execution.started',
+              sessionId: id,
+            });
+          }
+          if (prior[2] !== count) emit({ instanceId, type: 'session.text.ended', sessionId: id });
+          else if (prior[4] !== row[4]) emit({ instanceId, type: 'session.text.delta', sessionId: id });
         }
       });
-      if (JSON.stringify(before.permissions) !== JSON.stringify(after.permissions)) emit({ instanceId, type: 'permission.updated' });
-      if (JSON.stringify(before.questions) !== JSON.stringify(after.questions)) emit({ instanceId, type: 'question.asked' });
+      if (JSON.stringify(before.permissions) !== JSON.stringify(after.permissions)) emit({ instanceId, type: 'permission.asked' });
+      if (JSON.stringify(before.forms) !== JSON.stringify(after.forms)) emit({ instanceId, type: 'form.created' });
     });
   }, 400);
 };
@@ -463,10 +479,10 @@ if (performanceFixture) {
     })),
   }));
   permissions.local = [];
-  questions.local = [];
+  forms.local = [];
   if (new URLSearchParams(window.location.search).has('busy')) sessions.local[0].status = 'busy';
   if (new URLSearchParams(window.location.search).has('waiting')) permissions.local = [{
-    id: 'archive-permission', sessionID: 'perf-0', permission: 'bash', patterns: ['echo pending'], metadata: {}, always: [],
+    id: 'archive-permission', sessionID: 'perf-0', action: 'bash', resources: ['echo pending'], metadata: {},
   }];
   settings = { ...settings, openSessions: ['local::perf-0', 'local::perf-1'], activeSession: 'local::perf-0', minimizedSessions: [] };
   const saved = sessionStorage.getItem('ember-performance-settings');
@@ -490,7 +506,7 @@ export const appendFixtureMessage = (text: string, sessionId = 'perf-0', silent 
   if (!session) return;
   session.messages.push({ role: 'assistant', text });
   session.updated = Date.now();
-  if (!silent) emit({ instanceId: 'local', type: 'message.part.updated', sessionId });
+  if (!silent) emit({ instanceId: 'local', type: 'session.text.delta', sessionId });
 };
 
 let modelObservations: ModelObservation[] = JSON.parse(sessionStorage.getItem('ember-mock-model-stats') ?? '[]');
@@ -656,30 +672,39 @@ const bridge: EmberBridge = {
       if (!task) return { ok: false, status: 404, data: { error: 'Task not found or disabled' } };
       return delay(ok({ ok: true, sessionId: 'ses_a1' }));
     }
-    if (url.pathname === '/api/experimental/session' && method === 'GET') {
-      const includeArchived = url.searchParams.get('archived') === 'true';
-      const cursor = Number(url.searchParams.get('cursor') ?? Infinity);
-      const limit = Number(url.searchParams.get('limit') ?? Infinity);
-      const page = [...list]
-        .filter((s) => (includeArchived || !s.archived) && s.updated < cursor)
-        .sort((a, b) => b.updated - a.updated)
-        .slice(0, limit);
-      return delay(ok(page.map((s) => ({ id: s.id, title: s.title, directory: s.directory, model: s.model, time: { updated: s.updated, archived: s.archived } }))));
+    /** v2 `Session.Info` wire record — `location.directory`, `time.*`, `Model.Ref` fields. */
+    const sessionInfo = (session: MockSession) => ({
+      id: session.id,
+      title: session.title,
+      location: { directory: session.directory },
+      time: { created: session.updated - session.messages.length * 5000, updated: session.updated, archived: session.archived },
+      model: session.model ? { id: session.model.id, providerID: session.model.providerID, variant: session.model.variant } : undefined,
+    });
+    if (url.pathname === '/api/session' && method === 'GET') {
+      const directory = url.searchParams.get('directory');
+      const filtered = [...list]
+        .filter((s) => !directory || s.directory === directory)
+        .sort((a, b) => b.updated - a.updated);
+      const offset = Number(url.searchParams.get('cursor')?.replace('off:', '') ?? 0);
+      const limit = Number(url.searchParams.get('limit') ?? 50);
+      const page = filtered.slice(offset, offset + limit);
+      const next = offset + limit < filtered.length ? `off:${offset + limit}` : undefined;
+      return delay(ok({ data: page.map(sessionInfo), cursor: { next: next ?? null } }));
     }
     const updateMatch = url.pathname.match(/^\/api\/session\/([^/]+)$/);
     if (updateMatch && method === 'PATCH') {
       const session = list.find((s) => s.id === decodeURIComponent(updateMatch[1]));
       if (!session) return { ok: false, status: 404, data: null };
-      const archived = (body as { time?: { archived?: number } })?.time?.archived;
-      if (typeof archived === 'number') session.archived = archived || undefined;
+      // OpenCode 2's PATCH updates the title; archiving lives on OpenChamber's own routes.
       const title = (body as { title?: string })?.title;
       if (typeof title === 'string' && title.trim()) session.title = title.trim();
-      return delay(ok({ id: session.id, title: session.title, time: { updated: session.updated, archived: session.archived } }));
+      session.updated = Date.now();
+      return delay(ok({ data: sessionInfo(session) }));
     }
     if (url.pathname === '/api/session' && method === 'POST') {
       const directory =
-        String((body as { directory?: string })?.directory ?? '') ||
-        (url.searchParams.get('directory') ?? '');
+        String((body as { location?: { directory?: string } })?.location?.directory ?? '') ||
+        String((body as { directory?: string })?.directory ?? '');
       const created: MockSession = {
         id: `ses_${Math.random().toString(36).slice(2, 8)}`,
         title: 'New agent',
@@ -689,14 +714,13 @@ const bridge: EmberBridge = {
         messages: [],
       };
       list.unshift(created);
-      return delay(ok({ id: created.id, title: created.title }));
+      return delay(ok({ data: sessionInfo(created) }));
     }
-    const forkMatch = url.pathname.match(/^\/api\/openchamber\/sessions\/([^/]+)\/fork$/);
+    const forkMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/fork$/);
     if (forkMatch && method === 'POST') {
       const source = list.find((s) => s.id === decodeURIComponent(forkMatch[1]));
       if (!source) return { ok: false, status: 404, data: null };
-      // Fork the conversation into a new session, as the control plane does, and have the agent
-      // open it with a handoff summary.
+      // OpenCode 2's fork only copies history; the handoff prompt arrives as a separate prompt.
       const forked: MockSession = {
         id: `ses_${Math.random().toString(36).slice(2, 8)}`,
         title: `${source.title ?? source.id} (handoff)`,
@@ -704,19 +728,34 @@ const bridge: EmberBridge = {
         updated: Date.now(),
         status: 'idle',
         model: source.model,
-        messages: [
-          ...source.messages,
-          {
-            role: 'assistant',
-            text: 'Handoff summary: here is what we were working on, the tools used so far, and the current state. Waiting for your next instruction.',
-          },
-        ],
+        messages: [...source.messages],
       };
       list.unshift(forked);
-      return delay(ok({ sessionId: forked.id, directory: forked.directory, sourceSessionId: source.id, promptDispatched: true }));
+      return delay(ok({ data: sessionInfo(forked) }));
+    }
+    const archiveMatch = url.pathname.match(/^\/api\/openchamber\/sessions\/(archive|unarchive)$/);
+    if (archiveMatch && method === 'POST') {
+      const archiving = archiveMatch[1] === 'archive';
+      const ids = ((body as { ids?: unknown[] })?.ids ?? []).map(String);
+      const failedIds: string[] = [];
+      const changed: string[] = [];
+      ids.forEach((id) => {
+        const session = list.find((s) => s.id === id);
+        if (!session) { failedIds.push(id); return; }
+        session.archived = archiving ? Date.now() : undefined;
+        changed.push(id);
+      });
+      return delay(ok(archiving ? { archived: changed, failedIds } : { restored: changed, failedIds }));
     }
     if (path === '/api/sessions/status') {
       return delay(ok({ sessions: Object.fromEntries(list.map((s) => [s.id, { status: s.status }])) }));
+    }
+    if (url.pathname === '/api/session/active' && method === 'GET') {
+      return delay(ok({
+        data: Object.fromEntries(
+          list.filter((s) => s.status === 'busy').map((s) => [s.id, { type: 'running' }])
+        ),
+      }));
     }
     // Server-side YOLO policy. The ssh instance plays an older OpenChamber without the route so
     // the local-override fallback stays exercised.
@@ -733,37 +772,53 @@ const bridge: EmberBridge = {
       autoAcceptRevision += 1;
       return delay(ok({ sessions: { ...autoAccept }, revision: autoAcceptRevision }));
     }
-    if (url.pathname === '/api/question' && method === 'GET') return delay(ok(questions[instanceId] ?? []));
-    const questionMatch = url.pathname.match(/^\/api\/question\/([^/]+)\/(reply|reject)$/);
-    if (questionMatch && method === 'POST') {
-      const pending = questions[instanceId] ?? [];
-      const index = pending.findIndex((q) => q.id === decodeURIComponent(questionMatch[1]));
+    // Pending forms (v2 "questions"): { location, data: Form.Info[] } scoped by location[directory].
+    if (url.pathname === '/api/form' && method === 'GET') {
+      const directory = url.searchParams.get('location[directory]') ?? undefined;
+      const data = (forms[instanceId] ?? []).map((form) => ({
+        id: form.id,
+        sessionID: form.sessionID,
+        fields: form.fields,
+      }));
+      return delay(ok({ location: { directory: directory ?? null }, data }));
+    }
+    const formMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/form\/([^/]+)(\/reply)?$/);
+    if (formMatch && (method === 'POST' || method === 'DELETE')) {
+      const sessionId = decodeURIComponent(formMatch[1]);
+      const formId = decodeURIComponent(formMatch[2]);
+      const isReply = Boolean(formMatch[3]);
+      if ((method === 'POST') !== isReply) return { ok: false, status: 404, data: null };
+      const pending = forms[instanceId] ?? [];
+      const index = pending.findIndex((q) => q.id === formId && q.sessionID === sessionId);
       if (index === -1) return { ok: false, status: 404, data: null };
       const [request] = pending.splice(index, 1);
       const session = list.find((s) => s.id === request.sessionID);
       const last = session?.messages[session.messages.length - 1];
       const tool = last?.tools?.find((t) => t.tool === 'question');
-      if (tool) tool.status = questionMatch[2] === 'reply' ? 'completed' : 'error';
+      if (tool) tool.status = isReply ? 'completed' : 'error';
       if (session && last) {
         last.open = false;
-        const answers = (body as { answers?: string[][] })?.answers;
-        session.messages.push({ role: 'assistant', text: answers ? `Got it: ${answers.map((a) => a.join(', ')).join(' / ')}.` : 'Okay, skipping that.' });
+        const answer = (body as { answer?: Record<string, unknown> })?.answer;
+        session.messages.push({
+          role: 'assistant',
+          text: answer ? `Got it: ${Object.values(answer).flat().join(' / ')}.` : 'Okay, skipping that.',
+        });
         session.status = 'idle';
       }
-      return delay(ok(true));
+      return delay(ok({}));
     }
-    const abortMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/abort$/);
-    if (abortMatch && method === 'POST') {
-      const session = list.find((s) => s.id === decodeURIComponent(abortMatch[1]));
+    const interruptMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/interrupt$/);
+    if (interruptMatch && method === 'POST') {
+      const session = list.find((s) => s.id === decodeURIComponent(interruptMatch[1]));
       const last = session?.messages[session.messages.length - 1];
       if (session && last) {
         last.open = false;
         last.tools?.forEach((t) => { if (t.status === 'running' || t.status === 'pending') { t.status = 'error'; t.error = 'Aborted'; } });
         session.status = 'idle';
       }
-      return delay(ok(true));
+      return delay(ok({}));
     }
-    const compactMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/summarize$/);
+    const compactMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/compact$/);
     if (compactMatch && method === 'POST') {
       const session = list.find((s) => s.id === decodeURIComponent(compactMatch[1]));
       if (session && session.messages.length > 2) {
@@ -773,17 +828,26 @@ const bridge: EmberBridge = {
           ...session.messages.slice(-2),
         ];
       }
-      return delay({ ok: true, status: 204, data: null });
+      return delay(ok({}));
     }
-    if (url.pathname === '/api/permission' && method === 'GET') return delay(ok(permissions[instanceId] ?? []));
-    const replyMatch = url.pathname.match(/^\/api\/permission\/([^/]+)\/reply$/);
-    if (replyMatch && method === 'POST') {
+    // Pending permission requests: { location, data: Permission.Request[] }.
+    if (url.pathname === '/api/permission/request' && method === 'GET') {
+      const directory = url.searchParams.get('location[directory]') ?? undefined;
+      return delay(ok({
+        location: { directory: directory ?? null },
+        data: permissions[instanceId] ?? [],
+      }));
+    }
+    const permissionReplyMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/permission\/([^/]+)\/reply$/);
+    if (permissionReplyMatch && method === 'POST') {
+      const sessionId = decodeURIComponent(permissionReplyMatch[1]);
+      const requestId = decodeURIComponent(permissionReplyMatch[2]);
       const pending = permissions[instanceId] ?? [];
-      const index = pending.findIndex((p) => p.id === decodeURIComponent(replyMatch[1]));
+      const index = pending.findIndex((p) => p.id === requestId && p.sessionID === sessionId);
       if (index === -1) return { ok: false, status: 404, data: null };
       const [request] = pending.splice(index, 1);
       const session = list.find((s) => s.id === request.sessionID);
-      const approved = (body as { reply?: string })?.reply !== 'reject';
+      const approved = (body as { decision?: string })?.decision !== 'reject';
       const last = session?.messages[session.messages.length - 1];
       const pendingTool = last?.tools?.find((t) => t.status === 'pending');
       if (pendingTool) pendingTool.status = approved ? 'running' : 'error';
@@ -797,69 +861,97 @@ const bridge: EmberBridge = {
           session.status = 'idle';
         }, 2500);
       }
-      return delay(ok(true));
+      return delay(ok({}));
     }
     const messageMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/message$/);
-    if (messageMatch) {
+    if (messageMatch && method === 'GET') {
       const session = list.find((s) => s.id === decodeURIComponent(messageMatch[1]));
-      const normalized = (session?.messages ?? []).map((m, i, all) => {
+      const records = (session?.messages ?? []).map((m, i, all) => {
         const id = `${session?.id}-${i}`;
         const created = (session?.updated ?? Date.now()) - (all.length - i) * 5000;
-        const time = m.role === 'assistant' && !m.open ? { created, completed: created + 2400 } : { created };
         const model = session?.model ?? { id: 'claude-sonnet', providerID: 'anthropic' };
-        const info = m.role === 'user'
-          ? { id, role: m.role, time, model: { providerID: model.providerID, modelID: model.id, variant: model.variant } }
-          : {
-              id,
-              role: m.role,
-              time,
-              providerID: model.providerID,
-              modelID: model.id,
-              model: model.variant ? { providerID: model.providerID, modelID: model.id, variant: model.variant } : undefined,
-              error: m.error ? { name: 'APIError', data: { message: m.error, statusCode: 400 } } : undefined,
-              // First assistant turn writes the prefix; later ones read it back, like a real provider.
-              tokens: m.open || m.error
-                ? undefined
-                : i <= 1
-                  ? { input: 1800, output: 240, reasoning: 0, cache: { read: 0, write: 9200 } }
-                  : { input: 400 + i * 60, output: 180, reasoning: 0, cache: { read: 9200 + i * 300, write: 0 } },
-              // A plausible per-turn USD cost so the footer's cost/tok-s fields are exercised.
-              cost: m.open || m.error ? undefined : 0.0123,
-            };
-        return { info, parts: toParts(m, id) };
+        const modelRef = { providerID: model.providerID, id: model.id, variant: model.variant };
+        if (m.role === 'user') {
+          return {
+            id,
+            type: 'user' as const,
+            sessionID: session?.id,
+            time: { created },
+            text: m.text,
+            model: modelRef,
+            files: (m.files ?? []).map((file) => ({
+              name: file.filename,
+              mime: file.mime,
+              source: { uri: file.url },
+            })),
+          };
+        }
+        return {
+          id,
+          type: 'assistant' as const,
+          sessionID: session?.id,
+          time: m.open ? { created } : { created, completed: created + 2400 },
+          model: modelRef,
+          content: toParts(m, id),
+          error: m.error ? { name: 'APIError', data: { message: m.error, statusCode: 400 } } : undefined,
+          // First assistant turn writes the prefix; later ones read it back, like a real provider.
+          tokens: m.open || m.error
+            ? undefined
+            : i <= 1
+              ? { input: 1800, output: 240, reasoning: 0, cache: { read: 0, write: 9200 } }
+              : { input: 400 + i * 60, output: 180, reasoning: 0, cache: { read: 9200 + i * 300, write: 0 } },
+          // A plausible per-turn USD cost so the footer's cost/tok-s fields are exercised.
+          cost: m.open || m.error ? undefined : 0.0123,
+        };
       });
-      // Honor `limit` the way OpenCode does: the latest N records in chronological order.
+      // v2 pagination: `order` picks the first page's direction, `cursor` continues it.
+      const ordered = url.searchParams.get('order') === 'desc' ? [...records].reverse() : records;
+      const cursor = url.searchParams.get('cursor');
+      const offset = Number(cursor?.replace('off:', '') ?? 0);
       const limitParam = Number(url.searchParams.get('limit'));
-      const limited = Number.isFinite(limitParam) && limitParam > 0 ? normalized.slice(-limitParam) : normalized;
-      return delay(ok(limited));
+      const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : ordered.length;
+      const page = ordered.slice(offset, offset + limit);
+      const next = offset + limit < ordered.length ? `off:${offset + limit}` : null;
+      return delay(ok({ data: page, cursor: { next } }));
     }
-    const promptMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/prompt_async$/);
-    if (promptMatch) {
+    // Sticky session settings in v2: model/agent are pushed before the prompt lands.
+    const modelMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/model$/);
+    if (modelMatch && method === 'POST') {
+      const session = list.find((s) => s.id === decodeURIComponent(modelMatch[1]));
+      const ref = (body as { model?: { providerID?: string; id?: string; variant?: string } })?.model;
+      if (!session || !ref?.providerID || !ref?.id) return { ok: false, status: 400, data: { error: 'model ref required' } };
+      session.model = { id: ref.id, providerID: ref.providerID, variant: ref.variant };
+      return delay(ok({}));
+    }
+    const agentMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/agent$/);
+    if (agentMatch && method === 'POST') {
+      const session = list.find((s) => s.id === decodeURIComponent(agentMatch[1]));
+      if (!session) return { ok: false, status: 404, data: null };
+      return delay(ok({}));
+    }
+    const syntheticMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/synthetic$/);
+    if (syntheticMatch && method === 'POST') {
+      const session = list.find((s) => s.id === decodeURIComponent(syntheticMatch[1]));
+      if (!session) return { ok: false, status: 404, data: null };
+      return delay(ok({}));
+    }
+    const promptMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/prompt$/);
+    if (promptMatch && method === 'POST') {
       const session = list.find((s) => s.id === decodeURIComponent(promptMatch[1]));
       const prompt = body as {
-        parts?: Array<{
-          type: string;
-          text?: string;
-          filename?: string;
-          mime?: string;
-          url?: string;
-          metadata?: { emberReplyContext?: boolean };
-          synthetic?: boolean;
-        }>;
-        model?: { providerID: string; modelID: string };
-        variant?: string;
+        id?: string;
+        text?: string;
+        files?: Array<{ uri?: string; name?: string }>;
+        agents?: Array<{ name?: string }>;
       };
-      const parts = prompt?.parts ?? [];
-      const text = parts
-        .filter((part) => part.type === 'text' && part.metadata?.emberReplyContext !== true && part.synthetic !== true)
-        .map((part) => part.text ?? '')
-        .join('');
-      const files = parts.filter((p) => p.type === 'file').map((p) => ({ filename: p.filename ?? 'file', mime: p.mime ?? '', url: p.url ?? '' }));
+      const text = prompt?.text ?? '';
+      const files = (prompt?.files ?? []).map((file) => ({
+        filename: file.name ?? 'file',
+        mime: '',
+        url: file.uri ?? '',
+      }));
       if (session) {
         session.messages.push({ role: 'user', text, files });
-        if (prompt.model) {
-          session.model = { id: prompt.model.modelID, providerID: prompt.model.providerID, variant: prompt.variant };
-        }
         session.updated = Date.now();
         session.status = 'busy';
         setTimeout(() => {
@@ -870,42 +962,52 @@ const bridge: EmberBridge = {
       }
       return delay(ok({}));
     }
+    // v2 provider list: `Provider.Info[]` with display names.
     if (path === '/api/provider') {
-      const model = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+      return delay(ok({
+        data: [
+          { id: 'anthropic', name: 'Anthropic', activation: 'enabled', package: 'opencode' },
+          { id: 'openai', name: 'OpenAI', activation: 'enabled', package: 'opencode' },
+          { id: 'router', name: 'Router', activation: 'enabled', package: 'opencode' },
+          { id: 'unused', name: 'Unused', activation: 'enabled', package: 'opencode' },
+        ],
+      }));
+    }
+    // v2 model catalogue: flat `Model.Info[]` under `data`; the default is a separate route.
+    if (path === '/api/model' || path === '/api/model/default') {
+      const model = (providerID: string, id: string, name: string, extra: Record<string, unknown> = {}) => ({
+        providerID,
         id,
+        modelID: id,
         name,
         family: name.split(' ')[0],
         status: 'active',
-        release_date: '2026-05-01',
-        capabilities: { reasoning: true, toolcall: true, attachment: true, input: { text: true, image: true, pdf: false, audio: false, video: false } },
-        cost: { input: 3, output: 15 },
+        time: { released: Date.parse('2026-05-01') },
+        enabled: true,
+        capabilities: { tools: true, input: ['text', 'image'], output: ['text'] },
+        cost: [{ input: 3, output: 15, cache: { read: 0.3, write: 3.75 } }],
         limit: { context: 200_000, output: 64_000 },
-        variants: { low: {}, medium: {}, high: {} },
+        variants: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }],
         ...extra,
       });
-      const bulk = Object.fromEntries(
-        Array.from({ length: 60 }, (_, i) => [`router-${i}`, model(`router-${i}`, `Router Model ${i}`, { cost: { input: 0, output: 0 }, variants: {}, status: i % 20 === 7 ? 'beta' : 'active' })])
-      );
-      const catalogue: { connected: string[]; all: Array<{ id: string; name: string; models: Record<string, unknown> }>; default: Record<string, string> } = {
-        connected: ['anthropic', 'openai', 'router'],
-        all: [
-          { id: 'anthropic', name: 'Anthropic', models: {
-            'claude-sonnet': model('claude-sonnet', 'Claude Sonnet'),
-            'claude-opus': model('claude-opus', 'Claude Opus', { cost: { input: 15, output: 75 }, limit: { context: 1_000_000, output: 128_000 } }),
-          } },
-          { id: 'openai', name: 'OpenAI', models: { 'gpt-5': model('gpt-5', 'GPT-5', { capabilities: { reasoning: true, toolcall: true, attachment: false, input: { text: true } } }) } },
-          { id: 'router', name: 'Router', models: bulk },
-          { id: 'unused', name: 'Unused provider', models: { x: model('x', 'Should not appear') } },
-        ],
-        default: { 'unused': 'x', 'anthropic': 'claude-sonnet' },
-      };
+      const catalogue = [
+        model('anthropic', 'claude-sonnet', 'Claude Sonnet'),
+        model('anthropic', 'claude-opus', 'Claude Opus', { cost: [{ input: 15, output: 75, cache: { read: 1.5, write: 18.75 } }], limit: { context: 1_000_000, output: 128_000 } }),
+        model('openai', 'gpt-5', 'GPT-5', { capabilities: { tools: true, input: ['text'], output: ['text'] } }),
+        ...Array.from({ length: 60 }, (_, i) =>
+          model('router', `router-${i}`, `Router Model ${i}`, { cost: [{ input: 0, output: 0, cache: { read: 0, write: 0 } }], variants: [], status: i % 20 === 7 ? 'beta' : 'active' })
+        ),
+        // Disabled entries exist in the catalogue but never reach the picker.
+        model('unused', 'x', 'Should not appear', { enabled: false }),
+      ];
       const missing = performanceFixture ? new URLSearchParams(window.location.search).get('missingModel') : null;
-      if (missing) {
-        const slash = missing.indexOf('/');
-        const provider = catalogue.all.find((provider) => provider.id === missing.slice(0, slash));
-        if (provider) delete provider.models[missing.slice(slash + 1)];
+      const visible = missing
+        ? catalogue.filter((entry) => `${entry.providerID}/${entry.id}` !== missing)
+        : catalogue;
+      if (path === '/api/model/default') {
+        return delay(ok({ data: { providerID: 'anthropic', id: 'claude-sonnet' } }));
       }
-      return delay(ok(catalogue));
+      return delay(ok({ data: visible }));
     }
     return { ok: false, status: 404, data: null };
   },

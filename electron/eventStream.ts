@@ -4,8 +4,9 @@
  * Ember treats REST as the source of truth; events only say "something about session X
  * changed, go refetch". So the stream client parses SSE frames, pulls out the event type and
  * the session/directory it concerns, and drops the payload body. Two upstream streams exist:
- * OpenCode's `/api/global/event` (sessions, messages, permissions, questions, status) and
- * OpenChamber's `/api/notifications/stream` (auto-accept policy, scheduled tasks).
+ * OpenCode 2's `/api/event` (sessions, messages, permissions, forms, status — wrapped
+ * as `{ type, location: { directory }, data, durable: { aggregateID } }`) and OpenChamber's
+ * `/api/notifications/stream` (auto-accept policy, scheduled tasks, `{ type, properties }`).
  */
 
 export type EmberEvent = {
@@ -19,7 +20,7 @@ export type EmberEvent = {
 export type StreamStatus = { instanceId: string; connected: boolean };
 
 export const STREAM_PATHS = {
-  opencode: '/api/global/event',
+  opencode: '/api/event',
   openchamber: '/api/notifications/stream',
 } as const;
 
@@ -63,23 +64,38 @@ export const parseEventData = (
     return null;
   }
   const root = asRecord(parsed);
-  // OpenCode wraps in { directory, project, payload }; OpenChamber sends { type, properties }.
-  const payload = stream === 'opencode' ? asRecord(root.payload) : root;
-  const type = optionalString(payload.type);
-  if (!type) return null;
-  if (type.startsWith('server.') || type.endsWith('-stream-ready') || type === 'openchamber:heartbeat') return null;
+  if (stream === 'openchamber') {
+    // OpenChamber's notification stream keeps its own `{ type, properties }` frames.
+    const type = optionalString(root.type);
+    if (!type || type.endsWith('-stream-ready') || type === 'openchamber:heartbeat') return null;
+    const properties = asRecord(root.properties);
+    const sessionId = optionalString(properties.sessionID) ?? optionalString(properties.sessionId);
+    const directory = optionalString(properties.directory);
+    return { instanceId, stream, type, sessionId, directory };
+  }
 
-  const properties = asRecord(payload.properties);
-  const info = asRecord(properties.info);
-  // message.* events nest the session under `info`/`part`; session.* put it on `properties`.
-  const part = asRecord(properties.part);
+  // OpenCode 2 flat envelope: { id, created, type, location, data, durable }. Session-scoped
+  // events put `sessionID` on `data` (sometimes nested under request/form/item), and
+  // `durable.aggregateID` echoes it for anything session-rooted.
+  const type = optionalString(root.type);
+  if (!type || type.startsWith('server.') || type === 'heartbeat') return null;
+  const payload = asRecord(root.data);
+  const location = asRecord(root.location);
+  const durable = asRecord(root.durable);
+  const aggregateId = optionalString(durable.aggregateID);
   const sessionId =
-    optionalString(properties.sessionID) ??
-    optionalString(properties.sessionId) ??
-    optionalString(info.sessionID) ??
-    optionalString(part.sessionID) ??
-    (type.startsWith('session.') ? optionalString(info.id) : undefined);
-  const directory = optionalString(root.directory) ?? optionalString(properties.directory) ?? optionalString(info.directory);
+    optionalString(payload.sessionID) ??
+    optionalString(payload.sessionId) ??
+    optionalString(asRecord(payload.request).sessionID) ??
+    optionalString(asRecord(payload.form).sessionID) ??
+    optionalString(asRecord(payload.item).sessionID) ??
+    optionalString(asRecord(payload.info).sessionID) ??
+    optionalString(asRecord(payload.session).id) ??
+    (aggregateId && aggregateId.startsWith('ses') ? aggregateId : undefined);
+  const directory =
+    optionalString(location.directory) ??
+    optionalString(asRecord(payload.location).directory) ??
+    optionalString(payload.directory);
   return { instanceId, stream, type, sessionId, directory };
 };
 

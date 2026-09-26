@@ -14,16 +14,19 @@ const chooseModel = async (page: Page, composerKey = 'local::perf-0') => {
 const captureSends = async (page: Page) => page.evaluate(() => {
   const original = window.ember.request;
   window.ember.request = async (instanceId, method, path, body) => {
-    if (method === 'POST' && (path.includes('/prompt_async') || /\/message-queue\/sessions\/[^/]+\/items/.test(path))) {
+    // An explicit model choice lands on /model (sticky session setting) before /prompt;
+    // queued sends stay on the OpenChamber message-queue route.
+    if (method === 'POST' && (path.endsWith('/model') || path.endsWith('/prompt') || /\/message-queue\/sessions\/[^/]+\/items/.test(path))) {
       const captured = JSON.parse(sessionStorage.getItem('model-test-requests') ?? '[]');
       sessionStorage.setItem('model-test-requests', JSON.stringify([...captured, { path, body }]));
-      if (path.includes('/prompt_async')) return { ok: true, status: 200, data: {} };
     }
     return original(instanceId, method, path, body);
   };
 });
 
 const capturedSends = (page: Page) => page.evaluate(() => JSON.parse(sessionStorage.getItem('model-test-requests') ?? '[]'));
+const capturedModelCalls = async (page: Page) =>
+  (await capturedSends(page)).filter((entry: { path: string }) => entry.path.endsWith('/model'));
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/?fixture=performance&noDock');
@@ -35,7 +38,7 @@ test('explicit model and effort survive sending, clearing, and a reload with sta
   await captureSends(page);
   await page.locator('textarea').first().fill('Send with my chosen model');
   await page.locator('textarea').first().press('Enter');
-  await expect.poll(() => capturedSends(page)).toMatchObject([{ body: { model: { providerID: 'openai', modelID: 'gpt-5' }, variant: 'high' } }]);
+  await expect.poll(() => capturedModelCalls(page)).toMatchObject([{ body: { model: { providerID: 'openai', id: 'gpt-5', variant: 'high' } } }]);
   await page.waitForTimeout(1000);
   await expect.poll(() => page.evaluate(async () => (await window.ember.getSettings()).composerDrafts['local::perf-0'])).toMatchObject({ text: '', modelId: 'openai/gpt-5', variant: 'high' });
   await page.reload();
@@ -45,9 +48,9 @@ test('explicit model and effort survive sending, clearing, and a reload with sta
   await page.locator('textarea').first().fill('');
   await page.locator('textarea').first().fill('Still the chosen model');
   await page.locator('textarea').first().press('Enter');
-  await expect.poll(() => capturedSends(page)).toMatchObject([
-    { body: { model: { providerID: 'openai', modelID: 'gpt-5' }, variant: 'high' } },
-    { body: { model: { providerID: 'openai', modelID: 'gpt-5' }, variant: 'high' } },
+  await expect.poll(() => capturedModelCalls(page)).toMatchObject([
+    { body: { model: { providerID: 'openai', id: 'gpt-5', variant: 'high' } } },
+    { body: { model: { providerID: 'openai', id: 'gpt-5', variant: 'high' } } },
   ]);
 });
 
@@ -83,9 +86,9 @@ test('catalogue refresh cannot replace a missing choice and restores it when ava
     sessionStorage.setItem('model-test-hide', 'yes');
     window.ember.request = async (instance, method, path, body) => {
       const response = await original(instance, method, path, body);
-      if (path === '/api/provider' && sessionStorage.getItem('model-test-hide') === 'yes') {
-        const data = response.data as { all: Array<{ id: string }> };
-        return { ...response, data: { ...data, all: data.all.filter((provider) => provider.id !== 'openai') } };
+      if (path === '/api/model' && sessionStorage.getItem('model-test-hide') === 'yes') {
+        const data = response.data as { data: Array<{ providerID: string }> };
+        return { ...response, data: { data: data.data.filter((entry) => entry.providerID !== 'openai') } };
       }
       return response;
     };
@@ -102,7 +105,7 @@ test('catalogue refresh cannot replace a missing choice and restores it when ava
   await captureSends(page);
   await page.locator('textarea').first().fill('The same choice returned');
   await page.locator('textarea').first().press('Enter');
-  await expect.poll(() => capturedSends(page)).toMatchObject([{ body: { model: { providerID: 'openai', modelID: 'gpt-5' }, variant: 'high' } }]);
+  await expect.poll(() => capturedModelCalls(page)).toMatchObject([{ body: { model: { providerID: 'openai', id: 'gpt-5', variant: 'high' } } }]);
 });
 
 test('an unavailable reasoning level requires an explicit replacement', async ({ page }) => {
@@ -110,10 +113,10 @@ test('an unavailable reasoning level requires an explicit replacement', async ({
     const original = window.ember.request;
     window.ember.request = async (instance, method, path, body) => {
       const response = await original(instance, method, path, body);
-      if (path === '/api/provider') {
-        const data = response.data as { all: Array<{ id: string; models: Record<string, { variants: Record<string, unknown> }> }> };
-        const provider = data.all.find((entry) => entry.id === 'openai');
-        if (provider) provider.models['gpt-5'].variants = { low: {} };
+      if (path === '/api/model') {
+        const data = response.data as { data: Array<{ providerID: string; id: string; variants: Array<{ id: string }> }> };
+        const entry = data.data.find((model) => model.providerID === 'openai' && model.id === 'gpt-5');
+        if (entry) entry.variants = [{ id: 'low' }];
       }
       return response;
     };
@@ -128,7 +131,7 @@ test('an unavailable reasoning level requires an explicit replacement', async ({
   await captureSends(page);
   await page.locator('textarea').first().fill('Use the effort I explicitly selected');
   await page.locator('textarea').first().press('Enter');
-  await expect.poll(() => capturedSends(page)).toMatchObject([{ body: { model: { providerID: 'openai', modelID: 'gpt-5' }, variant: 'low' } }]);
+  await expect.poll(() => capturedModelCalls(page)).toMatchObject([{ body: { model: { providerID: 'openai', id: 'gpt-5', variant: 'low' } } }]);
 });
 
 test('minimizing and restoring a column preserves its model choice', async ({ page }) => {
@@ -138,7 +141,7 @@ test('minimizing and restoring a column preserves its model choice', async ({ pa
   await captureSends(page);
   await page.locator('textarea').first().fill('Still my model after restoring');
   await page.locator('textarea').first().press('Enter');
-  await expect.poll(() => capturedSends(page)).toMatchObject([{ body: { model: { providerID: 'openai', modelID: 'gpt-5' }, variant: 'high' } }]);
+  await expect.poll(() => capturedModelCalls(page)).toMatchObject([{ body: { model: { providerID: 'openai', id: 'gpt-5', variant: 'high' } } }]);
 });
 
 test('queueing preserves the selected model and reasoning in sendConfig', async ({ page }) => {
@@ -194,7 +197,7 @@ test('server default is used only after explicitly choosing it', async ({ page }
 test('failed sends restore text without losing the retained model choice', async ({ page }) => {
   await page.evaluate(() => {
     const original = window.ember.request;
-    window.ember.request = async (instance, method, path, body) => path.includes('/prompt_async')
+    window.ember.request = async (instance, method, path, body) => path.endsWith('/prompt')
       ? { ok: false, status: 503, data: { error: 'Synthetic provider failure' } }
       : original(instance, method, path, body);
   });
@@ -212,8 +215,8 @@ test('new-agent creation transfers the chosen model to the created session', asy
   await captureSends(page);
   await page.locator('textarea').fill('Create using this model');
   await page.locator('textarea').press('Enter');
-  await expect.poll(() => capturedSends(page)).toMatchObject([{ body: { model: { providerID: 'openai', modelID: 'gpt-5' }, variant: 'high' } }]);
-  const id = decodeURIComponent((await capturedSends(page))[0].path.split('/')[3]);
+  await expect.poll(() => capturedModelCalls(page)).toMatchObject([{ body: { model: { providerID: 'openai', id: 'gpt-5', variant: 'high' } } }]);
+  const id = decodeURIComponent((await capturedModelCalls(page))[0].path.split('/')[3]);
   await expect.poll(() => page.evaluate(async (id) => (await window.ember.getSettings()).composerDrafts[`local::${id}`], id)).toMatchObject({ modelId: 'openai/gpt-5', variant: 'high' });
 });
 

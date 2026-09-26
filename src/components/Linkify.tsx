@@ -2,13 +2,15 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * URLs plus absolute POSIX paths under the roots agents usually mention. Paths stop at
- * whitespace and closing quotes/brackets; the trailing-punctuation trim below handles
- * sentences like "see /Users/me/file.ts." Windows paths are skipped on purpose: they
- * come from remote instances and can't be revealed locally anyway.
+ * URLs plus absolute POSIX paths under the roots agents usually mention. `localhost:3000`
+ * and `www.example.com` count too — agents print them without a scheme all the time, and
+ * `openExternal` prepends `http://`. Paths stop at whitespace and closing quotes/brackets;
+ * the trailing-punctuation trim below handles sentences like "see /Users/me/file.ts."
+ * Windows paths are skipped on purpose: they come from remote instances and can't be
+ * revealed locally anyway.
  */
 const LINK_PATTERN =
-  /https?:\/\/[^\s<>"'`]+|(?:~|\/(?:Users|home|Volumes|tmp|var|opt|etc|Applications|private|workspace|root|srv|mnt))(?:\/[^\s<>"'`()[\]]+)+/g;
+  /https?:\/\/[^\s<>"'`]+|(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):\d+[^\s<>"'`]*|www\.[\w-]+(?:\.[\w-]+)+[^\s<>"'`]*|(?:~|\/(?:Users|home|Volumes|tmp|var|opt|etc|Applications|private|workspace|root|srv|mnt))(?:\/[^\s<>"'`()[\]]+)+/g;
 
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"`]+$/;
 

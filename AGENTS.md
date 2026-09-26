@@ -107,10 +107,10 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   Up on an empty composer recalls the last message the user sent, Alt/Option+Enter skips the
   busy-session queue and sends now, and Cmd/Ctrl+Enter saves the draft as a note. A context-usage
   ring (`ContextMeter.tsx`) shows the last turn's tokens against the selected model's window and
-  compacts the session on click (`POST /api/session/:id/summarize`, which needs the session's
-  provider/model). A fork button beside it forks the session, waits for the handoff summary to land,
+  compacts the session on click (`POST /api/session/:id/compact`). A fork button beside it forks
+  the session, waits for the handoff summary to land,
   then compacts the fork so the new session carries just the summary and the source is left
-  untouched (`POST /api/openchamber/sessions/:id/fork` + `/api/session/:id/summarize`). The
+  untouched (`POST /api/session/:id/fork` + `/api/session/:id/compact`). The
   same two display settings are also editable from the top bar's View options dialog
   (`ViewOptionsDialog.tsx`). As a workspace column it shows minimize and archive controls in the
   header (`onMinimize`/`onArchive`; × archives through App's `requestArchive`, which routes busy,
@@ -243,8 +243,12 @@ connected instance listed in `~/.config/openchamber/settings.json`.
   the pin chip in the chat header; its Jump/Reply/Unpin actions reuse the transcript handlers and
   change no OpenChamber data.
 - `src/components/Markdown.tsx` — assistant prose via `react-markdown` + `remark-gfm` (no raw
-  HTML). A small rehype plugin reuses `Linkify.tsx`'s tokenizer to link bare local paths; all
-  anchors route through `window.ember.openExternal`.
+  HTML). A small rehype plugin reuses `Linkify.tsx`'s tokenizer to link bare local paths and
+  scheme-less web addresses (`localhost:3000`, `www.…`); all anchors route through
+  `window.ember.openExternal`, which prepends `http://` to the scheme-less ones. Electron main
+  also opens `window.open`/new-window requests through the same helper, and the window's
+  `context-menu` handler pops an edit menu (link open/copy, clipboard roles) — Electron ships
+  none by default.
 - `src/themes.ts` — three neutral palettes (Stone, Clay, Graphite) mapped onto shadcn CSS
   variables; `applyTheme` toggles `.dark`. `--primary` is derived from the text colour so
   buttons stay neutral, while each palette's softer `userBubble` neighbour keeps chat calm. The
@@ -257,10 +261,11 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 Events drive invalidation; REST stays the source of truth. Nothing in the UI is ever built
 from an event payload.
 
-- Main subscribes each attachable instance to OpenCode's `/api/global/event` (sessions,
-  messages, status, permissions, questions; frames are `{ directory, payload: { type,
-  properties } }`) and OpenChamber's `/api/notifications/stream` (`openchamber:*` — auto-accept
-  policy, scheduled tasks; frames are `{ type, properties }`). Payload bodies are dropped in main.
+- Main subscribes each attachable instance to OpenCode 2's `/api/event` (sessions,
+  messages, status, permissions, forms; frames are `{ type, location: { directory }, data,
+  durable: { aggregateID } }`) and OpenChamber's `/api/notifications/stream` (`openchamber:*` —
+  auto-accept policy, scheduled tasks; frames are `{ type, properties }`). Payload bodies are
+  dropped in main.
 - The renderer maps a hint to REST resources in `lib/invalidation.ts` (`session.status` →
   states; `message.*` → the open transcript if it's that session, else the session list;
   `permission.*`/`question.*` → their list plus states; and so on) and pushes them through an
@@ -285,10 +290,12 @@ from an event payload.
   request failures are prefixed with the instance label, and OpenChamber/OpenCode/provider messages
   pass through with their text (`proxyApiRequest` in `electron/main.ts`;
   `responseError` in `App.tsx`).
-- Archiving is OpenCode-native: `PATCH /api/session/:id` with `{ time: { archived: ms | 0 } }`.
-  Sessions load from `/api/experimental/session?archived=true` (plain `/api/session` ignores the
-  archived filter) and are split client-side on a truthy `time.archived`, since restored sessions
-  carry `archived: 0`. Archiving offers undo through the local notice toast.
+- Archiving is OpenChamber-owned in v2: `POST /api/openchamber/sessions/archive` /
+  `.../unarchive` with `{ ids: [...] }` (the proxy folds `time.archived` back into session
+  records). Sessions load from `/api/session?location[directory]=…` (OpenChamber drops the
+  archived filter — the list includes archived rows, split client-side on `time.archived`),
+  paginated through the opaque `cursor.next` query param. Archiving offers undo through the
+  local notice toast.
 - Busy-session queueing uses OpenChamber's server-owned queue: `GET /api/message-queue`, enqueue with
   `POST /api/message-queue/sessions/:id/items` `{ directory, item }`, remove with
   `DELETE /api/message-queue/sessions/:id/items/:itemId`, reorder with
@@ -303,19 +310,19 @@ from an event payload.
   Retry/Cancel, and `mergePolledQueues` folds those local rows back into each polled snapshot.
 - "Recent" models in the composer are derived from the instance's own sessions (`session.model`
   from the list endpoint, newest `time.updated` first) — nothing is stored on the Ember side. The
-  catalogue itself comes from `loadModels`: it tries `/api/provider` then `/api/config/providers`
-  and parses provider/model collections whether they arrive as arrays or as id→entry maps (a
-  stricter parser silently yields an empty picker when a version uses the other shape).
-- Permissions: `GET /api/permission` lists pending requests; Ember merges the global response with
-  directory-scoped responses because OpenCode scopes pending requests by project. The directory hints
-  cover the selected session, every open column/tab, and any directory named by a prompt event
-  (`directoryHintsFor`), plus every directory that already holds a pending prompt, so a background
-  column's question still resolves and browsing away doesn't drop its request. Reply with `POST /api/permission/:id/reply?directory=…` `{ reply: once|always|reject }`
-  (falls back to the legacy `/api/session/:sid/permissions/:id` on 404). Questions (the agent's
-  `question` tool) work the same way: `GET /api/question`, `POST /api/question/:id/reply`
-  `{ answers: string[][] }` (one array per question; option labels or a single custom string),
-  `POST /api/question/:id/reject`. Sessions with a pending request of either kind are forced to
-  the `needs-input` ball state — `/api/sessions/status` itself only reports idle/busy/retry.
+  catalogue itself comes from `loadModels`: `GET /api/model` is a flat `Model.Info[]` list
+  (each entry `{ providerID, id, name, variants?, … }`) and `GET /api/model/default` the
+  configured default `{ providerID, id }`.
+- Permissions: `GET /api/permission/request` lists pending requests (`{ items: [...] }`);
+  replies are session-scoped: `POST /api/session/:sid/permission/:pid/reply`
+  `{ reply: once|always|reject }`. The directory hints still cover the selected session, every
+  open column/tab, and any directory named by a prompt event (`directoryHintsFor`), plus every
+  directory that already holds a pending prompt, so a background column's prompt still resolves.
+  OpenCode 2 replaces the question tool with *forms*: `GET /api/form` lists pending forms,
+  `POST /api/session/:sid/form/:fid/reply` `{ answer }` (a keyed map coerced to each field's
+  `valueType`), `DELETE /api/session/:sid/form/:fid` cancels. Sessions with a pending request of
+  either kind are forced to the `needs-input` ball state — `/api/sessions/status` only reports
+  its own tracker and `/api/session/active` the running set.
 - Ball states: `/api/sessions/status` never says "error", so `error` is derived from the
   transcript: an idle session whose last message is an assistant turn with `error` set (and not
   `aborted`, i.e. a user stop) is failed. That's tracked in `failedKeys`, updated wherever
@@ -329,8 +336,12 @@ from an event payload.
   "Permission auto-accept". The policy is polled with the 10s session poll. Instances that 404 the
   route are marked unsupported and fall back to a local override plus Ember auto-replying `once`
   while the session is selected; with server support that client loop is skipped to avoid racing.
-- Prompt body: `{ parts: [{type:'file', mime, filename, url:<data URL>}..., {type:'text', text}],
-  model?, agent?, variant? }`. Stop is `POST /api/session/:id/abort`.
+- Sending is a sequence in OpenCode 2: sticky session settings first (`POST /session/:id/model`
+  `{ model: { providerID, id, variant? } }` and `/agent` `{ agent }`) — a refusal fails the send
+  rather than silently falling back — then reply/queued context as `POST /session/:id/synthetic`
+  `{ text, metadata }` items, then `POST /session/:id/prompt` `{ id?, text,
+  files: [{ uri, name }], agents: [{ name }] }`. Stop is `POST /api/session/:id/interrupt`,
+  compact `POST /api/session/:id/compact`, fork `POST /api/session/:id/fork`.
 
 ## Workspace reliability and performance
 

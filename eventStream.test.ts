@@ -16,38 +16,54 @@ describe('sse frame parser', () => {
 });
 
 describe('event hints', () => {
-  // Frames captured from a live OpenChamber 1.18 instance.
-  const opencode = (payload: unknown) =>
-    JSON.stringify({ directory: '/Users/me', project: 'global', payload });
+  // Frames in OpenCode 2's envelope: { id, created, type, location, data, durable }.
+  const opencode = (event: { type: string; data?: unknown; durable?: unknown; directory?: string }) =>
+    JSON.stringify({
+      id: 'evt_1',
+      created: 1,
+      type: event.type,
+      location: { directory: event.directory ?? '/Users/me' },
+      data: event.data ?? {},
+      durable: event.durable ?? {},
+    });
 
   test('extracts session and directory from OpenCode events', () => {
     expect(
       parseEventData('local', 'opencode', opencode({
-        id: 'evt_1',
-        type: 'session.status',
-        properties: { sessionID: 'ses_1', status: { type: 'busy' } },
+        type: 'session.execution.started',
+        data: { sessionID: 'ses_1' },
       }))
-    ).toEqual({ instanceId: 'local', stream: 'opencode', type: 'session.status', sessionId: 'ses_1', directory: '/Users/me' });
+    ).toEqual({ instanceId: 'local', stream: 'opencode', type: 'session.execution.started', sessionId: 'ses_1', directory: '/Users/me' });
 
     expect(
       parseEventData('local', 'opencode', opencode({
         type: 'session.created',
-        properties: { sessionID: 'ses_2', info: { id: 'ses_2', directory: '/Users/me/proj' } },
+        data: { sessionID: 'ses_2' },
+        directory: '/Users/me/proj',
       }))
-    ).toMatchObject({ type: 'session.created', sessionId: 'ses_2', directory: '/Users/me' });
+    ).toMatchObject({ type: 'session.created', sessionId: 'ses_2', directory: '/Users/me/proj' });
 
     expect(
       parseEventData('local', 'opencode', opencode({
-        type: 'message.part.updated',
-        properties: { part: { id: 'prt_1', sessionID: 'ses_3', messageID: 'msg_1', type: 'text' } },
+        type: 'session.text.delta',
+        data: { sessionID: 'ses_3', messageID: 'msg_1' },
       }))
-    ).toMatchObject({ type: 'message.part.updated', sessionId: 'ses_3' });
+    ).toMatchObject({ type: 'session.text.delta', sessionId: 'ses_3' });
+    // Session ids can be nested a level down (permission requests, forms, inbox items) or
+    // echoed on the durable aggregate for session-rooted events.
     expect(
       parseEventData('local', 'opencode', opencode({
-        type: 'message.updated',
-        properties: { info: { id: 'msg_1', sessionID: 'ses_4', role: 'assistant' } },
+        type: 'permission.asked',
+        data: { request: { id: 'per_1', sessionID: 'ses_4' } },
       }))
-    ).toMatchObject({ type: 'message.updated', sessionId: 'ses_4' });
+    ).toMatchObject({ type: 'permission.asked', sessionId: 'ses_4' });
+    expect(
+      parseEventData('local', 'opencode', opencode({
+        type: 'session.renamed',
+        data: { title: 'New name' },
+        durable: { aggregateID: 'ses_5', seq: 9 },
+      }))
+    ).toMatchObject({ type: 'session.renamed', sessionId: 'ses_5' });
   });
 
   test('extracts OpenChamber events, which are not wrapped', () => {
@@ -66,7 +82,7 @@ describe('event hints', () => {
   });
 
   test('drops connection chatter and garbage', () => {
-    expect(parseEventData('local', 'opencode', opencode({ type: 'server.connected', properties: {} }))).toBeNull();
+    expect(parseEventData('local', 'opencode', opencode({ type: 'server.connected', data: {} }))).toBeNull();
     expect(parseEventData('local', 'opencode', opencode({ type: 'server.heartbeat' }))).toBeNull();
     expect(
       parseEventData('local', 'openchamber', JSON.stringify({ type: 'openchamber:notification-stream-ready', properties: { uiToken: 'secret' } }))
@@ -99,10 +115,10 @@ describe('stream manager', () => {
     const fetchImpl = (async (input: string | URL | Request) => {
       const url = String(input);
       urls.push(url);
-      if (url.endsWith('/api/global/event')) {
+      if (url.endsWith('/api/event')) {
         return streamResponse([
-          'data: {"payload":{"type":"server.connected","properties":{}}}\n\n',
-          'data: {"directory":"/w","payload":{"type":"session.status","properties":{"sessionID":"s1","status":{"type":"busy"}}}}\n\n',
+          'data: {"type":"server.connected","data":{}}\n\n',
+          'data: {"type":"session.execution.started","location":{"directory":"/w"},"data":{"sessionID":"s1"}}\n\n',
         ]);
       }
       return streamResponse(['data: {"type":"openchamber:session-activity","properties":{"sessionId":"s1","phase":"busy"}}\n\n']);
@@ -116,10 +132,10 @@ describe('stream manager', () => {
     manager.sync(['a']);
     await new Promise((resolve) => setTimeout(resolve, 30));
 
-    expect(urls.sort()).toEqual(['http://a.test/api/global/event', 'http://a.test/api/notifications/stream']);
+    expect(urls.sort()).toEqual(['http://a.test/api/event', 'http://a.test/api/notifications/stream']);
     expect(manager.isConnected('a')).toBe(true);
     expect(statuses).toContainEqual(['a', true]);
-    expect(events.map((event) => event.type).sort()).toEqual(['openchamber:session-activity', 'session.status']);
+    expect(events.map((event) => event.type).sort()).toEqual(['openchamber:session-activity', 'session.execution.started']);
     manager.stopAll();
     expect(manager.isConnected('a')).toBe(false);
   });

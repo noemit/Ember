@@ -178,6 +178,8 @@ export type PermissionRequest = {
 export type QuestionOption = {
   label: string;
   description: string;
+  /** Form option `value` sent back in the answer; falls back to the label when unset. */
+  value?: string;
 };
 
 export type QuestionInfo = {
@@ -188,6 +190,10 @@ export type QuestionInfo = {
   multiple?: boolean;
   /** Whether a free-text answer is allowed. OpenCode defaults this to true. */
   custom?: boolean;
+  /** Form field key — OpenCode 2 answers are a map keyed by field, not an array. */
+  key?: string;
+  /** Form field type, used to coerce the collected strings back into a `Form.Value`. */
+  valueType?: 'string' | 'number' | 'integer' | 'boolean' | 'multiselect' | 'external';
 };
 
 export type QuestionRequest = {

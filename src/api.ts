@@ -76,8 +76,8 @@ const toTokenUsage = (value: unknown): TokenUsage | undefined => {
 
 const isAbortError = (value: unknown): boolean => {
   const record = asRecord(value);
-  const name = `${record.name ?? ''} ${record._tag ?? ''} ${typeof value === 'string' ? value : ''}`;
-  return /abort/i.test(name);
+  const name = `${record.name ?? ''} ${record._tag ?? ''} ${record.type ?? ''} ${record.message ?? ''} ${typeof value === 'string' ? value : ''}`;
+  return /abort|interrupt/i.test(name);
 };
 
 const baseName = (value: string): string => {
@@ -122,6 +122,7 @@ export const isPartialSessionList = (sessions: Session[]): boolean => partialSes
 const toSession = (instanceId: string, entry: unknown, index: number): Session => {
   const item = asRecord(entry);
   const time = asRecord(item.time);
+  const location = asRecord(item.location);
   const updated =
     typeof time.updated === 'number'
       ? time.updated
@@ -134,12 +135,15 @@ const toSession = (instanceId: string, entry: unknown, index: number): Session =
   const providerID = typeof model.providerID === 'string' ? model.providerID : '';
   const variant = typeof model.variant === 'string' && model.variant ? model.variant : undefined;
   const agent = typeof item.agent === 'string' && item.agent ? item.agent : undefined;
+  // OpenCode 2 scopes the session to `location.directory`; the flat `directory` field is the
+  // v1 spelling kept for any proxy that still sends it.
+  const directory = optionalString(location.directory) ?? optionalString(item.directory);
 
   return {
     id: String(item.id ?? `session-${index}`),
     instanceId,
     title: typeof item.title === 'string' ? item.title : undefined,
-    directory: typeof item.directory === 'string' ? item.directory : undefined,
+    directory,
     updated,
     archived: typeof time.archived === 'number' && time.archived > 0 ? time.archived : undefined,
     model: modelID && providerID ? { providerID, modelID, variant } : undefined,
@@ -149,18 +153,23 @@ const toSession = (instanceId: string, entry: unknown, index: number): Session =
 };
 
 /**
- * Sessions including archived ones. OpenCode's `archived` flag means "also include
- * archived", so `time.archived` on each record tells the two apart. Restored sessions
- * carry `archived: 0`, which is why the split happens client-side.
+ * Sessions including archived ones. OpenCode 2's list always includes archived rows and
+ * carries `time.archived` on each record (OpenChamber folds its own archive store back in),
+ * so the active/archived split still happens client-side.
  *
- * Pages are walked with `cursor` = last `time.updated` (the server's cursor semantics
- * are "updated strictly before"), since the bridge doesn't surface response headers.
+ * Pages are walked with the opaque `cursor.next` the server returns in `{ data, cursor }`;
+ * `parentID=null` keeps subagent sessions out at the source, and the client filter stays as
+ * a backstop.
  */
 const payloadArray = (value: unknown): unknown[] => {
   if (Array.isArray(value)) return value;
   const root = asRecord(value);
   return asArray((root.data ?? root.sessions ?? root.messages ?? root.permissions) as unknown);
 };
+
+/** Opaque continuation token from a `{ data, cursor: { next } }` list envelope. */
+const nextCursorOf = (value: unknown): string | undefined =>
+  optionalString(asRecord(asRecord(value).cursor).next);
 
 export const loadSessions = async (
   instanceId: string,
@@ -170,16 +179,13 @@ export const loadSessions = async (
   const sessions: Session[] = [];
   let complete = false;
   const seen = new Set<string>();
-  let cursor: number | undefined;
+  let cursor: string | undefined;
 
   for (let page = 0; page < maxPages; page += 1) {
-    const directoryParam = directory ? `&directory=${encodeURIComponent(directory)}` : '';
-    const query = `archived=true&limit=${SESSION_PAGE_SIZE}${cursor ? `&cursor=${cursor}` : ''}${directoryParam}`;
-    const response = await window.ember.request(
-      instanceId,
-      'GET',
-      `/api/experimental/session?${query}`
-    );
+    const query = cursor
+      ? `cursor=${encodeURIComponent(cursor)}${directory ? `&directory=${encodeURIComponent(directory)}` : ''}`
+      : `limit=${SESSION_PAGE_SIZE}&order=desc&parentID=null${directory ? `&directory=${encodeURIComponent(directory)}` : ''}`;
+    const response = await window.ember.request(instanceId, 'GET', `/api/session?${query}`);
     if (!response.ok) {
       if (page === 0) return null;
       partialSessionLists.add(sessions);
@@ -189,24 +195,16 @@ export const loadSessions = async (
     const batch = payloadArray(response.data);
     batch.forEach((entry, index) => {
       const session = toSession(instanceId, entry, sessions.length + index);
-      // Subagent sessions belong to their parent's transcript; the list endpoint returns
-      // them alongside top-level ones and the TUI hides them the same way.
+      // Subagent sessions belong to their parent's transcript; `parentID=null` should keep
+      // them out already, but the filter stays so odd pages can't leak them in.
       if (session.parentId || seen.has(session.id)) return;
       seen.add(session.id);
       sessions.push(session);
     });
 
-    const lastItem = asRecord(batch[batch.length - 1]);
-    const lastTime = asRecord(lastItem.time);
-    const nextCursor =
-      typeof lastTime.updated === 'number'
-        ? lastTime.updated
-        : typeof lastTime.created === 'number'
-          ? lastTime.created
-          : undefined;
-    if (batch.length < SESSION_PAGE_SIZE) { complete = true; break; }
-    if (!nextCursor || (cursor !== undefined && nextCursor >= cursor)) break;
-    cursor = nextCursor;
+    const next = nextCursorOf(response.data);
+    if (!next || next === cursor || batch.length === 0) { complete = true; break; }
+    cursor = next;
   }
 
   if (!complete) partialSessionLists.add(sessions);
@@ -214,55 +212,51 @@ export const loadSessions = async (
 };
 
 /**
- * Archive (or restore) a session on its OpenChamber instance. OpenCode treats
- * `archived: 0` as restored, so both directions go through the same PATCH.
+ * Archive (or restore) a session. OpenCode 2 has no route that sets `time.archived`, so
+ * OpenChamber owns archive state itself in a per-instance store and folds it back into the
+ * session records it proxies. Both directions are batched calls; `failedIds` reports rejects.
  */
 export const setSessionArchived = async (
   session: Session,
   archived: boolean
 ): Promise<boolean> => {
-  const query = session.directory ? `?directory=${encodeURIComponent(session.directory)}` : '';
   const response = await window.ember.request(
     session.instanceId,
-    'PATCH',
-    `/api/session/${encodeURIComponent(session.id)}${query}`,
-    { time: { archived: archived ? Date.now() : 0 } }
+    'POST',
+    `/api/openchamber/sessions/${archived ? 'archive' : 'unarchive'}`,
+    { ids: [session.id] }
   );
-  return response.ok;
+  if (!response.ok) return false;
+  const failed = asArray(asRecord(response.data).failedIds).map(String);
+  return !failed.includes(session.id);
 };
 
-/** Rename a session on its OpenChamber instance (`session.update` → `Session.setTitle`). */
+/** Rename a session on its OpenChamber instance (`PATCH /api/session/:id` `{ title }`). */
 export const renameSession = async (session: Session, title: string): Promise<boolean> => {
-  const query = session.directory ? `?directory=${encodeURIComponent(session.directory)}` : '';
   const response = await window.ember.request(
     session.instanceId,
     'PATCH',
-    `/api/session/${encodeURIComponent(session.id)}${query}`,
+    `/api/session/${encodeURIComponent(session.id)}`,
     { title }
   );
   return response.ok;
 };
 
 /**
- * Compact a session's context. OpenChamber's `/compact` maps to OpenCode's `session.summarize`
- * (`POST /api/session/:id/summarize`): older turns are summarized and a recent tail kept, per the
- * instance's `compaction` config (`auto`, `prune`, `tail_turns`, `preserve_recent_tokens`,
- * `reserved`). The endpoint requires the provider/model to run the summary with, so callers pass
- * the session's current model (defaulting to the last one the session ran with). Returns whether
- * the instance accepted it; the transcript updates when the next poll sees the compaction.
+ * Compact a session's context (`POST /api/session/:id/compact`): older turns are summarized and
+ * a recent tail kept, per the instance's `compaction` config. OpenCode 2 runs it as an inbox
+ * item with the session's own model, so no provider/model is passed. Returns whether the
+ * instance accepted it; the transcript updates when the next poll sees the compaction.
  */
 export const compactSession = async (
   session: Session,
-  model?: ModelRef
+  _model?: ModelRef
 ): Promise<boolean> => {
-  const providerID = model?.providerID ?? session.model?.providerID;
-  const modelID = model?.modelID ?? session.model?.modelID;
-  if (!providerID || !modelID) return false;
   const response = await window.ember.request(
     session.instanceId,
     'POST',
-    `/api/session/${encodeURIComponent(session.id)}/summarize${directoryQuery(session.directory)}`,
-    { providerID, modelID }
+    `/api/session/${encodeURIComponent(session.id)}/compact`,
+    {}
   );
   return response.ok;
 };
@@ -272,20 +266,29 @@ export const HANDOFF_PROMPT =
   'You are continuing in a new session forked from a previous one. Before we carry on, write a concise handoff summary: what we were working on, the tools and skills you used, and the current state plus the next step. Then stop and wait for my instruction.';
 
 /**
- * Fork a session into a new one and seed it with a handoff prompt (OpenChamber's
- * `/api/openchamber/sessions/:id/fork`). The source session is left untouched, so it stays around
- * for reference while the new session carries the summarized context. Returns the new session id.
+ * Fork a session into a new one (`POST /api/session/:id/fork`) and seed it with a handoff
+ * prompt — OpenCode 2's fork only copies history, so the prompt is a separate call. The source
+ * session is left untouched while the new session carries the summarized context. Returns the
+ * new session id.
  */
 export const forkSession = async (session: Session, prompt: string): Promise<string | null> => {
   const response = await window.ember.request(
     session.instanceId,
     'POST',
-    `/api/openchamber/sessions/${encodeURIComponent(session.id)}/fork`,
-    { directory: session.directory, prompt, agent: session.agent }
+    `/api/session/${encodeURIComponent(session.id)}/fork`,
+    {}
   );
   if (!response.ok) return null;
-  const data = asRecord(response.data);
-  return typeof data.sessionId === 'string' ? data.sessionId : null;
+  const forked = asRecord(asRecord(response.data).data);
+  const forkedId = optionalString(forked.id);
+  if (!forkedId) return null;
+  const seeded = await window.ember.request(
+    session.instanceId,
+    'POST',
+    `/api/session/${encodeURIComponent(forkedId)}/prompt`,
+    { text: prompt }
+  );
+  return seeded.ok ? forkedId : null;
 };
 
 /**
@@ -527,9 +530,13 @@ export const createSession = async (
   instanceId: string,
   directory?: string
 ): Promise<Session | null> => {
-  const query = directoryQuery(directory);
-  // Current OpenCode accepts directory only as a query parameter; extra body keys are rejected.
-  const response = await window.ember.request(instanceId, 'POST', `/api/session${query}`, {});
+  // OpenCode 2 takes the working directory as a structured `location` object in the body.
+  const response = await window.ember.request(
+    instanceId,
+    'POST',
+    '/api/session',
+    directory ? { location: { directory } } : {}
+  );
   if (!response.ok) return null;
 
   const root = asRecord(response.data);
@@ -541,7 +548,7 @@ export const createSession = async (
     id,
     instanceId,
     title: typeof item.title === 'string' ? item.title : undefined,
-    directory,
+    directory: optionalString(asRecord(item.location).directory) ?? directory,
     updated: Date.now(),
   };
 };
@@ -564,19 +571,40 @@ const statusToState = (raw: unknown): BallState => {
   return 'idle';
 };
 
-/** Ball states keyed by `sessionKey` so they can be merged across instances. */
+/**
+ * Ball states keyed by `sessionKey` so they can be merged across instances. Two sources are
+ * merged: OpenChamber's `/api/sessions/status` (its own tracker — `pending` marks sessions
+ * blocked on a permission or form) and OpenCode 2's `/api/session/active` (the running set).
+ */
 export const loadSessionStates = async (
   instanceId: string
 ): Promise<Record<string, BallState> | null> => {
-  const response = await window.ember.request(instanceId, 'GET', '/api/sessions/status');
-  if (!response.ok) return null;
-  const sessions = asRecord(asRecord(response.data).sessions);
+  const [statusResponse, activeResponse] = await Promise.all([
+    window.ember.request(instanceId, 'GET', '/api/sessions/status'),
+    window.ember.request(instanceId, 'GET', '/api/session/active'),
+  ]);
+  if (!statusResponse.ok && !activeResponse.ok) return null;
   const states: Record<string, BallState> = {};
 
-  Object.entries(sessions).forEach(([id, value]) => {
-    const entry = asRecord(value);
-    states[sessionKey({ instanceId, sessionId: id })] = statusToState(entry.status ?? entry.state);
-  });
+  const keyFor = (id: string) => sessionKey({ instanceId, sessionId: id });
+  if (activeResponse.ok) {
+    const active = asRecord(asRecord(activeResponse.data).data);
+    Object.keys(active).forEach((id) => {
+      states[keyFor(id)] = 'active';
+    });
+  }
+  if (statusResponse.ok) {
+    const root = asRecord(statusResponse.data);
+    Object.entries(asRecord(root.sessions)).forEach(([id, value]) => {
+      const entry = asRecord(value);
+      const state = statusToState(entry.status ?? entry.state);
+      // An "idle" verdict doesn't clear a busier state already seen elsewhere.
+      if (state !== 'idle' || !states[keyFor(id)]) states[keyFor(id)] = state;
+    });
+    Object.keys(asRecord(root.pending)).forEach((id) => {
+      states[keyFor(id)] = 'needs-input';
+    });
+  }
 
   return states;
 };
@@ -596,96 +624,135 @@ export const loadAllSessionStates = async (
 
 /** How many records a token-driven tail fetch asks for. Older servers may return more. */
 export const MESSAGE_TAIL_LIMIT = 8;
+/** Page size for full transcript loads; pages continue while `cursor.next` is set. */
+const MESSAGE_PAGE_SIZE = 500;
+const MESSAGE_MAX_PAGES = 40;
 
 const messagesPath = (sessionId: string, params: URLSearchParams): string => {
   const query = params.toString();
   return `/api/session/${encodeURIComponent(sessionId)}/message${query ? `?${query}` : ''}`;
 };
 
-/** One normalizer for full and tail loads so both modes produce identical shapes. */
+/**
+ * OpenCode 2 returns `Session.Message.Info` records discriminated on `type`. Chat surfaces
+ * `user` and `assistant` turns; `system`, `synthetic`, `skill`, `idle`, `compaction` and the
+ * `*-switched` markers are context plumbing or lifecycle stamps and never render as bubbles.
+ */
 const normalizeMessages = (data: unknown): ChatMessage[] => {
   const list = payloadArray(data);
   return list
-    .map((entry, index) => {
+    .map((entry, index): ChatMessage | null => {
       const item = asRecord(entry);
-      const info = asRecord(
-        item.info ?? item.message ?? (typeof item.id === 'string' ? entry : {})
-      );
-      const rawRole = info.role ?? item.role ?? info.type ?? item.type ?? 'assistant';
-      const role: ChatMessage['role'] = rawRole === 'user' ? 'user' : 'assistant';
-      const id = String(info.id ?? item.id ?? `msg-${index}`);
-      const partList = asArray(
-        (item.parts ?? info.parts ??
-          (Array.isArray(info.content) ? info.content : undefined) ??
-          (Array.isArray(item.content) ? item.content : undefined) ??
-          []) as unknown
-      );
-      const parts = partList
-        .map((part, partIndex) => toMessagePart(part, `${id}-${partIndex}`))
-        .filter((part): part is MessagePart => part !== null);
-      const fallback = optionalString(info.text) ?? optionalString(item.text) ?? '';
-      if (parts.length === 0 && fallback) {
-        parts.push({ type: 'text', id: `${id}-0`, text: fallback });
-      }
-      const text = parts.map((part) => (part.type === 'text' ? part.text : '')).join('');
-      const time = asRecord(info.time);
-      const rawModel = asRecord(info.model);
-      const providerID = optionalString(info.providerID) ?? optionalString(rawModel.providerID);
-      const modelID = optionalString(info.modelID) ?? optionalString(rawModel.modelID) ?? optionalString(rawModel.id);
-      const variant = optionalString(info.variant) ?? optionalString(rawModel.variant);
-      const model = providerID && modelID ? { providerID, modelID, ...(variant ? { variant } : {}) } : undefined;
+      const type = optionalString(item.type) ?? optionalString(asRecord(item.info).role) ?? 'assistant';
+      if (type !== 'user' && type !== 'assistant') return null;
+      const role: ChatMessage['role'] = type === 'user' ? 'user' : 'assistant';
+      const id = String(item.id ?? `msg-${index}`);
+      const time = asRecord(item.time);
       const createdAt = typeof time.created === 'number' ? time.created : undefined;
       const completedAt = typeof time.completed === 'number' ? time.completed : undefined;
-      const rawError = info.error ?? item.error;
+
+      const parts: MessagePart[] = [];
+      if (role === 'user') {
+        const text = optionalString(item.text) ?? '';
+        if (text) parts.push({ type: 'text', id: `${id}-0`, text });
+        asArray(item.files).forEach((file, fileIndex) => {
+          const raw = asRecord(file);
+          const source = asRecord(raw.source);
+          const url =
+            optionalString(source.uri) ??
+            (optionalString(raw.data)
+              ? `data:${optionalString(raw.mime) ?? 'application/octet-stream'};base64,${raw.data}`
+              : undefined);
+          if (!url) return;
+          parts.push({
+            type: 'file',
+            id: `${id}-file-${fileIndex}`,
+            file: {
+              url,
+              mime: optionalString(raw.mime) ?? 'application/octet-stream',
+              filename: optionalString(raw.name) ?? 'attachment',
+            },
+          });
+        });
+      } else {
+        asArray(item.content ?? item.parts).forEach((part, partIndex) => {
+          const mapped = toMessagePart(part, `${id}-${partIndex}`);
+          if (mapped) parts.push(mapped);
+        });
+      }
+
+      const text = parts.map((part) => (part.type === 'text' ? part.text : '')).join('');
+      const rawModel = asRecord(item.model);
+      const providerID = optionalString(rawModel.providerID);
+      const modelID = optionalString(rawModel.id) ?? optionalString(rawModel.modelID);
+      const variant = optionalString(rawModel.variant);
+      const model = providerID && modelID ? { providerID, modelID, ...(variant ? { variant } : {}) } : undefined;
+      const rawError = item.error;
       const error = role === 'assistant' ? errorMessageOf(rawError) : undefined;
       // A user-initiated stop is recorded as an error by OpenCode, but it isn't one for the rail.
       const aborted = error !== undefined && isAbortError(rawError);
       // User messages have no completion timestamp; assistants get one when the turn ends.
       const completed = role === 'user' || completedAt !== undefined || error !== undefined;
-      const tokens = role === 'assistant' ? toTokenUsage(info.tokens) : undefined;
-      const rawCost = info.cost ?? item.cost;
+      const tokens = role === 'assistant' ? toTokenUsage(item.tokens) : undefined;
       const cost =
-        role === 'assistant' && typeof rawCost === 'number' && Number.isFinite(rawCost)
-          ? rawCost
+        role === 'assistant' && typeof item.cost === 'number' && Number.isFinite(item.cost)
+          ? item.cost
           : undefined;
       return { id, role, text, parts, model, tokens, cost, error, aborted, createdAt, completedAt, completed };
     })
-    .filter((message) => message.parts.length > 0 || message.error);
+    .filter((message): message is ChatMessage => message !== null && (message.parts.length > 0 || Boolean(message.error)));
 };
 
 export const loadMessages = async (
   instanceId: string,
   sessionId: string,
-  directory?: string
+  _directory?: string
 ): Promise<ChatMessage[]> => {
-  const params = new URLSearchParams();
-  if (directory) params.set('directory', directory);
-  const response = await window.ember.request(instanceId, 'GET', messagesPath(sessionId, params));
-  if (!response.ok) {
-    throw new Error(`Failed to load messages for ${sessionId}: ${response.status}`);
+  const messages: ChatMessage[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < MESSAGE_MAX_PAGES; page += 1) {
+    const params = new URLSearchParams();
+    if (cursor) params.set('cursor', cursor);
+    else {
+      params.set('order', 'asc');
+      params.set('limit', String(MESSAGE_PAGE_SIZE));
+    }
+    const response = await window.ember.request(instanceId, 'GET', messagesPath(sessionId, params));
+    if (!response.ok) {
+      if (page === 0) throw new Error(`Failed to load messages for ${sessionId}: ${response.status}`);
+      return messages;
+    }
+    normalizeMessages(response.data).forEach((message) => {
+      if (seen.has(message.id)) return;
+      seen.add(message.id);
+      messages.push(message);
+    });
+    const next = nextCursorOf(response.data);
+    if (!next || next === cursor) break;
+    cursor = next;
   }
-  return normalizeMessages(response.data);
+  return messages;
 };
 
 /**
- * The latest `limit` records only. The bridge proxies query strings, so `directory` and `limit`
- * compose; older servers that ignore `limit` still return a correct (if larger) list, and the
- * slice keeps the returned tail bounded either way.
+ * The latest `limit` records only: `order=desc` returns newest-first pages, which are flipped
+ * back to chronological order for display.
  */
 export const loadMessageTail = async (
   instanceId: string,
   sessionId: string,
-  directory?: string,
+  _directory?: string,
   limit = MESSAGE_TAIL_LIMIT
 ): Promise<ChatMessage[]> => {
   const params = new URLSearchParams();
-  if (directory) params.set('directory', directory);
+  params.set('order', 'desc');
   params.set('limit', String(limit));
   const response = await window.ember.request(instanceId, 'GET', messagesPath(sessionId, params));
   if (!response.ok) {
     throw new Error(`Failed to load messages for ${sessionId}: ${response.status}`);
   }
-  return normalizeMessages(response.data).slice(-limit);
+  return normalizeMessages(response.data).slice(0, limit).reverse();
 };
 
 const TOOL_STATUSES: ToolStatus[] = ['pending', 'running', 'completed', 'error'];
@@ -694,7 +761,11 @@ const TOOL_OUTPUT_LIMIT = 20_000;
 const optionalString = (value: unknown): string | undefined =>
   typeof value === 'string' && value ? value : undefined;
 
-/** Text, reasoning, file and tool parts; step markers, patches and snapshots are skipped. */
+/**
+ * Text, reasoning, file and tool parts; step markers, patches and snapshots are skipped.
+ * OpenCode 2 tool parts carry a discriminated `state` (`streaming`→`running`→`completed`|
+ * `error`) whose output is a `Tool.Content` list rather than a flat `output` string.
+ */
 const toMessagePart = (raw: unknown, fallbackId: string): MessagePart | null => {
   const part = asRecord(raw);
   const id = String(part.id ?? fallbackId);
@@ -704,7 +775,7 @@ const toMessagePart = (raw: unknown, fallbackId: string): MessagePart | null => 
     return text ? { type: part.type, id, text } : null;
   }
   if (part.type === 'file') {
-    const url = optionalString(part.url);
+    const url = optionalString(part.url) ?? optionalString(part.uri);
     if (!url) return null;
     return {
       type: 'file',
@@ -712,22 +783,28 @@ const toMessagePart = (raw: unknown, fallbackId: string): MessagePart | null => 
       file: {
         url,
         mime: optionalString(part.mime) ?? 'application/octet-stream',
-        filename: optionalString(part.filename) ?? 'attachment',
+        filename: optionalString(part.filename) ?? optionalString(part.name) ?? 'attachment',
       },
     };
   }
   if (part.type === 'tool') {
     const state = asRecord(part.state);
     const metadata = asRecord(state.metadata);
+    // `streaming` states carry `input` as a raw JSON fragment; object input starts at `running`.
     const input = asRecord(state.input);
-    const status = TOOL_STATUSES.find((entry) => entry === state.status) ?? 'pending';
-    const output = optionalString(state.output) ?? optionalString(state.result);
+    const rawStatus = String(state.status ?? 'pending');
+    const status: ToolStatus =
+      rawStatus === 'streaming'
+        ? 'running'
+        : (TOOL_STATUSES.find((entry) => entry === rawStatus) ?? 'pending');
+    const output = toolContentText(state.content) ?? optionalString(state.output) ?? optionalString(state.result);
+    const stateError = asRecord(state.error);
     const call: ToolCall = {
-      id: String(part.callID ?? id),
-      tool: String(part.tool ?? part.name ?? 'tool'),
+      id: String(part.callID ?? part.id ?? id),
+      tool: String(part.name ?? part.tool ?? 'tool'),
       status,
-      title: optionalString(state.title) ?? toolTitleFromInput(input),
-      error: optionalString(state.error),
+      title: optionalString(state.title) ?? optionalString(metadata.title) ?? toolTitleFromInput(input),
+      error: optionalString(stateError.message) ?? optionalString(state.error),
       input: Object.keys(input).length > 0 ? input : undefined,
       output: output && output.length > TOOL_OUTPUT_LIMIT ? `${output.slice(0, TOOL_OUTPUT_LIMIT)}\n… (truncated)` : output,
       diff: optionalString(metadata.diff) ?? optionalString(metadata.patch),
@@ -735,6 +812,22 @@ const toMessagePart = (raw: unknown, fallbackId: string): MessagePart | null => 
     return { type: 'tool', id, call };
   }
   return null;
+};
+
+/** `Tool.Content` entries are `{ type: 'text', text }` or `{ type: 'file', uri, mime, name }`. */
+const toolContentText = (value: unknown): string | undefined => {
+  const chunks = asArray(value)
+    .map((entry) => {
+      const item = asRecord(entry);
+      if (item.type === 'text') return optionalString(item.text) ?? '';
+      if (item.type === 'file') {
+        const name = optionalString(item.name) ?? optionalString(item.uri);
+        return name ? `[file] ${name}` : '';
+      }
+      return optionalString(item.text) ?? '';
+    })
+    .filter((chunk) => chunk.length > 0);
+  return chunks.length > 0 ? chunks.join('\n') : undefined;
 };
 
 /** Best-effort one-liner for a tool call before the server assigns a title. */
@@ -791,24 +884,39 @@ export const setAutoAccept = async (
   return { ok: response.ok, status: response.status };
 };
 
-/** Pending permission requests across sessions in an instance or directory scope. */
+/** Location-scoped list query — OpenCode 2 nests location filters as `location[directory]=`. */
+const locationQuery = (directory?: string): string =>
+  directory ? `?location[directory]=${encodeURIComponent(directory)}` : '';
+
+/**
+ * Pending permission requests across sessions in an instance or location scope.
+ * OpenCode 2 answers `{ location, data: Permission.Request[] }` — each request is session-scoped
+ * (`sessionID`), carries the permission `action` (e.g. `bash`), the concrete `resources` it wants
+ * and a human-readable `message`.
+ */
 export const loadPermissions = async (
   instanceId: string,
   directory?: string
 ): Promise<PermissionRequest[] | null> => {
-  const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
-  const response = await window.ember.request(instanceId, 'GET', `/api/permission${query}`);
+  const response = await window.ember.request(
+    instanceId,
+    'GET',
+    `/api/permission/request${locationQuery(directory)}`
+  );
   if (!response.ok) return null;
+  const location = asRecord(asRecord(response.data).location);
   return payloadArray(response.data).map((entry) => {
     const item = asRecord(entry);
+    const metadata = asRecord(item.metadata);
+    const message = optionalString(item.message);
     return {
       id: String(item.id ?? ''),
       instanceId,
       sessionId: String(item.sessionID ?? item.sessionId ?? ''),
-      directory: optionalString(item.directory) ?? directory,
-      permission: String(item.permission ?? item.type ?? 'tool'),
-      patterns: asArray(item.patterns).map(String),
-      metadata: asRecord(item.metadata),
+      directory: optionalString(location.directory) ?? optionalString(item.directory) ?? directory,
+      permission: String(item.action ?? item.permission ?? item.type ?? 'tool'),
+      patterns: asArray(item.resources ?? item.patterns).map(String),
+      metadata: message ? { ...metadata, message } : metadata,
     };
   }).filter((request) => request.id && request.sessionId);
 };
@@ -840,38 +948,28 @@ export const loadAllPermissions = async (
 };
 
 /**
- * Answer a permission request. The `directory` routes the reply to the OpenCode
- * instance that owns the session, mirroring what OpenChamber does. Older servers only
- * know the session-scoped route, so fall back to it on 404.
+ * Answer a permission request. OpenCode 2 replies are session-scoped and carry a `decision`
+ * (`once` | `always` | `reject`), matching Ember's `PermissionReply` one to one.
  */
 export const replyPermission = async (
   request: PermissionRequest,
   reply: PermissionReply,
-  directory?: string
+  _directory?: string
 ): Promise<boolean> => {
-  const scopedDirectory = directory ?? request.directory;
-  const query = scopedDirectory ? `?directory=${encodeURIComponent(scopedDirectory)}` : '';
   const response = await window.ember.request(
     request.instanceId,
     'POST',
-    `/api/permission/${encodeURIComponent(request.id)}/reply${query}`,
-    { reply }
+    `/api/session/${encodeURIComponent(request.sessionId)}/permission/${encodeURIComponent(request.id)}/reply`,
+    { decision: reply }
   );
-  if (response.ok || response.status !== 404) return response.ok;
-
-  const legacy = await window.ember.request(
-    request.instanceId,
-    'POST',
-    `/api/session/${encodeURIComponent(request.sessionId)}/permissions/${encodeURIComponent(request.id)}${query}`,
-    { response: reply }
-  );
-  return legacy.ok;
+  return response.ok;
 };
 
-const directoryQuery = (directory?: string): string =>
-  directory ? `?directory=${encodeURIComponent(directory)}` : '';
-
-/** Pending agent questions (the `question` tool) across every session on an instance. */
+/**
+ * Pending agent questions — OpenCode 2 calls them "forms". `GET /api/form` returns the pending
+ * `Form.Info` records for a location; each `fields` entry maps onto one `QuestionInfo` while
+ * keeping the field `key`/`type` so the reply can be encoded back into `Form.Answer`.
+ */
 export const loadQuestions = async (
   instanceId: string,
   directory?: string
@@ -879,9 +977,10 @@ export const loadQuestions = async (
   const response = await window.ember.request(
     instanceId,
     'GET',
-    `/api/question${directoryQuery(directory)}`
+    `/api/form${locationQuery(directory)}`
   );
   if (!response.ok) return null;
+  const location = asRecord(asRecord(response.data).location);
   return payloadArray(response.data)
     .map((entry) => {
       const item = asRecord(entry);
@@ -889,20 +988,59 @@ export const loadQuestions = async (
         id: String(item.id ?? ''),
         instanceId,
         sessionId: String(item.sessionID ?? item.sessionId ?? ''),
-        directory: optionalString(item.directory) ?? directory,
-        questions: asArray(item.questions).map((raw) => {
-          const question = asRecord(raw);
-          return {
-            header: String(question.header ?? ''),
-            question: String(question.question ?? ''),
-            options: asArray(question.options).map((option) => {
+        directory: optionalString(location.directory) ?? optionalString(item.directory) ?? directory,
+        questions: asArray(item.fields ?? item.questions)
+          .map((raw): QuestionRequest['questions'][number] | null => {
+            const field = asRecord(raw);
+            const key = optionalString(field.key) ?? '';
+            const type = optionalString(field.type) ?? 'string';
+            const options = asArray(field.options).map((option) => {
               const record = asRecord(option);
-              return { label: String(record.label ?? ''), description: String(record.description ?? '') };
-            }),
-            multiple: question.multiple === true,
-            custom: question.custom !== false,
-          };
-        }),
+              return {
+                label: String(record.label ?? record.value ?? ''),
+                description: String(record.description ?? ''),
+                value: optionalString(record.value),
+              };
+            });
+            if (field.hidden === true || !key) return null;
+            const questionText = optionalString(field.title) ?? optionalString(field.question) ?? optionalString(field.description) ?? key;
+            if (type === 'boolean') {
+              return {
+                key,
+                valueType: 'boolean' as const,
+                header: optionalString(field.header) ?? '',
+                question: optionalString(field.description) ?? questionText,
+                options: [
+                  { label: 'Yes', description: '', value: 'true' },
+                  { label: 'No', description: '', value: 'false' },
+                ],
+                multiple: false,
+                custom: false,
+              };
+            }
+            if (type === 'external') {
+              const url = optionalString(field.url);
+              return {
+                key,
+                valueType: 'external' as const,
+                header: optionalString(field.header) ?? '',
+                question: `${questionText}${url ? `\n\nOpen: ${url}` : ''}`,
+                options: [],
+                multiple: false,
+                custom: true,
+              };
+            }
+            return {
+              key,
+              valueType: type as QuestionRequest['questions'][number]['valueType'],
+              header: optionalString(field.header) ?? '',
+              question: optionalString(field.description) ?? questionText,
+              options,
+              multiple: type === 'multiselect' || field.multiple === true,
+              custom: options.length === 0 || field.custom !== false,
+            };
+          })
+          .filter((question): question is QuestionRequest['questions'][number] => question !== null),
       };
     })
     .filter((request) => request.id && request.sessionId && request.questions.length > 0);
@@ -934,27 +1072,59 @@ export const loadAllQuestions = async (
   );
 };
 
+/**
+ * Answer a form. The UI collects one string list per field (picked option labels or a custom
+ * string); this encodes it back into `Form.Answer` — option picks map to their `value`,
+ * booleans/numbers are coerced, multiselect stays a list.
+ */
+const encodeFormAnswer = (request: QuestionRequest, answers: QuestionAnswers): Record<string, unknown> => {
+  const answer: Record<string, unknown> = {};
+  request.questions.forEach((question, index) => {
+    const key = question.key ?? String(index);
+    const picked = (answers[index] ?? []).map((label) => {
+      const option = question.options.find((entry) => entry.label === label);
+      return option?.value ?? label;
+    });
+    switch (question.valueType) {
+      case 'boolean':
+        answer[key] = picked[0] === 'true';
+        break;
+      case 'integer':
+        answer[key] = Number.parseInt(picked[0] ?? '', 10) || 0;
+        break;
+      case 'number':
+        answer[key] = Number(picked[0]) || 0;
+        break;
+      case 'multiselect':
+        answer[key] = picked;
+        break;
+      default:
+        answer[key] = picked.join('\n');
+    }
+  });
+  return answer;
+};
+
 export const replyQuestion = async (
   request: QuestionRequest,
   answers: QuestionAnswers,
-  directory?: string
+  _directory?: string
 ): Promise<boolean> => {
-  const scopedDirectory = directory ?? request.directory;
   const response = await window.ember.request(
     request.instanceId,
     'POST',
-    `/api/question/${encodeURIComponent(request.id)}/reply${directoryQuery(scopedDirectory)}`,
-    { answers }
+    `/api/session/${encodeURIComponent(request.sessionId)}/form/${encodeURIComponent(request.id)}/reply`,
+    { answer: encodeFormAnswer(request, answers) }
   );
   return response.ok;
 };
 
-export const rejectQuestion = async (request: QuestionRequest, directory?: string): Promise<boolean> => {
-  const scopedDirectory = directory ?? request.directory;
+/** Dismiss a pending form — OpenCode 2 cancels it via `DELETE /session/:id/form/:formId`. */
+export const rejectQuestion = async (request: QuestionRequest, _directory?: string): Promise<boolean> => {
   const response = await window.ember.request(
     request.instanceId,
-    'POST',
-    `/api/question/${encodeURIComponent(request.id)}/reject${directoryQuery(scopedDirectory)}`
+    'DELETE',
+    `/api/session/${encodeURIComponent(request.sessionId)}/form/${encodeURIComponent(request.id)}`
   );
   return response.ok;
 };
@@ -1077,12 +1247,12 @@ export const loadAllMessageQueues = async (
   );
 };
 
-/** Stop the agent's current turn. */
+/** Stop the agent's current turn (`POST /api/session/:id/interrupt`). */
 export const abortSession = async (session: Session): Promise<boolean> => {
   const response = await window.ember.request(
     session.instanceId,
     'POST',
-    `/api/session/${encodeURIComponent(session.id)}/abort${directoryQuery(session.directory)}`
+    `/api/session/${encodeURIComponent(session.id)}/interrupt`
   );
   return response.ok;
 };
@@ -1106,85 +1276,69 @@ export const previewOf = (messages: ChatMessage[]): string => {
 };
 
 /**
- * Provider/model collections arrive as arrays *or* as id→entry maps depending on the endpoint and
- * version. Normalize both into `[key, record]` pairs; the key doubles as a fallback id.
+ * Parses the OpenCode 2 model catalogue. `GET /api/model` returns
+ * `{ location, data: Model.Info[] }` — one flat list where every entry already knows its
+ * `providerID`, `id` (the value `Model.Ref.id` expects), `name`, `variants` and `capabilities`.
+ * `providerNames` maps providerID → display name from `GET /api/provider`.
  */
-const objectEntries = (value: unknown): Array<[string | undefined, Record<string, unknown>]> => {
-  if (Array.isArray(value)) return value.map((entry) => [undefined, asRecord(entry)]);
-  if (value && typeof value === 'object') {
-    return Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, asRecord(entry)]);
-  }
-  return [];
-};
-
-/**
- * Parses the provider catalogue. Handles OpenCode's `{ all, connected }` and `{ providers }`
- * shapes, where the collection and each provider's `models` may be an array or a map.
- */
-const parseModelList = (data: unknown): ModelList => {
-  const root = asRecord(data);
-  const providerEntries = objectEntries(Array.isArray(data) ? data : root.all ?? root.providers);
-  const providerId = ([key, item]: [string | undefined, Record<string, unknown>]): string =>
-    String(item.id ?? item.providerID ?? key ?? item.name ?? '');
-
-  const connected: string[] = Array.isArray(root.connected) ? root.connected.map(String) : [];
-  const usable = connected.length
-    ? providerEntries.filter((entry) => connected.includes(providerId(entry)))
-    : providerEntries;
-
+const parseModelList = (data: unknown, providerNames: ReadonlyMap<string, string>): ModelList => {
   const models: ModelOption[] = [];
 
-  usable.forEach(([providerKey, item]) => {
-    const providerID = providerId([providerKey, item]);
-    const providerName = String(item.name ?? item.id ?? providerKey ?? '');
-
-    objectEntries(item.models).forEach(([modelKey, modelItem]) => {
-      const modelID = String(modelItem.id ?? modelItem.modelID ?? modelKey ?? '');
-      if (!providerID || !modelID) return;
-      const name = String(modelItem.name ?? modelID);
-      models.push({
-        providerID,
-        modelID,
-        label: `${providerName} / ${name}`,
-        details: toModelDetails(modelItem, name, providerName),
-      });
+  payloadArray(data).forEach((entry) => {
+    const item = asRecord(entry);
+    if (item.enabled === false) return;
+    const providerID = optionalString(item.providerID) ?? '';
+    // `id` is the canonical ref identifier (`Model.Ref.id`); `modelID` is the provider-side
+    // name. They usually match; the ref id is what a session reports and what `/model` wants.
+    const modelID = optionalString(item.id) ?? optionalString(item.modelID) ?? '';
+    if (!providerID || !modelID) return;
+    const name = optionalString(item.name) ?? modelID;
+    const providerName = providerNames.get(providerID) ?? providerID;
+    models.push({
+      providerID,
+      modelID,
+      label: `${providerName} / ${name}`,
+      details: toModelDetails(item, name, providerName),
     });
   });
 
   models.sort((a, b) => a.label.localeCompare(b.label));
 
-  // Prefer the explicitly named pair; provider→model maps are common in current responses.
-  const defaults = asRecord(root.default);
-  const pairProvider = typeof defaults.providerID === 'string' ? defaults.providerID : '';
-  const pairModel = typeof defaults.modelID === 'string' ? defaults.modelID : '';
-  const defaultModelId = (() => {
-    if (pairProvider && pairModel) return `${pairProvider}/${pairModel}`;
-    const defaultPair = Object.entries(defaults).find(
-      ([provider, modelID]) =>
-        typeof modelID === 'string' &&
-        models.some((model) => model.providerID === provider && model.modelID === modelID)
-    );
-    return defaultPair ? `${defaultPair[0]}/${defaultPair[1]}` : null;
-  })();
+  return { models, defaultModelId: null };
+};
 
-  return { models, defaultModelId };
+const parseProviderNames = (data: unknown): Map<string, string> => {
+  const names = new Map<string, string>();
+  payloadArray(data).forEach((entry) => {
+    const item = asRecord(entry);
+    const id = optionalString(item.id);
+    const name = optionalString(item.name);
+    if (id && name) names.set(id, name);
+  });
+  return names;
 };
 
 /**
- * Loads an instance's model catalogue. Current OpenChamber/OpenCode serves it at
- * `/config/providers` (`{ providers }`), while older builds used `/provider` (`{ all, connected }`);
- * try both and keep whichever actually yields models. `null` means every request failed.
+ * Loads an instance's model catalogue (`GET /api/model`), provider display names
+ * (`GET /api/provider`) and its configured default (`GET /api/model/default`).
+ * `null` means the catalogue request failed.
  */
 export const loadModels = async (instanceId: string): Promise<ModelList | null> => {
-  let first: ModelList | null = null;
-  for (const path of ['/api/provider', '/api/config/providers']) {
-    const response = await window.ember.request(instanceId, 'GET', path);
-    if (!response.ok) continue;
-    const parsed = parseModelList(response.data);
-    first ??= parsed;
-    if (parsed.models.length > 0) return parsed;
+  const [listResponse, providerResponse, defaultResponse] = await Promise.all([
+    window.ember.request(instanceId, 'GET', '/api/model'),
+    window.ember.request(instanceId, 'GET', '/api/provider'),
+    window.ember.request(instanceId, 'GET', '/api/model/default'),
+  ]);
+  if (!listResponse.ok) return null;
+  const providerNames = providerResponse.ok ? parseProviderNames(providerResponse.data) : new Map<string, string>();
+  const parsed = parseModelList(listResponse.data, providerNames);
+  if (defaultResponse.ok) {
+    const entry = asRecord(asRecord(defaultResponse.data).data);
+    const providerID = optionalString(entry.providerID);
+    const id = optionalString(entry.id) ?? optionalString(entry.modelID);
+    if (providerID && id) parsed.defaultModelId = `${providerID}/${id}`;
   }
-  return first;
+  return parsed;
 };
 
 const optionalNumber = (value: unknown): number | undefined =>
@@ -1195,25 +1349,32 @@ const toModelDetails = (
   name: string,
   providerName: string
 ): ModelDetails => {
+  // v2 shapes: capabilities `{ tools, input: string[], output: string[] }`, `variants` an array of
+  // `{ id }`, `cost` an array whose first entry is the base rate, `time.released` a timestamp.
   const capabilities = asRecord(model.capabilities);
-  const input = asRecord(capabilities.input);
-  const cost = asRecord(model.cost);
+  const cost = asArray(model.cost).map(asRecord);
+  const base = cost[0] ?? {};
   const limit = asRecord(model.limit);
+  const time = asRecord(model.time);
+  const variants = asArray(model.variants)
+    .map((entry) => optionalString(asRecord(entry).id) ?? optionalString(entry))
+    .filter((id): id is string => Boolean(id));
+  const inputKinds = asArray(capabilities.input).map(optionalString).filter((kind): kind is string => Boolean(kind));
   return {
     name,
     providerName,
     family: optionalString(model.family),
-    releaseDate: optionalString(model.release_date),
+    releaseDate: typeof time.released === 'number' ? new Date(time.released).toISOString().slice(0, 10) : optionalString(model.release_date),
     status: optionalString(model.status),
     contextTokens: optionalNumber(limit.context),
     outputTokens: optionalNumber(limit.output),
-    costInput: optionalNumber(cost.input),
-    costOutput: optionalNumber(cost.output),
-    reasoning: capabilities.reasoning === true,
-    toolcall: capabilities.toolcall === true,
-    attachment: capabilities.attachment === true,
-    inputs: ['image', 'pdf', 'audio', 'video'].filter((kind) => input[kind] === true),
-    variants: Object.keys(asRecord(model.variants)),
+    costInput: optionalNumber(base.input),
+    costOutput: optionalNumber(base.output),
+    reasoning: capabilities.reasoning === true || variants.length > 0,
+    toolcall: capabilities.tools === true || capabilities.toolcall === true,
+    attachment: inputKinds.some((kind) => kind !== 'text'),
+    inputs: inputKinds.filter((kind) => kind !== 'text'),
+    variants,
   };
 };
 
@@ -1338,55 +1499,64 @@ export const reorderQueuedMessages = async (
   return { ...response, data: toMessageQueueMutation(response.data) };
 };
 
+/**
+ * Send a prompt the OpenCode 2 way. Model and agent are sticky session settings, so an explicit
+ * choice is pushed to `/model` or `/agent` first — a refusal fails the send rather than silently
+ * falling back. Reply/queued context becomes `synthetic` inbox items ahead of the prompt, then
+ * `POST /prompt` carries `{ id, text, files: [{ uri, name }], agents: [{ name }] }`.
+ */
 export const sendPrompt = async (
   instanceId: string,
   sessionId: string,
   { text, model, selectedModelId, mode, variant, attachments = [], replyContext, queuedContext = [], agentMention }: PromptInput,
-  directory?: string,
+  _directory?: string,
   messageId?: string
 ): Promise<{ ok: boolean; status: number; data: unknown }> => {
   const modelError = selectedModelError(selectedModelId, model);
   if (modelError) return { ok: false, status: 400, data: { error: modelError } };
-  const takenContextParts = queuedContext.flatMap((entry) => {
-    const synthetic: Record<string, unknown> = { type: 'text', text: entry.text, synthetic: true };
-    if (entry.kind !== 'context') return [synthetic];
-    if (entry.metadata) synthetic.metadata = entry.metadata;
-    return entry.instructions
-      ? [{ type: 'text', text: entry.instructions, synthetic: true }, synthetic]
-      : [synthetic];
-  });
-  const takenPayload = queuedContext.length > 0 || Boolean(agentMention);
-  const parts: unknown[] = takenPayload
-    ? [
-        ...(text.trim() ? [{ type: 'text', text }] : []),
-        ...attachments.map((file) => ({ type: 'file', mime: file.mime, filename: file.filename, url: file.url })),
-        ...takenContextParts,
-        ...(agentMention ? [{ type: 'agent', name: agentMention }] : []),
-      ]
-    : [
-        ...(replyContext
-          ? [
-              {
-                type: 'text',
-                text: `Earlier pinned message being replied to:\n\n${replyContext}`,
-                synthetic: true,
-                metadata: { emberReplyContext: true },
-              },
-            ]
-          : []),
-        ...attachments.map((file) => ({ type: 'file', mime: file.mime, filename: file.filename, url: file.url })),
-      ];
-  if (!takenPayload && text) parts.push({ type: 'text', text });
-  const body: Record<string, unknown> = { parts };
-  if (model) body.model = { providerID: model.providerID, modelID: model.modelID };
-  if (mode) body.agent = mode;
-  if (variant) body.variant = canonicalVariant(model?.details.variants, variant) ?? variant;
-  if (messageId) body.messageID = messageId;
+  const sessionPath = `/api/session/${encodeURIComponent(sessionId)}`;
 
-  return window.ember.request(
-    instanceId,
-    'POST',
-    `/api/session/${encodeURIComponent(sessionId)}/prompt_async${directoryQuery(directory)}`,
-    body
-  );
+  if (model) {
+    const ref: Record<string, unknown> = { providerID: model.providerID, id: model.modelID };
+    const chosen = variant ? canonicalVariant(model.details.variants, variant) ?? variant : undefined;
+    if (chosen) ref.variant = chosen;
+    const switched = await window.ember.request(instanceId, 'POST', `${sessionPath}/model`, { model: ref });
+    if (!switched.ok) return switched;
+  }
+  if (mode) {
+    const switched = await window.ember.request(instanceId, 'POST', `${sessionPath}/agent`, { agent: mode });
+    if (!switched.ok) return switched;
+  }
+
+  const synthetics: Array<{ text: string; metadata?: Record<string, unknown> }> = [];
+  if (replyContext && queuedContext.length === 0) {
+    synthetics.push({
+      text: `Earlier pinned message being replied to:\n\n${replyContext}`,
+      metadata: { emberReplyContext: true },
+    });
+  }
+  queuedContext.forEach((entry) => {
+    if (entry.instructions) synthetics.push({ text: entry.instructions, metadata: { emberReplyContext: true } });
+    const metadata =
+      entry.kind === 'context' && entry.metadata
+        ? { ...entry.metadata, emberReplyContext: true }
+        : { emberReplyContext: true };
+    synthetics.push({ text: entry.text, metadata });
+  });
+  for (const synthetic of synthetics) {
+    const injected = await window.ember.request(instanceId, 'POST', `${sessionPath}/synthetic`, {
+      text: synthetic.text,
+      metadata: synthetic.metadata ?? {},
+    });
+    if (!injected.ok) return injected;
+  }
+
+  const body: Record<string, unknown> = { text };
+  if (messageId) body.id = messageId;
+  if (attachments.length) {
+    body.files = attachments.map((file) => ({ uri: file.url, name: file.filename }));
+  }
+  if (agentMention) body.agents = [{ name: agentMention }];
+
+  return window.ember.request(instanceId, 'POST', `${sessionPath}/prompt`, body);
 };

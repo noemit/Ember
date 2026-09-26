@@ -28,14 +28,13 @@ test('column X archives once and Undo restores the session and its draft', async
   await expect(column.getByRole('button', { name: 'Close session', exact: true })).toHaveCount(0);
   await archive.click();
   await expect(page.locator('textarea')).toHaveCount(1);
-  await expect.poll(async () => (await mutations(page)).filter((entry: { method: string }) => entry.method === 'PATCH').length).toBe(1);
-  expect((await mutations(page))[0].path).toContain('/api/session/perf-0');
-  expect((await mutations(page))[0].body.time.archived).toBeGreaterThan(0);
+  await expect.poll(async () => (await mutations(page)).filter((entry: { path: string }) => entry.path === '/api/openchamber/sessions/archive').length).toBe(1);
+  expect((await mutations(page))[0].method).toBe('POST');
+  expect((await mutations(page))[0].body.ids).toEqual(['perf-0']);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(page.locator('textarea')).toHaveCount(2);
   await expect(page.locator('main[data-session-key="local::perf-0"] textarea')).toHaveValue('Keep this draft through archiving');
-  await expect.poll(async () => (await mutations(page)).filter((entry: { method: string }) => entry.method === 'PATCH').length).toBe(2);
-  expect((await mutations(page))[1].body.time.archived).toBe(0);
+  await expect.poll(async () => (await mutations(page)).filter((entry: { path: string }) => entry.path === '/api/openchamber/sessions/unarchive').length).toBe(1);
 });
 
 test('all visible columns have underlines regardless of focus; minimized tabs do not', async ({ page }) => {
@@ -61,8 +60,8 @@ test('X on an inactive column archives on the first click, not just activate', a
   await expect(inactive.locator('header')).toHaveAttribute('data-active', 'false');
   await inactive.getByRole('button', { name: 'Archive session', exact: true }).click();
   await expect(page.locator('textarea')).toHaveCount(1);
-  await expect.poll(async () => (await mutations(page)).filter((entry: { method: string }) => entry.method === 'PATCH').length).toBe(1);
-  expect((await mutations(page))[0].path).toContain('/api/session/perf-1');
+  await expect.poll(async () => (await mutations(page)).filter((entry: { path: string }) => entry.path === '/api/openchamber/sessions/archive').length).toBe(1);
+  expect((await mutations(page))[0].body.ids).toEqual(['perf-1']);
 });
 
 test('tab X archives rather than just removing the workspace entry', async ({ page }) => {
@@ -72,7 +71,7 @@ test('tab X archives rather than just removing the workspace entry', async ({ pa
   await expect(tabs.locator('svg.lucide-archive')).toHaveCount(0);
   await tabs.getByRole('button', { name: 'Archive Performance session 0', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
-  await expect.poll(async () => (await mutations(page)).filter((entry: { method: string }) => entry.method === 'PATCH').length).toBe(1);
+  await expect.poll(async () => (await mutations(page)).filter((entry: { path: string }) => entry.path === '/api/openchamber/sessions/archive').length).toBe(1);
   await expect(tabs).toHaveCount(0);
 });
 
@@ -95,8 +94,9 @@ for (const status of ['busy', 'waiting']) {
     await expect(page.locator('textarea')).toHaveCount(1);
     const sent = await mutations(page);
     expect(sent).toHaveLength(1);
-    expect(sent[0].method).toBe('PATCH');
-    expect(sent[0].path).not.toContain('/abort');
+    expect(sent[0].method).toBe('POST');
+    expect(sent[0].path).toBe('/api/openchamber/sessions/archive');
+    expect(sent[0].path).not.toContain('/interrupt');
   });
 }
 
@@ -105,7 +105,7 @@ test('a failed archive keeps the column and offers a retry', async ({ page }) =>
     const original = window.ember.request;
     let failed = false;
     window.ember.request = async (instance, method, path, body) => {
-      if (!failed && method === 'PATCH' && path.includes('/api/session/perf-0')) {
+      if (!failed && method === 'POST' && path === '/api/openchamber/sessions/archive') {
         failed = true;
         return { ok: false, status: 503, data: null };
       }
