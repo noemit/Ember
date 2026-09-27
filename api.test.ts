@@ -166,7 +166,7 @@ describe('session loading', () => {
     await loadMessageTail('local', 'session', '/workspace/ember', 8);
     await loadMessageTail('local', 'session');
 
-    expect(paths[0]).toBe('/api/session/session/message?order=asc&limit=500');
+    expect(paths[0]).toBe('/api/session/session/message?order=asc&limit=200');
     expect(paths[1]).toBe('/api/session/session/message?order=desc&limit=8');
     expect(paths[2]).toBe('/api/session/session/message?order=desc&limit=8');
   });

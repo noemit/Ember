@@ -624,8 +624,11 @@ export const loadAllSessionStates = async (
 
 /** How many records a token-driven tail fetch asks for. Older servers may return more. */
 export const MESSAGE_TAIL_LIMIT = 8;
-/** Page size for full transcript loads; pages continue while `cursor.next` is set. */
-const MESSAGE_PAGE_SIZE = 500;
+/**
+ * Page size for full transcript loads; pages continue while `cursor.next` is set. OpenCode 2
+ * rejects `limit` above 200 with a 400, which would fail every full read.
+ */
+const MESSAGE_PAGE_SIZE = 200;
 const MESSAGE_MAX_PAGES = 40;
 
 const messagesPath = (sessionId: string, params: URLSearchParams): string => {
@@ -1428,7 +1431,8 @@ export const enqueueMessage = async (
     modelID: model.modelID,
   };
   if (mode) sendConfig.agent = mode;
-  if (variant) sendConfig.variant = canonicalVariant(model.details.variants, variant) ?? variant;
+  const chosenVariant = variant ? canonicalVariant(model.details.variants, variant) ?? variant : undefined;
+  if (chosenVariant) sendConfig.variant = chosenVariant;
   const item = {
     content: text.trim(),
     text,

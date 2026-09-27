@@ -205,8 +205,8 @@ export default function ModelPicker({
 
   const selectedModel = selectedKey === DEFAULT_MODEL ? defaultModel : byKey.get(selectedKey) ?? null;
   const variantOptions = selectedModel?.details.variants ?? [];
-  // A saved variant can differ from the catalogue only by case ('Default' vs 'default');
-  // show and store the advertised spelling.
+  // A saved variant can differ from the catalogue only by case ('High' vs 'high'), and a saved
+  // 'default' means the model default; show and store the advertised spelling.
   const canonicalSelected = canonicalVariant(variantOptions, selectedVariant) ?? selectedVariant;
   const selectionError = requireConcreteModel && selectedKey === DEFAULT_MODEL && !defaultModel
     ? 'The instance default model is unavailable. Choose an available model.'
@@ -378,7 +378,7 @@ export default function ModelPicker({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__default">Default</SelectItem>
-              {selectedVariant && !canonicalVariant(variantOptions, selectedVariant) ? <SelectItem value={selectedVariant} disabled>{selectedVariant} (unavailable)</SelectItem> : null}
+              {canonicalVariant(variantOptions, selectedVariant) === undefined ? <SelectItem value={selectedVariant} disabled>{selectedVariant} (unavailable)</SelectItem> : null}
               {variantOptions.map((option) => (
                 <SelectItem key={option} value={option} className="capitalize">
                   {option}

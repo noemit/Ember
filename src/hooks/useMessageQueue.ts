@@ -361,8 +361,8 @@ export const useMessageQueue = ({
     const originalIndex = queue.items.findIndex((item) => item.id === itemId);
     if (!directory || originalIndex < 0) return false;
     const queuedItem = queue.items[originalIndex];
-    const validNextVariant = nextVariant ? canonicalVariant(nextModel.details.variants, nextVariant) ?? null : nextVariant;
-    if (nextVariant && !validNextVariant) {
+    const validNextVariant = nextVariant ? canonicalVariant(nextModel.details.variants, nextVariant) || undefined : undefined;
+    if (nextVariant && canonicalVariant(nextModel.details.variants, nextVariant) === undefined) {
       showActionError(`Reasoning level ${nextVariant} is unavailable for ${nextModel.label}. Choose a supported level.`);
       return false;
     }

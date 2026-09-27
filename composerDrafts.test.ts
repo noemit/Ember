@@ -40,6 +40,16 @@ describe('explicit model choices', () => {
     expect(sameVariant(undefined, '')).toBe(true);
     expect(sameVariant('high', undefined)).toBe(false);
   });
+  test("'default' in any case means the model default even when the catalogue never lists it", () => {
+    expect(canonicalVariant(['low', 'high'], 'default')).toBe('');
+    expect(canonicalVariant(['low', 'high'], 'Default')).toBe('');
+    expect(canonicalVariant(undefined, 'Default')).toBe('');
+    expect(canonicalVariant(['default', 'high'], 'Default')).toBe('default');
+    expect(sameVariant('Default', undefined)).toBe(true);
+    expect(resolveComposerModel('p/chosen', 'default', [chosen], 'p/chosen').error).toBeNull();
+    expect(resolveComposerModel('p/chosen', 'Default', [chosen], 'p/chosen').error).toBeNull();
+    expect(resolveComposerModel(DEFAULT_MODEL, 'Default', [chosen], null).error).toBeNull();
+  });
 });
 
 describe('session-scoped draft patches', () => {
