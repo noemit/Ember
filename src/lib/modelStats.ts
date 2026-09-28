@@ -166,3 +166,43 @@ export const summarizeModel = (rows: readonly ModelObservation[]) => {
     cache: prompt ? cached.reduce((sum, row) => sum + row.cacheRead!, 0) / prompt : undefined, cacheSamples: cached.length,
   };
 };
+
+export type ModelUsage = ReturnType<typeof summarizeModel> & {
+  providerID: string;
+  modelID: string;
+  totalCost: number;
+  lastUsed: number;
+  /** Call counts, most used first. '' is the model default / unknown effort. */
+  variants: [string, number][];
+  instances: [string, number][];
+};
+
+const countsOf = (values: string[]): [string, number][] => {
+  const counts = new Map<string, number>();
+  values.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+  return [...counts].sort((a, b) => b[1] - a[1]);
+};
+
+/** Every model seen in the window (optionally on one instance), most used first. */
+export const summarizeUsage = (
+  rows: readonly ModelObservation[],
+  { days, instanceId, now = Date.now() }: { days: number; instanceId?: string; now?: number }
+): ModelUsage[] => {
+  const groups = new Map<string, ModelObservation[]>();
+  rows.forEach((row) => {
+    if (row.completedAt < now - days * 86_400_000 || (instanceId && row.instanceId !== instanceId)) return;
+    const key = JSON.stringify([row.providerID, row.modelID]);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  });
+  return [...groups.values()].map((group) => ({
+    ...summarizeModel(group),
+    providerID: group[0].providerID,
+    modelID: group[0].modelID,
+    totalCost: group.reduce((sum, row) => sum + (row.cost ?? 0), 0),
+    lastUsed: Math.max(...group.map((row) => row.completedAt)),
+    variants: countsOf(group.map((row) => row.variant ?? '')),
+    instances: countsOf(group.map((row) => row.instanceId)),
+  })).sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed);
+};

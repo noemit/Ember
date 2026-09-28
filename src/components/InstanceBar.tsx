@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ChevronDown, Menu, RefreshCw, Search, Settings, SlidersHorizontal } from 'lucide-react';
+import { ChartColumn, ChevronDown, Menu, RefreshCw, Search, Settings, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shortcutLabel } from '@/lib/shortcuts';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -28,6 +28,7 @@ type Props = {
   onRefresh: () => void;
   onOpenSettings: () => void;
   onOpenViewOptions: () => void;
+  onOpenModelUsage: () => void;
 };
 
 const kindLabel: Record<Instance['kind'], string> = {
@@ -66,6 +67,7 @@ export default function InstanceBar({
   onRefresh,
   onOpenSettings,
   onOpenViewOptions,
+  onOpenModelUsage,
 }: Props) {
   const connected = instances.filter((instance) => instance.attachable).length;
 
@@ -104,6 +106,17 @@ export default function InstanceBar({
       ) : (
         <div className="flex-1" />
       )}
+
+      <button
+        type="button"
+        onClick={onOpenModelUsage}
+        className="no-drag flex h-7 items-center gap-1.5 rounded-full border bg-muted/50 px-2.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        aria-label="Model usage"
+        title="Model usage across all instances"
+      >
+        <ChartColumn className="size-3.5" />
+        <span className="hidden sm:inline">Usage</span>
+      </button>
 
       <button
         type="button"

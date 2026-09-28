@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ModelStatsStore, parseObservation } from './electron/modelStats';
-import { observationsFor, summarizeModel } from './src/lib/modelStats';
+import { observationsFor, summarizeModel, summarizeUsage } from './src/lib/modelStats';
 
 const observation = () => ({
   instanceId: 'local', sessionId: 'session', messageId: 'message', providerID: 'provider', modelID: 'model',
@@ -32,6 +32,27 @@ test('unknown cost is not free; errors and cancellation are separate', () => {
   expect(summary.rate).toBe(50);
   expect(summary.cache).toBe(0.8);
   expect(summarizeModel([{ ...row, cost: 0 }]).cost).toBe(0);
+});
+
+test('usage groups every model across instances, most used first, within the window', () => {
+  const now = Date.now();
+  const row = { ...parseObservation(observation())!, completedAt: now - 1000 };
+  const rows = [
+    { ...row, id: 'a1', cost: 0.5 },
+    { ...row, id: 'a2', instanceId: 'castle', variant: 'high', cost: 0.25 },
+    { ...row, id: 'a3', instanceId: 'castle', variant: 'high' },
+    { ...row, id: 'b1', modelID: 'other' },
+    { ...row, id: 'old', modelID: 'stale', completedAt: now - 40 * 86_400_000 },
+  ];
+  const usage = summarizeUsage(rows, { days: 30, now });
+  expect(usage.map((entry) => entry.modelID)).toEqual(['model', 'other']);
+  expect(usage[0].count).toBe(3);
+  expect(usage[0].totalCost).toBe(0.75);
+  expect(usage[0].variants).toEqual([['high', 2], ['', 1]]);
+  expect(usage[0].instances).toEqual([['castle', 2], ['local', 1]]);
+  expect(summarizeUsage(rows, { days: 90, now }).map((entry) => entry.modelID)).toContain('stale');
+  expect(summarizeUsage(rows, { days: 30, instanceId: 'local', now }).map((entry) => [entry.modelID, entry.count]))
+    .toEqual([['model', 1], ['other', 1]]);
 });
 
 test('observes completed assistant metadata with the actual model variant', () => {

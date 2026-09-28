@@ -114,6 +114,7 @@ import type {
 
 const SettingsPanel = React.lazy(() => import('./components/SettingsPanel'));
 const ViewOptionsDialog = React.lazy(() => import('./components/ViewOptionsDialog'));
+const ModelUsageDialog = React.lazy(() => import('./components/ModelUsageDialog'));
 const AvatarPicker = React.lazy(() => import('./components/AvatarPicker'));
 const CommandPalette = React.lazy(() => import('./components/CommandPalette'));
 const ArchiveDialog = React.lazy(() => import('./components/ArchiveDialog'));
@@ -268,6 +269,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [viewOptionsOpen, setViewOptionsOpen] = React.useState(false);
   const [viewOptionsActivated, setViewOptionsActivated] = React.useState(false);
+  const [modelUsageOpen, setModelUsageOpen] = React.useState(false);
   const [settingsActivated, setSettingsActivated] = React.useState(false);
   const [avatarPickerSession, setAvatarPickerSession] = React.useState<Session | null>(null);
   const [settingsView, setSettingsView] = React.useState<'general' | 'instances'>('general');
@@ -2857,6 +2859,7 @@ export default function App() {
               setViewOptionsActivated(true);
               setViewOptionsOpen(true);
             }}
+            onOpenModelUsage={() => setModelUsageOpen(true)}
             onOpenSettings={() => {
               setSettingsView('instances');
               setSettingsActivated(true);
@@ -3108,6 +3111,17 @@ export default function App() {
                 reasoningDisplay={settings.reasoningDisplay}
                 onHideToolCallsChange={(hide) => handleSettings({ hideToolCalls: hide })}
                 onReasoningDisplayChange={(mode) => handleSettings({ reasoningDisplay: mode })}
+              />
+            </React.Suspense>
+          ) : null}
+
+          {modelUsageOpen ? (
+            <React.Suspense fallback={null}>
+              <ModelUsageDialog
+                open
+                onOpenChange={setModelUsageOpen}
+                instances={instances}
+                modelsByInstance={modelsByInstance}
               />
             </React.Suspense>
           ) : null}
