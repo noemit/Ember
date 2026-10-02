@@ -16,6 +16,30 @@ connected instance listed in `~/.config/openchamber/settings.json`.
 - `bun run build` — typecheck the renderer, build it to `dist/`, and emit electron main/preload to `dist-electron/`.
 - `bun.lock` is intentionally untracked (`packageManager` pins the Bun version instead).
 
+## Native macOS app (`macos/`)
+
+A separate SwiftUI port (macOS 26+, bundle id `dev.ember.mac`) being built alongside the Electron
+app. The Electron app is **not** being replaced — it stays the cross-platform client (Windows/Linux)
+and must keep working; never remove or rewrite `electron/`/`src/` for the Swift port.
+
+- `macos/scripts/check.sh` — regenerate the Xcode project, `swift-format lint --strict`, `swift test`
+  for EmberKit, and an `xcodebuild` Debug build. Run before committing Swift changes.
+- `macos/scripts/run.sh` — build and launch the Debug app.
+- `macos/project.yml` is the source of truth (XcodeGen); `Ember.xcodeproj` is generated and untracked.
+  Unsandboxed and ad-hoc signed, like the Electron app.
+- `macos/EmberKit/` — SwiftPM package with no UI (transport, API models, events, domain logic,
+  remote server); tests use Swift Testing. `macos/Ember/` — the SwiftUI app target.
+- Both apps share `~/.config/ember/settings.json` and `model-stats.json` (they are never run at the
+  same time), so Swift must read/write the same schema as `EmberSettings` in `electron/transport.ts`
+  and preserve keys it doesn't know. OpenChamber settings come from `EmberPaths` (honours
+  `OPENCHAMBER_DATA_DIR`).
+- Port plan, in phases: scaffold → core transport → freshness engine (SSE, invalidation, polling,
+  ReadCoordinator) → read-only slice → composer/actions → workspace columns → blobs/themes →
+  remaining features → remote access (serves the React `dist/` build over the same `/remote/*`
+  contract, scrypt hashes compatible with `electron/remoteAuth.ts`) → performance/polish. Each
+  `*.test.ts` is ported to a Swift Testing suite as the parity spec. Markdown uses Apple's
+  `swift-markdown`; avoid other dependencies.
+
 ## Completion
 
 - When a requested task is complete and its checks pass, commit the intended files and push `main`.

@@ -1,0 +1,35 @@
+name: Ember
+options:
+  bundleIdPrefix: dev.ember
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  EmberKit:
+    path: EmberKit
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+targets:
+  Ember:
+    type: application
+    platform: macOS
+    sources: [Ember]
+    dependencies:
+      - package: EmberKit
+    scheme: {}
+    settings:
+      base:
+        PRODUCT_NAME: Ember
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ember.mac
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Ember
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        # Ember reads ~/.config and talks to arbitrary local/Tailnet hosts, like the Electron app.
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"

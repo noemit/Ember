@@ -13,6 +13,12 @@ release/
 test-results/
 playwright-report/
 
+# macOS app (macos/): the Xcode project is generated from project.yml
+macos/Ember.xcodeproj/
+macos/build/
+macos/EmberKit/.build/
+macos/EmberKit/.swiftpm/
+
 # logs
 *.log
 npm-debug.log*
